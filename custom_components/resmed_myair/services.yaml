@@ -1,0 +1,2 @@
+# poll:
+# description: Trigger a manual poll of myAir for new data. Use this for the most optimal control to poll, say, 1 hour after you wake up.
