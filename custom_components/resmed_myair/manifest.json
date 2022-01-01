@@ -1,11 +1,14 @@
 {
   "domain": "resmed_myair",
   "name": "ResMed myAir",
-  "documentation": "TODO",
   "dependencies": [],
-  "codeowners": [],
   "requirements": [],
   "iot_class": "cloud_polling",
   "version": "0.1.0",
-  "config_flow": true
+  "config_flow": true,
+  "issue_tracker": "https://github.com/prestomation/resmed_myair_sensors/issues",
+  "documentation": "https://github.com/prestomation/resmed_myair_sensors/blob/master/README.md",
+  "codeowners": [
+    "@prestomation"
+  ]
 }

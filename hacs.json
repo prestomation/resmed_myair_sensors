@@ -3,10 +3,5 @@
     "domains": [
         "sensor"
     ],
-    "issue_tracker": "https://github.com/prestomation/resmed_myair_sensors/issues",
-    "documentation": "https://github.com/prestomation/resmed_myair_sensors/blob/master/README.md",
-    "codeowners": [
-        "@prestomation"
-    ],
     "version": "0.1"
 }

@@ -217,13 +217,16 @@ class MyAirClient:
     async def get_sleep_records(self) -> List[SleepRecord]:
 
         today = datetime.datetime.now().strftime("%Y-%m-%d")
+        one_month_ago = (
+            datetime.datetime.now() - datetime.timedelta(days=30)
+        ).strftime("%Y-%m-%d")
 
         query = """query GetPatientSleepRecords {
             getPatientWrapper {
                 patient {
                     firstName
                 }
-                sleepRecords(startMonth: \"DATE\", endMonth: \"DATE\")
+                sleepRecords(startMonth: \"ONE_MONTH_AGO\", endMonth: \"DATE\")
                 {
                     items {
                         startDate
@@ -245,6 +248,8 @@ class MyAirClient:
             }
         }
         """.replace(
+            "ONE_MONTH_AGO", one_month_ago
+        ).replace(
             "DATE", today
         )
 

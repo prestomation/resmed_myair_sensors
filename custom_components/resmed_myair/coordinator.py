@@ -9,6 +9,7 @@ from datetime import timedelta
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
     """DataUpdateCoordinator for MyAir."""
 
@@ -32,9 +33,9 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> None:
         """Fetch data from from the myAir client and store it in the coordinator."""
-        _LOGGER.error("Updating from myAir")
+        _LOGGER.info("Updating from myAir")
         await self.myair_client.connect()
         self.device = await self.myair_client.get_user_device_data()
         self.sleep_records = await self.myair_client.get_sleep_records()
 
-        return 
+        return

@@ -21,7 +21,7 @@ import logging
 
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS: list[str] = ["sensor"]
+PLATFORMS: List[str] = ["sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
