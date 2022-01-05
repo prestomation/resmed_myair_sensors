@@ -1,4 +1,3 @@
-
 {
     "title": "ResMed myAir CPAP Sensors",
     "config": {
@@ -8,10 +7,10 @@
                 "title": "ResMed myAir Login Information",
                 "data": {
                     "Username": "Username",
-                    "Password": "Password"
+                    "Password": "Password",
+                    "Region": "myAir Region"
                 },
                 "description": "Please enter the username/password used in the myAir app or website."
-
             }
         },
         "error": {

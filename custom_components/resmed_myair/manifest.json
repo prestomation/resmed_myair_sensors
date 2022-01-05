@@ -2,7 +2,9 @@
   "domain": "resmed_myair",
   "name": "ResMed myAir",
   "dependencies": [],
-  "requirements": [],
+  "requirements": [
+    "beautifulsoup4"
+  ],
   "iot_class": "cloud_polling",
   "version": "0.1.0",
   "config_flow": true,

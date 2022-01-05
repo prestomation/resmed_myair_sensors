@@ -7,8 +7,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.const import PERCENTAGE
-from .common import CONF_PASSWORD, CONF_USER_NAME, DOMAIN
-from .myair_client import MyAirClient, MyAirConfig
+from .common import CONF_PASSWORD, CONF_USER_NAME, CONF_REGION, DOMAIN
+from .client.myair_client import MyAirClient, MyAirConfig
+from .client import get_client
 
 
 from .coordinator import MyAirDataUpdateCoordinator
@@ -42,7 +43,7 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
         self.sensor_key = sensor_desc.key
         self.coordinator = coordinator
         serial_number = self.coordinator.device["serialNumber"]
-        sensor_desc.key = "myair_{serial_number}_{sensor_desc.key}"
+        sensor_desc.key = f"myair_{serial_number}_{sensor_desc.key}"
         self.entity_description = sensor_desc
 
         self._attr_name = friendly_name
@@ -60,7 +61,7 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
 
         # The API always returns the previous month of data, so the client stores this
         # We assume this is ordered temporally and grab the last one: the latest one
-        value = self.coordinator.sleep_records[-1][self.sensor_key]
+        value = self.coordinator.sleep_records[-1].get(self.sensor_key, 0)
         if self.sensor_key.endswith("Date"):
             # A bit of a hack to interpret date's as datetimes.
             value = datetime.strptime(value, "%Y-%m-%d")
@@ -103,9 +104,10 @@ async def async_setup_entry(
     """Set up myAir sensors."""
     username = config_entry.data[CONF_USER_NAME]
     password = config_entry.data[CONF_PASSWORD]
+    region = config_entry.data.get(CONF_REGION, "NA")
 
-    client_config = MyAirConfig(username=username, password=password)
-    client = MyAirClient(client_config)
+    client_config = MyAirConfig(username=username, password=password, region=region)
+    client: MyAirClient = get_client(client_config)
     coordinator = MyAirDataUpdateCoordinator(hass, client)
 
     hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = coordinator

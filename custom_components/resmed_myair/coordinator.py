@@ -1,7 +1,7 @@
 from typing import List
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.core import HomeAssistant
-from .myair_client import MyAirClient, MyAirDevice, SleepRecord
+from .client.myair_client import MyAirClient, MyAirDevice, SleepRecord
 import logging
 
 from .common import DEFAULT_UPDATE_RATE_MIN

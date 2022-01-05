@@ -7,16 +7,11 @@ myair_client is a reverse engineering and can break at anytime.
 
 from typing import List, Dict
 
-from .myair_client import MyAirClient, MyAirConfig
+from .client.myair_client import MyAirClient, MyAirConfig
 from homeassistant.config_entries import ConfigEntry
 
-from homeassistant.components.sensor import (
-    SensorEntityDescription,
-    SensorStateClass,
-)
-
 from homeassistant.core import HomeAssistant
-from .common import CONF_PASSWORD, CONF_USER_NAME, DOMAIN
+from .common import CONF_PASSWORD, CONF_USER_NAME, DOMAIN, CONF_REGION
 import logging
 
 
@@ -53,3 +48,21 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 #     # We are assuming that these are sorted by time, so we just take the last records
 #     # This API always gives us the trailing month
 #     records[0][]
+
+
+async def async_migrate_entry(hass, config_entry: ConfigEntry):
+    """Migrate old entry."""
+    _LOGGER.debug("Migrating from version %s", config_entry.version)
+
+    if config_entry.version == 1:
+
+        new = {**config_entry.data}
+        # v1 only supported NA by its implicit nature, so lets set it here
+        new[CONF_REGION] = "NA"
+
+        config_entry.version = 2
+        hass.config_entries.async_update_entry(config_entry, data=new)
+
+    _LOGGER.info("Migration to version %s successful", config_entry.version)
+
+    return True

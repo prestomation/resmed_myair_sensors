@@ -1,4 +1,4 @@
-from typing import NamedTuple, TypedDict, List, Any
+from typing import NamedTuple, List, Any
 
 # import requests
 import datetime
@@ -8,95 +8,53 @@ import re
 import hashlib
 from urllib.parse import urldefrag, parse_qs
 import aiohttp
+from .myair_client import (
+    MyAirClient,
+    MyAirConfig,
+    MyAirDevice,
+    SleepRecord,
+    AuthenticationError,
+)
 
 
-class AuthenticationError(Exception):
-    """This error is thrown when Authentication fails, which can mean the username/password or domain is incorrect"""
-
-    pass
-
-
-class MyAirConfig(NamedTuple):
-    """
-    This is our config for logging into MyAir
-    If you are in North America, you only need to set the username/password
-    If you are in a different region, you will likely need to override these values.
-    To do so, you will need to examine the network traffic during login to find the right values
-
-    """
-
-    # If you are in NA, you only need to set these
-    username: str
-    password: str
-
+US_CONFIG = {
     # This is the clientId that appears in Okta URLs
-    authn_client_id: str = "aus4ccsxvnidQgLmA297"
-
+    "authn_client_id": "aus4ccsxvnidQgLmA297",
     # This is the clientId that appears in request bodies during login
-    authorize_client_id: str = "0oa4ccq1v413ypROi297"
-
+    "authorize_client_id": "0oa4ccq1v413ypROi297",
     # Used as the x-api-key header for the AppSync GraphQL API
-    myair_api_key: str = "da2-cenztfjrezhwphdqtwtbpqvzui"
-
+    "myair_api_key": "da2-cenztfjrezhwphdqtwtbpqvzui",
     # The Okta Endpoint where the creds go
-    authn_url: str = "https://resmed-ext-1.okta.com/api/v1/authn"
-
+    "authn_url": "https://resmed-ext-1.okta.com/api/v1/authn",
     # When specifying token_url and authorize_url, add {authn_client_id} and your authn_client_id will be substituted in
     # Or you can put the entire URL here if you want, but your authn_client_id will be ignored
-    authorize_url: str = (
-        "https://resmed-ext-1.okta.com/oauth2/{authn_client_id}/v1/authorize"
-    )
-
+    "authorize_url": "https://resmed-ext-1.okta.com/oauth2/{authn_client_id}/v1/authorize",
     # The endpoint that the 'code' is sent to get an authorization token
-    token_url: str = "https://resmed-ext-1.okta.com/oauth2/{authn_client_id}/v1/token"
-
+    "token_url": "https://resmed-ext-1.okta.com/oauth2/{authn_client_id}/v1/token",
     # The AppSync URL that accepts your token + the API key to return Sleep Recors
-    appsync_url: str = (
-        "https://bs2diezuffgt5mfns4ucyz2vea.appsync-api.us-west-2.amazonaws.com/graphql"
-    )
-
+    "appsync_url": "https://bs2diezuffgt5mfns4ucyz2vea.appsync-api.us-west-2.amazonaws.com/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
-    oauth_redirect_url: str = "https://myair2.resmed.com"
+    "oauth_redirect_url": "https://myair2.resmed.com",
+}
 
 
-class SleepRecord(TypedDict):
+class RESTClient(MyAirClient):
     """
-    This data is what is returned by the API and shown on the myAir dashboard
-    No processing is performed
+    This client is currently used in the US.
+    In the US, myAir uses oauth on Okta and AWS AppSync GraphQL
     """
-
-    # myAir returns this in the format %Y-%m-%d, at daily precision
-    startDate: str
-    totalUsage: int
-    sleepScore: int
-    usageScore: int
-    ahiScore: int
-    maskScore: int
-    leakScore: int
-    ahi: float
-    maskPairCount: int
-    leakPercentile: float
-    sleepRecordPatientId: str
-
-
-class MyAirDevice(TypedDict):
-    serialNumber: str
-    deviceType: str
-    lastSleepDataReportTime: str
-    localizedName: str
-    fgDeviceManufacturerName: str
-    fgDevicePatientId: str
-
-
-class MyAirClient:
 
     config: MyAirConfig
     access_token: str
 
     def __init__(self, config: MyAirConfig):
+        assert (
+            config.region == "NA"
+        ), "REST client used outside NA, this should not happen. Please file a bug"
         self.config = config
 
     async def connect(self):
+        # for connect, let's login and store the access token
         await self.get_access_token()
 
     async def get_access_token(self) -> str:
@@ -109,7 +67,7 @@ class MyAirClient:
             # authn_session = requests.Session()
 
             async with authn_session.post(
-                self.config.authn_url,
+                US_CONFIG["authn_url"],
                 json={
                     "username": self.config.username,
                     "password": self.config.password,
@@ -132,19 +90,19 @@ class MyAirClient:
             code_challenge = code_challenge.replace("=", "")
 
             # We use that sessionToken and exchange for an oauth code, using PKCE
-            authorize_url = self.config.authorize_url.format(
-                authn_client_id=self.config.authn_client_id
+            authorize_url = US_CONFIG["authorize_url"].format(
+                authn_client_id=US_CONFIG["authn_client_id"]
             )
             async with authn_session.get(
                 authorize_url,
                 allow_redirects=False,
                 params={
-                    "client_id": self.config.authorize_client_id,
+                    "client_id": US_CONFIG["authorize_client_id"],
                     # For PKCE
                     "code_challenge": code_challenge,
                     "code_challenge_method": "S256",
                     "prompt": "none",
-                    "redirect_uri": self.config.oauth_redirect_url,
+                    "redirect_uri": US_CONFIG["oauth_redirect_url"],
                     "response_mode": "fragment",
                     "response_type": "code",
                     "sessionToken": session_token,
@@ -160,8 +118,8 @@ class MyAirClient:
             # Now we change the code for an access token
             # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
             token_form = {
-                "client_id": self.config.authorize_client_id,
-                "redirect_uri": self.config.oauth_redirect_url,
+                "client_id": US_CONFIG["authorize_client_id"],
+                "redirect_uri": US_CONFIG["oauth_redirect_url"],
                 "grant_type": "authorization_code",
                 "code_verifier": code_verifier,
                 "code": code,
@@ -171,8 +129,8 @@ class MyAirClient:
                 "Content-Type": "application/x-www-form-urlencoded",
             }
             async with authn_session.post(
-                self.config.token_url.format(
-                    authn_client_id=self.config.authn_client_id
+                US_CONFIG["token_url"].format(
+                    authn_client_id=US_CONFIG["authn_client_id"]
                 ),
                 data=token_form,
                 allow_redirects=False,
@@ -187,7 +145,7 @@ class MyAirClient:
         authz_header = f"bearer {self.access_token}"
 
         headers = {
-            "x-api-key": self.config.myair_api_key,
+            "x-api-key": US_CONFIG["myair_api_key"],
             "Authorization": authz_header,
             # There are a bunch of resmed headeers sent to this API that seem to be required
             # Unsure if this is ever validated/can break things if these values change
@@ -204,7 +162,7 @@ class MyAirClient:
         async with aiohttp.ClientSession(headers=headers) as api_session:
 
             async with api_session.post(
-                self.config.appsync_url,
+                US_CONFIG["appsync_url"],
                 json={
                     "operationName": operation_name,
                     "variables": {},
