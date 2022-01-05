@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any
 import aiohttp
 import datetime
 import json
@@ -18,6 +18,37 @@ EU_CONFIG = {
     "dashboard_url": "https://myair.resmed.eu/Dashboard.aspx",
     "device_url": "https://myair.resmed.eu/myAccountDevice.aspx",
 }
+
+
+def generate_sleep_records(scores: Any) -> List[SleepRecord]:
+    records: List[SleepRecord] = []
+    for score in scores:
+        record: SleepRecord = {}
+        month_num = datetime.datetime.strptime(score["MonthNameAbrv"], "%b").month
+        # This API doesn't give us a year, so we will guess!
+        # If it's in the future, we assume it was from last year and subtract a year
+        # Super-hacky but myAir does not give us a year
+        year = datetime.datetime.now().year
+        start_date = datetime.datetime.strptime(
+            f"{year}-{month_num}-{score['DayNumber']}", "%Y-%M-%d"
+        )
+        record["startDate"] = start_date.strftime("%Y-%M-%d")
+
+        record["totalUsage"] = score.get("Usage", 0)
+        record["sleepScore"] = score.get("Score", 0)
+        record["usageScore"] = score.get("UsageScore", 0)
+        record["ahiScore"] = score.get("EventsScore", 0)
+        record["maskScore"] = score.get("MaskScore", 0)
+        record["leakScore"] = score.get("LeakScore", 0)
+        record["ahi"] = score.get("Events", 0)
+        record["maskPairCount"] = score.get("Mask", 0)
+        # record["leakPercentile"] = ?
+        # record["sleepRecordPatienId"] =  ?
+
+        records.append(record)
+
+    # We are currently relying on myAir to return data sorted by date, e.g. the last record will be the latest record
+    return records
 
 
 class LegacyClient(MyAirClient):
@@ -80,25 +111,4 @@ class LegacyClient(MyAirClient):
         ][0]
         matches = re.search(".+(\[.+?\]).+", scores_script).groups()[0]
         my_scores = json.loads(matches)
-        records: List[SleepRecord] = []
-        for score in my_scores:
-            record: SleepRecord = {}
-            month_num = datetime.datetime.strptime(score["MonthNameAbrv"], "%b").month
-            # This API doesn't give us a year, so we will guess!
-            year = datetime.datetime.now().year
-            record["startDate"] = f"{year}-{month_num}-{score['DayNumber']}"
-            record["totalUsage"] = score.get("Usage", 0)
-            record["sleepScore"] = score.get("Score", 0)
-            record["usageScore"] = score.get("UsageScore", 0)
-            record["ahiScore"] = score.get("EventsScore", 0)
-            record["maskScore"] = score.get("MaskScore", 0)
-            record["leakScore"] = score.get("LeakScore", 0)
-            record["ahi"] = score.get("Events", 0)
-            record["maskPairCount"] = score.get("Mask", 0)
-            # record["leakPercentile"] = ?
-            # record["sleepRecordPatienId"] =  ?
-
-            records.append(record)
-        # Let's make sure we're sorted by date
-        records.sort(key=lambda r: r["startDate"])
-        return records
+        return generate_sleep_records(my_scores)
