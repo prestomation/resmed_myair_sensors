@@ -35,7 +35,10 @@ def generate_sleep_records(scores: Any) -> List[SleepRecord]:
         record["startDate"] = start_date.strftime("%Y-%M-%d")
 
         # Usage is in hours, but we expose minutes
-        record["totalUsage"] = float(score.get("Usage", 0)) * 60
+        try:
+            record["totalUsage"] = float(score.get("Usage", 0)) * 60
+        except ValueError:
+            record["totalUsage"] = 0
         record["sleepScore"] = score.get("Score", 0)
         record["usageScore"] = score.get("UsageScore", 0)
         record["ahiScore"] = score.get("EventsScore", 0)

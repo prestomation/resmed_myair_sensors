@@ -41,7 +41,6 @@ This integration was reversed engineered from the myAir website. There are no gu
 This integration currently only connects to the Americas. If you are in Europe or Asia, please open an issue and offer yourself as a test subject.
 
 
-
 ## Contributions are welcome!
 
 If you want to contribute to this please read the [Contribution guidelines](CONTRIBUTING.md)
