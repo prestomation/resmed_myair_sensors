@@ -7,7 +7,10 @@ import os
 import re
 import hashlib
 from urllib.parse import urldefrag, parse_qs
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
 import aiohttp
+from aiohttp import ClientSession
 from .myair_client import (
     MyAirClient,
     MyAirConfig,
@@ -46,12 +49,14 @@ class RESTClient(MyAirClient):
 
     config: MyAirConfig
     access_token: str
+    session: ClientSession
 
-    def __init__(self, config: MyAirConfig):
+    def __init__(self, config: MyAirConfig, session: ClientSession):
         assert (
             config.region == "NA"
         ), "REST client used outside NA, this should not happen. Please file a bug"
         self.config = config
+        self.session = session
 
     async def connect(self):
         # for connect, let's login and store the access token
@@ -61,84 +66,82 @@ class RESTClient(MyAirClient):
         """
         Call this to refresh the access token
         """
-        async with aiohttp.ClientSession(
-            headers={"Content-Type": "application/json", "Accept": "application/json"}
-        ) as authn_session:
-            # authn_session = requests.Session()
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
-            async with authn_session.post(
-                US_CONFIG["authn_url"],
-                json={
-                    "username": self.config.username,
-                    "password": self.config.password,
-                },
-            ) as authn_res:
-                authn_json = await authn_res.json()
+        async with self.session.post(
+            US_CONFIG["authn_url"],
+            headers=headers,
+            json={
+                "username": self.config.username,
+                "password": self.config.password,
+            },
+        ) as authn_res:
+            authn_json = await authn_res.json()
 
-            # We've exchanged our user/pass for a session token
-            if "sessionToken" not in authn_json:
-                raise AuthenticationError()
-            session_token = authn_json["sessionToken"]
-            # expires_at = authn_json["expiresAt"]
+        # We've exchanged our user/pass for a session token
+        if "sessionToken" not in authn_json:
+            raise AuthenticationError()
+        session_token = authn_json["sessionToken"]
+        # expires_at = authn_json["expiresAt"]
 
-            # myAir uses Authorization Code with PKCE, so we generate our verifier here
-            code_verifier = base64.urlsafe_b64encode(os.urandom(40)).decode("utf-8")
-            code_verifier = re.sub("[^a-zA-Z0-9]+", "", code_verifier)
+        # myAir uses Authorization Code with PKCE, so we generate our verifier here
+        code_verifier = base64.urlsafe_b64encode(os.urandom(40)).decode("utf-8")
+        code_verifier = re.sub("[^a-zA-Z0-9]+", "", code_verifier)
 
-            code_challenge = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-            code_challenge = base64.urlsafe_b64encode(code_challenge).decode("utf-8")
-            code_challenge = code_challenge.replace("=", "")
+        code_challenge = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        code_challenge = base64.urlsafe_b64encode(code_challenge).decode("utf-8")
+        code_challenge = code_challenge.replace("=", "")
 
-            # We use that sessionToken and exchange for an oauth code, using PKCE
-            authorize_url = US_CONFIG["authorize_url"].format(
-                authn_client_id=US_CONFIG["authn_client_id"]
-            )
-            async with authn_session.get(
-                authorize_url,
-                allow_redirects=False,
-                params={
-                    "client_id": US_CONFIG["authorize_client_id"],
-                    # For PKCE
-                    "code_challenge": code_challenge,
-                    "code_challenge_method": "S256",
-                    "prompt": "none",
-                    "redirect_uri": US_CONFIG["oauth_redirect_url"],
-                    "response_mode": "fragment",
-                    "response_type": "code",
-                    "sessionToken": session_token,
-                    "scope": "openid profile email",
-                    "state": "abcdef",
-                },
-            ) as code_res:
-                location = code_res.headers["location"]
-            fragment = urldefrag(location)
-            # Pull the code out of the location header fragment
-            code = parse_qs(fragment.fragment)["code"]
-
-            # Now we change the code for an access token
-            # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
-            token_form = {
+        # We use that sessionToken and exchange for an oauth code, using PKCE
+        authorize_url = US_CONFIG["authorize_url"].format(
+            authn_client_id=US_CONFIG["authn_client_id"]
+        )
+        async with self.session.get(
+            authorize_url,
+            headers=headers,
+            allow_redirects=False,
+            params={
                 "client_id": US_CONFIG["authorize_client_id"],
+                # For PKCE
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+                "prompt": "none",
                 "redirect_uri": US_CONFIG["oauth_redirect_url"],
-                "grant_type": "authorization_code",
-                "code_verifier": code_verifier,
-                "code": code,
-            }
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/x-www-form-urlencoded",
-            }
-            async with authn_session.post(
-                US_CONFIG["token_url"].format(
-                    authn_client_id=US_CONFIG["authn_client_id"]
-                ),
-                data=token_form,
-                allow_redirects=False,
-                headers=headers,
-            ) as token_res:
-                d = await token_res.json()
-                self.access_token = d["access_token"]
-                return self.access_token
+                "response_mode": "fragment",
+                "response_type": "code",
+                "sessionToken": session_token,
+                "scope": "openid profile email",
+                "state": "abcdef",
+            },
+        ) as code_res:
+            location = code_res.headers["location"]
+        fragment = urldefrag(location)
+        # Pull the code out of the location header fragment
+        print(fragment)
+        code = parse_qs(fragment.fragment)["code"]
+
+        # Now we change the code for an access token
+        # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
+        token_form = {
+            "client_id": US_CONFIG["authorize_client_id"],
+            "redirect_uri": US_CONFIG["oauth_redirect_url"],
+            "grant_type": "authorization_code",
+            "code_verifier": code_verifier,
+            "code": code,
+        }
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        async with self.session.post(
+            US_CONFIG["token_url"].format(authn_client_id=US_CONFIG["authn_client_id"]),
+            headers=headers,
+            data=token_form,
+            allow_redirects=False,
+        ) as token_res:
+            d = await token_res.json()
+            self.access_token = d["access_token"]
+            return self.access_token
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
 
@@ -159,18 +162,17 @@ class RESTClient(MyAirClient):
             "rmdcountry": "US",
             "accept-language": "en-US,en;q=0.9",
         }
-        async with aiohttp.ClientSession(headers=headers) as api_session:
-
-            async with api_session.post(
-                US_CONFIG["appsync_url"],
-                json={
-                    "operationName": operation_name,
-                    "variables": {},
-                    "query": query,
-                },
-            ) as records_response:
-                records_json = await records_response.json()
-                return records_json
+        async with self.session.post(
+            US_CONFIG["appsync_url"],
+            headers=headers,
+            json={
+                "operationName": operation_name,
+                "variables": {},
+                "query": query,
+            },
+        ) as records_response:
+            records_json = await records_response.json()
+            return records_json
 
     async def get_sleep_records(self) -> List[SleepRecord]:
 

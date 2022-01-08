@@ -1,7 +1,6 @@
 {
     "title": "ResMed myAir CPAP Sensors",
     "config": {
-        "title:": "ResMed myAir CPAP Sensors(Unofficial Community Integration)",
         "step": {
             "user": {
                 "title": "ResMed myAir Login Information",

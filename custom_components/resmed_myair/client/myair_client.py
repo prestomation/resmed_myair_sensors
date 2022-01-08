@@ -50,6 +50,9 @@ class MyAirDevice(TypedDict):
     fgDeviceManufacturerName: str
     fgDevicePatientId: str
 
+    # URI on the domain: https://static.myair-prd.dht.live/
+    imagePath: str
+
 
 class MyAirClient(ABC):
     async def connect(self):
@@ -60,4 +63,3 @@ class MyAirClient(ABC):
 
     async def get_sleep_records(self) -> List[SleepRecord]:
         raise NotImplementedError()
-

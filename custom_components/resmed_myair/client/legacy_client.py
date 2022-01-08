@@ -22,6 +22,13 @@ EU_CONFIG = {
 
 def generate_sleep_records(scores: Any) -> List[SleepRecord]:
     records: List[SleepRecord] = []
+
+    def as_float(d, key):
+        try:
+            return float(d.get(key, 0))
+        except ValueError:
+            return 0
+
     for score in scores:
         record: SleepRecord = {}
         month_num = datetime.datetime.strptime(score["MonthNameAbrv"], "%b").month
@@ -35,17 +42,14 @@ def generate_sleep_records(scores: Any) -> List[SleepRecord]:
         record["startDate"] = start_date.strftime("%Y-%M-%d")
 
         # Usage is in hours, but we expose minutes
-        try:
-            record["totalUsage"] = float(score.get("Usage", 0)) * 60
-        except ValueError:
-            record["totalUsage"] = 0
-        record["sleepScore"] = score.get("Score", 0)
-        record["usageScore"] = score.get("UsageScore", 0)
-        record["ahiScore"] = score.get("EventsScore", 0)
-        record["maskScore"] = score.get("MaskScore", 0)
-        record["leakScore"] = score.get("LeakScore", 0)
-        record["ahi"] = score.get("Events", 0)
-        record["maskPairCount"] = score.get("Mask", 0)
+        record["totalUsage"] = as_float(score, "Usage") * 60
+        record["sleepScore"] = as_float(score, "Score")
+        record["usageScore"] = as_float(score, "UsageScore")
+        record["ahiScore"] = as_float(score, "EventsScore")
+        record["maskScore"] = as_float(score, "MaskScore")
+        record["leakScore"] = as_float(score, "LeakScore")
+        record["ahi"] = as_float(score, "Events")
+        record["maskPairCount"] = as_float(score, "Mask")
         # record["leakPercentile"] = ?
         # record["sleepRecordPatienId"] =  ?
 
@@ -59,30 +63,32 @@ class LegacyClient(MyAirClient):
 
     config: MyAirConfig
     cookie_jar: aiohttp.CookieJar
+    client: aiohttp.ClientSession
 
-    def __init__(self, config: MyAirConfig):
+    def __init__(self, config: MyAirConfig, client: aiohttp.ClientSession):
         assert config.region == "EU"
         self.config = config
+        self.client = client
 
     async def connect(self):
 
-        async with aiohttp.ClientSession() as authn_session:
-            async with authn_session.post(
-                EU_CONFIG["authn_url"],
-                json={
-                    "authentifier": self.config.username,
-                    "password": self.config.password,
-                },
-            ) as authn_res:
-                authn_json = await authn_res.json()
+        async with self.client.post(
+            EU_CONFIG["authn_url"],
+            json={
+                "authentifier": self.config.username,
+                "password": self.config.password,
+            },
+        ) as authn_res:
+            authn_json = await authn_res.json()
 
-                if authn_json["sessionids"] is None:
-                    raise AuthenticationError("Invalid username or password")
-                self.cookie_jar = authn_session.cookie_jar
+            if authn_json["sessionids"] is None:
+                raise AuthenticationError("Invalid username or password")
+            self.cookie_jar = self.client.cookie_jar
 
     async def get_user_device_data(self) -> MyAirDevice:
         page = await self.get_dashboard_html()
         soup = BeautifulSoup(page, features="html.parser")
+
         equipment = soup.select("h6.c-equipment-label")
         manufacturer, device_name = (
             equipment[1].renderContents().decode("utf8").split(" ", 1)
@@ -98,10 +104,10 @@ class LegacyClient(MyAirClient):
         return device
 
     async def get_dashboard_html(self) -> str:
-        async with aiohttp.ClientSession(cookie_jar=self.cookie_jar) as authn_session:
-            async with authn_session.get(EU_CONFIG["dashboard_url"]) as dashboard_res:
-                page = await dashboard_res.content.read()
-                return page
+
+        async with self.client.get(EU_CONFIG["dashboard_url"]) as dashboard_res:
+            page = await dashboard_res.text()
+            return page
 
     async def get_sleep_records(self) -> List[SleepRecord]:
         page = await self.get_dashboard_html()
