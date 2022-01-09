@@ -45,7 +45,6 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
         self.sensor_key = sensor_desc.key
         self.coordinator = coordinator
         serial_number = self.coordinator.device["serialNumber"]
-        sensor_desc.key = f"myair_{serial_number}_{sensor_desc.key}"
         self.entity_description = sensor_desc
 
         self._attr_name = friendly_name
