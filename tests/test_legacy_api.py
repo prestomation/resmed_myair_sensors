@@ -40,7 +40,7 @@ async def test_api(hass, aioclient_mock, caplog):
         "fgDevicePatientId": "Unknown",
         "lastSleepDataReportTime": "Unknown",
         "localizedName": "ResMed AirSense 10 AutoSet",
-        "serialNumber": "Unknown",
+        "serialNumber": "usern",
     }
 
     records = await api.get_sleep_records()

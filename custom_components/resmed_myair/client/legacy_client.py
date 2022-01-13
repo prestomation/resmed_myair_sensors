@@ -94,7 +94,7 @@ class LegacyClient(MyAirClient):
             equipment[1].renderContents().decode("utf8").split(" ", 1)
         )
         device: MyAirDevice = {
-            "serialNumber": "Unknown",
+            "serialNumber": self.config.username,
             "deviceType": device_name,
             "lastSleepDataReportTime": "Unknown",
             "localizedName": f"{manufacturer} {device_name}",
