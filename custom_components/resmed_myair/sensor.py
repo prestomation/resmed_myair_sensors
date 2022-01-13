@@ -204,16 +204,16 @@ async def async_setup_entry(
         sensors.append(MyAirSleepRecordSensor(key, desc, coordinator))
 
     # Some sensors come from the device. Specifically, the last time the device reported new data
-    for key, desc in DEVICE_SENSOR_DESCRIPTIONS.items():
-        sensors.append(MyAirDeviceSensor(key, desc, coordinator))
-
-    # We have some synthesized sensors, lets add those too
-    sensors.append(MyAirFriendlyUsageTime(coordinator))
-
     if region == "NA":
         # EU gives the last sync time on the page, but is is localized both in timezone and in datestring text
         # So this data is not returned in EU.
         # We probably have enough data to calculate the right time, but let's skip it until it is asked for
-        sensors.append(MyAirMostRecentSleepDate(coordinator))
+        for key, desc in DEVICE_SENSOR_DESCRIPTIONS.items():
+            sensors.append(MyAirDeviceSensor(key, desc, coordinator))
+
+    # We have some synthesized sensors, lets add those too
+    sensors.append(MyAirFriendlyUsageTime(coordinator))
+
+    sensors.append(MyAirMostRecentSleepDate(coordinator))
 
     async_add_entities(sensors, False)
