@@ -62,7 +62,7 @@ def generate_sleep_records(scores: Any) -> List[SleepRecord]:
 class LegacyClient(MyAirClient):
 
     config: MyAirConfig
-    cookie_jar: aiohttp.CookieJar
+    cookie_jar: aiohttp.CookieJar = aiohttp.CookieJar()
     client: aiohttp.ClientSession
 
     def __init__(self, config: MyAirConfig, client: aiohttp.ClientSession):
@@ -74,6 +74,7 @@ class LegacyClient(MyAirClient):
 
         async with self.client.post(
             EU_CONFIG["authn_url"],
+            cookies=self.cookie_jar,
             json={
                 "authentifier": self.config.username,
                 "password": self.config.password,
@@ -105,7 +106,7 @@ class LegacyClient(MyAirClient):
 
     async def get_dashboard_html(self) -> str:
 
-        async with self.client.get(EU_CONFIG["dashboard_url"]) as dashboard_res:
+        async with self.client.get(EU_CONFIG["dashboard_url"], cookies=self.cookie_jar) as dashboard_res:
             page = await dashboard_res.text()
             return page
 
