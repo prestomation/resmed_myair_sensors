@@ -84,7 +84,6 @@ class LegacyClient(MyAirClient):
 
             if authn_json["sessionids"] is None:
                 raise AuthenticationError("Invalid username or password")
-            self.cookie_jar = self.client.cookie_jar
 
     async def get_user_device_data(self) -> MyAirDevice:
         page = await self.get_dashboard_html()
