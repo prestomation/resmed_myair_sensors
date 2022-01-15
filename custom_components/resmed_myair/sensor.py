@@ -7,7 +7,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.const import PERCENTAGE
 from .common import CONF_PASSWORD, CONF_USER_NAME, CONF_REGION, DOMAIN
 from .client.myair_client import MyAirClient, MyAirConfig
@@ -191,7 +191,7 @@ async def async_setup_entry(
     region = config_entry.data.get(CONF_REGION, "NA")
 
     client_config = MyAirConfig(username=username, password=password, region=region)
-    client: MyAirClient = get_client(client_config, async_get_clientsession(hass))
+    client: MyAirClient = get_client(client_config, async_create_clientsession(hass))
     coordinator = MyAirDataUpdateCoordinator(hass, client)
 
     hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = coordinator

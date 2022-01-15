@@ -7,7 +7,6 @@ import os
 import re
 import hashlib
 from urllib.parse import urldefrag, parse_qs
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 import aiohttp
 from aiohttp import ClientSession

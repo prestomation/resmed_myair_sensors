@@ -10,7 +10,7 @@ from .common import (
 )
 import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import logging
 
 from .client.myair_client import (
@@ -26,7 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def get_device(hass, username, password, region) -> MyAirDevice:
     config = MyAirConfig(username=username, password=password, region=region)
-    client = get_client(config, async_get_clientsession(hass))
+    client = get_client(config, async_create_clientsession(hass))
     await client.connect()
     device = await client.get_user_device_data()
     return device
