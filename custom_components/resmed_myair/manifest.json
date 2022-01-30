@@ -3,7 +3,8 @@
   "name": "ResMed myAir",
   "dependencies": [],
   "requirements": [
-    "beautifulsoup4"
+    "beautifulsoup4",
+    "PyJWT==2.1.0"
   ],
   "iot_class": "cloud_polling",
   "version": "0.1.0",
