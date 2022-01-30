@@ -4,6 +4,7 @@ import asyncio
 import aiohttp
 import json
 import base64
+import jwt
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from custom_components.resmed_myair.client import MyAirConfig
@@ -32,10 +33,7 @@ id_token_payload = {
     "countryCode": "AU",
     "myAirCountryId": "AU",
 }
-id_token_payload = base64.b64encode(
-    json.dumps(id_token_payload).encode("utf-8")
-).decode("ascii")
-au_id_token = f"abc.{id_token_payload}.def"
+au_id_token = jwt.encode(id_token_payload, "secret")
 
 
 async def test_api(hass, aioclient_mock, caplog):

@@ -7,6 +7,7 @@ import base64
 import os
 import re
 import hashlib
+import jwt
 from urllib.parse import urldefrag, parse_qs
 
 import aiohttp
@@ -149,8 +150,7 @@ class RESTClient(MyAirClient):
 
         # We trust this JWT because it is myAir giving it to us
         # So we can pull the middle piece out, which is the payload, and turn it to json
-        decoded = base64.b64decode(self.id_token.split(".")[1])
-        jwt_data = json.loads(decoded)
+        jwt_data = jwt.decode(self.id_token, options={"verify_signature": False})
 
         # The graphql API only works properly if we provide the expected country code
         # The rest of the paramters are required, but don't seem to be further validated
