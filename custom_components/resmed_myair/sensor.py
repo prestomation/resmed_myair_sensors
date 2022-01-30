@@ -217,3 +217,10 @@ async def async_setup_entry(
     sensors.append(MyAirMostRecentSleepDate(coordinator))
 
     async_add_entities(sensors, False)
+
+    sanitized_username = username.replace("@", "_").replace(".", "_")
+
+    async def refresh(data):
+        await coordinator.async_refresh()
+
+    hass.services.async_register(DOMAIN, f"force_poll_{sanitized_username}", refresh)

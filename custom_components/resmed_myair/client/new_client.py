@@ -116,7 +116,6 @@ class RESTClient(MyAirClient):
             location = code_res.headers["location"]
         fragment = urldefrag(location)
         # Pull the code out of the location header fragment
-        print(fragment)
         code = parse_qs(fragment.fragment)["code"]
 
         # Now we change the code for an access token

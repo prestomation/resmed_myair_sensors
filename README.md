@@ -32,7 +32,7 @@
 
 This integration creates sensors from your myAir CPAP date like AHI Events/hr, Usage Minutes, Mask On/Off count, Mask Leak%. There is also a 'Last Sleep Data Recorded' to tell you the last date that myAir has recorded. This can be used to, say, notify you of your scores when they are updated in myAir in the morning.
 
-By the nature of CPAP date, sensors will only update once per day(assuming your CPAP is used every day). For this reason, the integration only polls every 30 minutes.
+By the nature of CPAP date, sensors will only update once per day(assuming your CPAP is used every day). For this reason, the integration only polls every 30 minutes. A service exists for each config that will force update if you want to automate the sync after you wake up.
 
 
 ## Sensors
@@ -50,6 +50,11 @@ The following sensors are supported in all regions:
     1. This is the datetime the CPAP uploaded the most recent data. This is only supported in the Americas
 1. Most Recent Sleep Date
     1. This is the most recent date for which data is available. This will match Current Data Date if you use your CPAP every day. An automation that triggers when these two sensors are different will signal that you have missed a night
+
+
+## Services
+
+Each config entry for this integration will create a service called `resmed_myair.force_poll_{username}` that will force an update from myAir.
 
 ## Known Issues
 
