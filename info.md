@@ -30,8 +30,6 @@
 1. Enter your username and password
 2. Sensor entities will be created with the prefix `cpap_`
 
-PLEASE NOTE: This integration currently only works if you are in the Americas. Please file an issue if you need this to work in other regions.
-
 ***
 
 [resmed_myair_sensors]: https://github.com/prestomation/resmed_myair_sensors
