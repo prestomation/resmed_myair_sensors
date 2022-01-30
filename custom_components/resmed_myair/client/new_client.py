@@ -2,6 +2,7 @@ from typing import NamedTuple, List, Any
 
 # import requests
 import datetime
+import json
 import base64
 import os
 import re
@@ -139,11 +140,21 @@ class RESTClient(MyAirClient):
         ) as token_res:
             d = await token_res.json()
             self.access_token = d["access_token"]
+            self.id_token = d["id_token"]
             return self.access_token
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
 
         authz_header = f"bearer {self.access_token}"
+
+        # We trust this JWT because it is myAir giving it to us
+        # So we can pull the middle piece out, which is the payload, and turn it to json
+        decoded = base64.b64decode(self.id_token.split(".")[1])
+        jwt_data = json.loads(decoded)
+
+        # The graphql API only works properly if we provide the expected country code
+        # The rest of the paramters are required, but don't seem to be further validated
+        country_code = jwt_data["myAirCountryId"]
 
         headers = {
             "x-api-key": US_CONFIG["myair_api_key"],
@@ -157,7 +168,7 @@ class RESTClient(MyAirClient):
             "rmdproduct": "myAir",
             "rmdappversion": "1.0",
             "rmdhandsetplatform": "Web",
-            "rmdcountry": "US",
+            "rmdcountry": country_code,
             "accept-language": "en-US,en;q=0.9",
         }
         async with self.session.post(

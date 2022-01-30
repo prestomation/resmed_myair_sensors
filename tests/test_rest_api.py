@@ -2,10 +2,40 @@
 import re
 import asyncio
 import aiohttp
+import json
+import base64
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from custom_components.resmed_myair.client import MyAirConfig
 from custom_components.resmed_myair.client.new_client import RESTClient, US_CONFIG
+
+# Let's create something that looks like a production JWT for our tests
+
+id_token_payload = {
+    "sub": "abce",
+    "name": "A Person",
+    "email": "someone@gmail.com",
+    "ver": 1,
+    "iss": "https://resmed-ext-1.okta.com/oauth2/aus4ccsxvnidQgLmA297",
+    "aud": "0oa4ccq1v413ypROi297",
+    "iat": 1643517745,
+    "exp": 1643521345,
+    "jti": "ID.m1UuL1OM7ALHSXX5B1MA5v4Ds-720kJoajA8",
+    "amr": ["pwd"],
+    "idp": "00ot2fmzvw4k8C296",
+    "nonce": "CJ6SPuK1qQTyMTXErNYckUjHKpTjgiB37vXluPSnuqhvJZW4569jgyojra6q",
+    "preferred_username": "someone@mail.com",
+    "auth_time": 1643517745,
+    "at_hash": "sCNNXTE0EtvwoWe_dZv-0w",
+    "myAirAnalyticsId": "",
+    "myAirAnalyticsMode": "anonymous",
+    "countryCode": "AU",
+    "myAirCountryId": "AU",
+}
+id_token_payload = base64.b64encode(
+    json.dumps(id_token_payload).encode("utf-8")
+).decode("ascii")
+au_id_token = f"abc.{id_token_payload}.def"
 
 
 async def test_api(hass, aioclient_mock, caplog):
@@ -25,10 +55,11 @@ async def test_api(hass, aioclient_mock, caplog):
     aioclient_mock.post(
         "https://resmed-ext-1.okta.com/oauth2/aus4ccsxvnidQgLmA297/v1/token",
         data={"A": "B"},
-        json={"access_token": "a_token"},
+        json={"access_token": "a_token", "id_token": au_id_token},
     )
     await api.connect()
     assert api.access_token == "a_token"
+    assert api.id_token == au_id_token
 
     aioclient_mock.post(
         "https://bs2diezuffgt5mfns4ucyz2vea.appsync-api.us-west-2.amazonaws.com/graphql",
