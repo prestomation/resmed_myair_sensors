@@ -88,9 +88,17 @@ class LegacyClient(MyAirClient):
         soup = BeautifulSoup(page, features="html.parser")
 
         equipment = soup.select("h6.c-equipment-label")
-        manufacturer, device_name = (
-            equipment[1].renderContents().decode("utf8").split(" ", 1)
-        )
+        if len(equipment) >= 2:
+            # Usually there are two labels fitting this selector, first is the mask
+            # and second is the CPAP
+            # So let's look at the second
+            manufacturer, device_name = (
+                equipment[1].renderContents().decode("utf8").split(" ", 1)
+            )
+        else:
+            # But let's fallback to unknown incase this is not found
+            manufacturer = "ResMed"
+            device_name = "Unknown"
         device: MyAirDevice = {
             "serialNumber": self.config.username,
             "deviceType": device_name,
