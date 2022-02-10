@@ -19,7 +19,7 @@ jobs:
       - name: "Set version number"
         run: |
           sed -i '/VERSION = /c\VERSION = "${{ steps.get_version.outputs.VERSION }}"' ${{ github.workspace }}/custom_components/resmed_myair/const.py
-          sed -i '/version/c\  \"version\": \"${{ steps.get_version.outputs.VERSION }}\"' ${{ github.workspace }}/custom_components/resmed_myair/manifest.json
+          sed -i '/version/c\  \"version\": \"${{ steps.get_version.outputs.VERSION }}\",' ${{ github.workspace }}/custom_components/resmed_myair/manifest.json
       # Pack the resmed_myair dir as a zip and upload to the release
       - name: ZIP Component Dir
         run: |
