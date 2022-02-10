@@ -17,6 +17,7 @@ from .client.myair_client import (
     MyAirConfig,
     MyAirDevice,
     AuthenticationError,
+    TwoFactorNotSupportedError,
 )
 from .client import get_client
 
@@ -69,6 +70,8 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             except AuthenticationError:
                 errors["base"] = "authentication_error"
+            except TwoFactorNotSupportedError:
+                errors["base"] = "two_factor_not_supported"
 
         return self.async_show_form(
             step_id="user",

@@ -14,7 +14,8 @@
         },
         "error": {
             "already_configured": "Device is already configured",
-            "authentication_error": "Invalid username or password. Please verify with myair2.resmed.com"
+            "authentication_error": "Invalid username or password. Please verify with myair2.resmed.com",
+            "two_factor_not_supported": "2-factor auth is enabled on your account. This is not supported by this integration. Tracking at https://github.com/prestomation/resmed_myair_sensors/issues/16"
         },
         "abort": {
             "already_configured": "Device is already configured"
