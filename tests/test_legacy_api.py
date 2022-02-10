@@ -2,11 +2,15 @@
 import re
 import asyncio
 import aiohttp
+import pytest
 from io import StringIO
 from pytest_homeassistant_custom_component.common import load_fixture
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from custom_components.resmed_myair.client import MyAirConfig
+from custom_components.resmed_myair.client.myair_client import (
+    TwoFactorNotSupportedError,
+)
 from custom_components.resmed_myair.client.legacy_client import LegacyClient, EU_CONFIG
 
 
@@ -15,7 +19,9 @@ async def test_api(hass, aioclient_mock, caplog):
     config = MyAirConfig(username="usern", password="passw", region="EU")
     api = LegacyClient(config, async_get_clientsession(hass))
 
-    aioclient_mock.post(EU_CONFIG["authn_url"], json={"sessionids": "aSessionId"})
+    aioclient_mock.post(
+        EU_CONFIG["authn_url"], json={"sessionids": "aSessionId", "modes": ""}
+    )
 
     aioclient_mock.get(
         re.compile(".*"),
@@ -63,7 +69,9 @@ async def test_api_2(hass, aioclient_mock, caplog):
     config = MyAirConfig(username="usern", password="passw", region="EU")
     api = LegacyClient(config, async_get_clientsession(hass))
 
-    aioclient_mock.post(EU_CONFIG["authn_url"], json={"sessionids": "aSessionId"})
+    aioclient_mock.post(
+        EU_CONFIG["authn_url"], json={"sessionids": "aSessionId", "modes": ""}
+    )
 
     aioclient_mock.get(
         re.compile(".*"),
@@ -104,3 +112,17 @@ async def test_api_2(hass, aioclient_mock, caplog):
         "totalUsage": 186.0,
         "usageScore": 31.0,
     }
+
+
+async def test_api_otp_not_supported(hass, aioclient_mock, caplog):
+
+    config = MyAirConfig(username="usern", password="passw", region="EU")
+    api = LegacyClient(config, async_get_clientsession(hass))
+
+    aioclient_mock.post(
+        EU_CONFIG["authn_url"],
+        json={"sessionids": "aSessionId", "modes": ["mail", "totp"]},
+    )
+
+    with pytest.raises(TwoFactorNotSupportedError):
+        await api.connect()

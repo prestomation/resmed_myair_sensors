@@ -3,6 +3,7 @@ import aiohttp
 import datetime
 import json
 import re
+import logging
 from bs4 import BeautifulSoup
 from .myair_client import (
     MyAirDevice,
@@ -10,13 +11,16 @@ from .myair_client import (
     MyAirConfig,
     SleepRecord,
     AuthenticationError,
+    TwoFactorNotSupportedError,
 )
 
+_LOGGER = logging.getLogger(__name__)
 
 EU_CONFIG = {
     "authn_url": "https://myair.resmed.eu/authenticationids/externalwebservices/restotprequestselect.php",
     "dashboard_url": "https://myair.resmed.eu/Dashboard.aspx",
     "device_url": "https://myair.resmed.eu/myAccountDevice.aspx",
+    "initiate_otp": "https://myair.resmed.eu/authenticationids/externalwebservices/restotpsend.php",
 }
 
 
@@ -82,6 +86,11 @@ class LegacyClient(MyAirClient):
 
             if authn_json["sessionids"] is None:
                 raise AuthenticationError("Invalid username or password")
+
+            if isinstance(authn_json["modes"], list):
+                raise TwoFactorNotSupportedError(
+                    "2-factor auth is enabled on your account. This is not supported by this integration. Tracking at https://github.com/prestomation/resmed_myair_sensors/issues/16"
+                )
 
     async def get_user_device_data(self) -> MyAirDevice:
         page = await self.get_dashboard_html()

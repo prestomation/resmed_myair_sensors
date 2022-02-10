@@ -8,6 +8,12 @@ class AuthenticationError(Exception):
     pass
 
 
+class TwoFactorNotSupportedError(Exception):
+    """This error is thrown when 2-factor/OTP is enabled, this is not yet supported"""
+
+    pass
+
+
 class MyAirConfig(NamedTuple):
     """
     This is our config for logging into MyAir
