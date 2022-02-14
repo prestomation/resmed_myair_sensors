@@ -18,14 +18,25 @@
 
 ## Installation
 
-1. Using the tool of choice open the directory (folder) for your HA configuration (where you find `configuration.yaml`).
-2. If you do not have a `custom_components` directory (folder) there, you need to create it.
-3. In the `custom_components` directory (folder) create a new folder called `resmed_myair`.
-4. Download _all_ the files from the `custom_components/resmed_myair/` directory (folder) in this repository.
-5. Place the files you downloaded in the new directory (folder) you created.
-6. Restart Home Assistant
-7. In the HA UI go to "Configuration" -> "Integrations" click "+" and search for "ResMed myAir CPAP Sensors"
-8. Enter your myAir username and password
+### Installation via HACS
+
+Unless you have a good reason not to, you probably want to install this component via HACS(Home Assistant Community Store)
+1. Ensure that [HACS](https://hacs.xyz/) is installed.
+1. Navigate to HACS -> Integrations
+1. Open the three-dot menu and select 'Custom Repositories'
+1. Put 'https://github.com/prestomation/resmed_myair_sensors/' into the 'Repository' textbox.
+1. Select 'Integration' as the category
+1. Press 'Add'.
+1. Find the ResMed integration in the HACS integration list and install it
+1. Restart Home Assistant.
+1. Add a configuration for the integration in the standard integration UI in Home Assistant.
+
+
+### Manual Installation
+
+You probably do not want to do this! Use the HACS method above unless you have a very good reason why you are installing manually
+
+If you do need to install manually, you will know how this is done. You can install from source or use the latest release.
 
 
 ## Features
@@ -60,8 +71,16 @@ Each config entry for this integration will create a service called `resmed_myai
 
 This integration was reversed engineered from the myAir website. There are no guarentees that this will continue to work, as this is up to the whims of ResMed. Please DO NOT rely on this for any health-related matters.
 
-This integration currently only connects to the Americas and Europe If you are in Asia, please open an issue and offer yourself as a test subject.
+This integration currently only connects to the Americas and Europe. If you are in Asia, please open an issue and offer yourself as a test subject.
 
+_This integration does not work if you selected France as your country during myAir registration!_
+In France, ResMed enforces two-factor email-based authentication which is not yet supported by the integration.
+
+You may workaround this issue by:
+1. Unregistering your device from your French myAir account
+1. Register a new account in a European country that is not France
+1. Register your device with your new account
+1. Wait until your first night(and the myAir website shows your data) before creating a configuration for this integration
 
 ## Contributions are welcome!
 
