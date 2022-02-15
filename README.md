@@ -1,5 +1,6 @@
 # resmed_myair
 
+[![GitHub Downloads][downloads-shield]][releases]
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
 [![License][license-shield]](LICENSE)
@@ -98,5 +99,6 @@ If you want to support the development of this component, please don't donate to
 [forum]: https://community.home-assistant.io/
 [license-shield]: https://img.shields.io/github/license/prestomation/resmed_myair_sensors.svg?style=for-the-badge
 [maintenance-shield]: https://img.shields.io/badge/maintainer-Preston%20Tamkin%20%40prestomation-blue.svg?style=for-the-badge
-[releases-shield]: https://img.shields.io/github/release/resmed_myair_sensors.svg?style=for-the-badge
+[downloads-shield]: https://img.shields.io/github/downloads/prestomation/resmed_myair_sensors/total.svg?style=for-the-badge
+[releases-shield]: https://img.shields.io/github/release/prestomation/resmed_myair_sensors.svg?style=for-the-badge
 [releases]: https://github.com/prestomation/resmed_myair_sensors/releases
