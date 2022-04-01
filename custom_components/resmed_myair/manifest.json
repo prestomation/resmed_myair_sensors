@@ -4,7 +4,7 @@
   "dependencies": [],
   "requirements": [
     "beautifulsoup4",
-    "PyJWT==2.3.0"
+    "PyJWT"
   ],
   "iot_class": "cloud_polling",
   "version": "0.1.0",
