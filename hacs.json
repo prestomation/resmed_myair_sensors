@@ -1,10 +1,5 @@
 {
     "name": "ResMed myAir CPAP Sensors",
-    "domains": [
-        "sensor"
-    ],
-    "version": "0.1",
-    "iot_class": "Cloud Polling",
     "zip_release": true,
     "filename": "resmed_myair.zip"
 }
