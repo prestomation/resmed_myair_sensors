@@ -1,4 +1,4 @@
 homeassistant
 black
 beautifulsoup4
-PyJWT==2.3.0
+PyJWT==2.5.0
