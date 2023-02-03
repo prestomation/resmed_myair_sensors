@@ -79,7 +79,7 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         value = self.coordinator.sleep_records[-1].get(self.sensor_key, 0)
         if self.sensor_key.endswith("Date"):
             # A bit of a hack to interpret date's as datetimes.
-            value = datetime.strptime(value, "%Y-%m-%d")
+            value = datetime.strptime(value, "%Y-%m-%d").date()
         return value
 
 
@@ -142,7 +142,7 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
             )
         )
         date_string = sleep_days_with_data[-1]["startDate"]
-        return datetime.strptime(date_string, "%Y-%m-%d")
+        return datetime.strptime(date_string, "%Y-%m-%d").date()
 
 
 # Our sensor class will prepend the serial number to the key
