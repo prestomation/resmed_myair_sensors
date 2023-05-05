@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, UnitOfTime
 from .common import CONF_PASSWORD, CONF_USER_NAME, CONF_REGION, DOMAIN
 from .client.myair_client import MyAirClient, MyAirConfig
 from .client import get_client
@@ -79,7 +79,7 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         value = self.coordinator.sleep_records[-1].get(self.sensor_key, 0)
         if self.sensor_key.endswith("Date"):
             # A bit of a hack to interpret date's as datetimes.
-            value = datetime.strptime(value, "%Y-%m-%d")
+            value = datetime.strptime(value, "%Y-%m-%d").date()
         return value
 
 
@@ -108,7 +108,7 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
         coordinator: MyAirDataUpdateCoordinator,
     ) -> None:
         desc = SensorEntityDescription(
-            key="usageTime", state_class=SensorStateClass.MEASUREMENT
+            key="usageTime"
         )
 
         super().__init__("CPAP Usage Time", desc, coordinator)
@@ -127,7 +127,7 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
         coordinator: MyAirDataUpdateCoordinator,
     ) -> None:
         desc = SensorEntityDescription(
-            key="mostRecentSleepDate", state_class=SensorDeviceClass.DATE
+            key="mostRecentSleepDate", device_class=SensorDeviceClass.DATE
         )
 
         super().__init__("Most Recent Sleep Date", desc, coordinator)
@@ -142,7 +142,7 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
             )
         )
         date_string = sleep_days_with_data[-1]["startDate"]
-        return datetime.strptime(date_string, "%Y-%m-%d")
+        return datetime.strptime(date_string, "%Y-%m-%d").date()
 
 
 # Our sensor class will prepend the serial number to the key
@@ -155,6 +155,8 @@ SLEEP_RECORD_SENSOR_DESCRIPTIONS: Dict[str, SensorEntityDescription] = {
     "CPAP Usage Minutes": SensorEntityDescription(
         key="totalUsage",
         state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
     ),
     "CPAP Mask On/Off": SensorEntityDescription(
         key="maskPairCount",
