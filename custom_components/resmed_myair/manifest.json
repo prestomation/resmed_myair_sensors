@@ -1,17 +1,17 @@
 {
   "domain": "resmed_myair",
   "name": "ResMed myAir",
+  "codeowners": [
+    "@prestomation"
+  ],
+  "config_flow": true,
   "dependencies": [],
+  "documentation": "https://github.com/prestomation/resmed_myair_sensors/blob/master/README.md",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/prestomation/resmed_myair_sensors/issues",
   "requirements": [
     "beautifulsoup4",
     "PyJWT"
   ],
-  "iot_class": "cloud_polling",
-  "version": "0.1.0",
-  "config_flow": true,
-  "issue_tracker": "https://github.com/prestomation/resmed_myair_sensors/issues",
-  "documentation": "https://github.com/prestomation/resmed_myair_sensors/blob/master/README.md",
-  "codeowners": [
-    "@prestomation"
-  ]
+  "version": "0.1.0"
 }
