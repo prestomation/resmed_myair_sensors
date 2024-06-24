@@ -166,7 +166,7 @@ class RESTClient(MyAirClient):
             "rmdhandsetmodel": "Chrome",
             "rmdhandsetosversion": "96.0.4664.110",
             "rmdproduct": "myAir",
-            "rmdappversion": "1.0",
+            "rmdappversion": "1.0.0",
             "rmdhandsetplatform": "Web",
             "rmdcountry": country_code,
             "accept-language": "en-US,en;q=0.9",
