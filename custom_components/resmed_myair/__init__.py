@@ -5,21 +5,25 @@ It uses the myair_client which is standalone and can be used outside HomeAssista
 myair_client is a reverse engineering and can break at anytime.
 """
 
-from typing import List, Dict
-
-from .client.myair_client import MyAirClient, MyAirConfig
-from homeassistant.config_entries import ConfigEntry
-
-from homeassistant.core import HomeAssistant
-from .common import CONF_PASSWORD, CONF_USER_NAME, DOMAIN, CONF_REGION
 import logging
+from typing import List
 
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+
+from .common import CONF_REGION, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS: List[str] = ["sensor"]
 
 
-async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Set up from a config entry."""
+
+    _LOGGER.debug(f"[init async_setup_entry] entry: {config_entry.data}")
+    hass.data.setdefault(DOMAIN, {})
+    hass_data = dict(config_entry.data)
+    hass.data[DOMAIN][config_entry.entry_id] = hass_data
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
     return True
@@ -66,3 +70,13 @@ async def async_migrate_entry(hass, config_entry: ConfigEntry):
     _LOGGER.info("Migration to version %s successful", config_entry.version)
 
     return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    _LOGGER.info(f"Unloading: {entry.data}")
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
+
+    return unload_ok

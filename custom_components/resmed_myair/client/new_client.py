@@ -1,25 +1,26 @@
-from typing import NamedTuple, List, Any
+import base64
 
 # import requests
 import datetime
-import json
-import base64
+import hashlib
+import logging
 import os
 import re
-import hashlib
-import jwt
-from urllib.parse import urldefrag, parse_qs
+from typing import Any, List
+from urllib.parse import parse_qs, urldefrag
 
-import aiohttp
 from aiohttp import ClientSession
+import jwt
+
 from .myair_client import (
+    AuthenticationError,
     MyAirClient,
     MyAirConfig,
     MyAirDevice,
     SleepRecord,
-    AuthenticationError,
 )
 
+_LOGGER = logging.getLogger(__name__)
 
 US_CONFIG = {
     # This is the clientId that appears in Okta URLs
@@ -78,6 +79,7 @@ class RESTClient(MyAirClient):
             },
         ) as authn_res:
             authn_json = await authn_res.json()
+            _LOGGER.debug(f"[get_access_token] authn_json: {authn_json}")
 
         # We've exchanged our user/pass for a session token
         if "sessionToken" not in authn_json:
@@ -115,6 +117,7 @@ class RESTClient(MyAirClient):
                 "state": "abcdef",
             },
         ) as code_res:
+            _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
             location = code_res.headers["location"]
         fragment = urldefrag(location)
         # Pull the code out of the location header fragment
@@ -139,18 +142,20 @@ class RESTClient(MyAirClient):
             data=token_form,
             allow_redirects=False,
         ) as token_res:
+            _LOGGER.debug(f"[get_access_token] token_res: {token_res}")
             d = await token_res.json()
             self.access_token = d["access_token"]
             self.id_token = d["id_token"]
             return self.access_token
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
-
+        _LOGGER.debug(f"[gql_query] query: {query}")
         authz_header = f"bearer {self.access_token}"
 
         # We trust this JWT because it is myAir giving it to us
         # So we can pull the middle piece out, which is the payload, and turn it to json
         jwt_data = jwt.decode(self.id_token, options={"verify_signature": False})
+        _LOGGER.debug(f"[gql_query] jwt_data: {jwt_data}")
 
         # The graphql API only works properly if we provide the expected country code
         # The rest of the paramters are required, but don't seem to be further validated
@@ -180,6 +185,7 @@ class RESTClient(MyAirClient):
                 "query": query,
             },
         ) as records_response:
+            _LOGGER.debug(f"[gql_query] records_response: {records_response}")
             records_json = await records_response.json()
             return records_json
 
@@ -223,6 +229,7 @@ class RESTClient(MyAirClient):
         )
 
         records_json = await self.gql_query("GetPatientSleepRecords", query)
+        _LOGGER.debug(f"[GetPatientSleepRecords] {records_json}")
         records = records_json["data"]["getPatientWrapper"]["sleepRecords"]["items"]
         return records
 
@@ -244,5 +251,6 @@ query getPatientWrapper {
 """
 
         records_json = await self.gql_query("getPatientWrapper", query)
+        _LOGGER.debug(f"[getPatientWrapper] {records_json}")
         device = records_json["data"]["getPatientWrapper"]["fgDevices"][0]
         return device
