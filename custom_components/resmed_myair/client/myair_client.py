@@ -1,5 +1,5 @@
-from typing import NamedTuple, TypedDict, List, Literal
 from abc import ABC
+from typing import List, Literal, NamedTuple, TypedDict
 
 
 class AuthenticationError(Exception):
@@ -26,6 +26,22 @@ class MyAirConfig(NamedTuple):
     username: str
     password: str
     region: Literal["NA", "EU"]
+
+
+class MyAirEUConfig(NamedTuple):
+    """
+    This is our config for logging into MyAir
+    If you are in North America, you only need to set the username/password
+    If you are in a different region, you will likely need to override these values.
+    To do so, you will need to examine the network traffic during login to find the right values
+
+    """
+
+    username: str
+    password: str
+    region: Literal["NA", "EU"]
+    country_code: str
+    bearer_token: str
 
 
 class SleepRecord(TypedDict):

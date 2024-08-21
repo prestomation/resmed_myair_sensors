@@ -10,12 +10,21 @@
                     "Region": "myAir Region"
                 },
                 "description": "Please enter the username/password used in the myAir app or website."
+            },
+            "eu_details": {
+                "title": "EU Details",
+                "data": {
+                    "country_code": "Country Code",
+                    "bearer_token": "Bearer Token"
+                },
+                "data_description": {
+                    "bearer_token": "Enter the full token after 'Bearer '"
+                }
             }
         },
         "error": {
             "already_configured": "Device is already configured",
-            "authentication_error": "Invalid username or password. Please verify with myair2.resmed.com",
-            "two_factor_not_supported": "2-factor auth is enabled on your account. This is not supported by this integration. Tracking at https://github.com/prestomation/resmed_myair_sensors/issues/16"
+            "authentication_error": "Invalid username or password. Please verify with myair2.resmed.com"
         },
         "abort": {
             "already_configured": "Device is already configured"
