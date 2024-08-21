@@ -1,25 +1,26 @@
-from typing import NamedTuple, List, Any
+import base64
 
 # import requests
 import datetime
-import json
-import base64
+import hashlib
+import logging
 import os
 import re
-import hashlib
-import jwt
-from urllib.parse import urldefrag, parse_qs
+from typing import Any, List
+from urllib.parse import parse_qs, urldefrag
 
-import aiohttp
 from aiohttp import ClientSession
+import jwt
+
 from .myair_client import (
+    AuthenticationError,
     MyAirClient,
     MyAirConfig,
     MyAirDevice,
     SleepRecord,
-    AuthenticationError,
 )
 
+_LOGGER = logging.getLogger(__name__)
 
 US_CONFIG = {
     # This is the clientId that appears in Okta URLs
@@ -35,8 +36,8 @@ US_CONFIG = {
     "authorize_url": "https://resmed-ext-1.okta.com/oauth2/{authn_client_id}/v1/authorize",
     # The endpoint that the 'code' is sent to get an authorization token
     "token_url": "https://resmed-ext-1.okta.com/oauth2/{authn_client_id}/v1/token",
-    # The AppSync URL that accepts your token + the API key to return Sleep Recors
-    "appsync_url": "https://bs2diezuffgt5mfns4ucyz2vea.appsync-api.us-west-2.amazonaws.com/graphql",
+    # The AppSync URL that accepts your token + the API key to return Sleep Records
+    "appsync_url": "https://graphql.myair-prd.dht.live/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
     "oauth_redirect_url": "https://myair2.resmed.com",
 }
@@ -78,6 +79,7 @@ class RESTClient(MyAirClient):
             },
         ) as authn_res:
             authn_json = await authn_res.json()
+            _LOGGER.debug(f"[get_access_token] authn_json: {authn_json}")
 
         # We've exchanged our user/pass for a session token
         if "sessionToken" not in authn_json:
@@ -115,6 +117,7 @@ class RESTClient(MyAirClient):
                 "state": "abcdef",
             },
         ) as code_res:
+            _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
             location = code_res.headers["location"]
         fragment = urldefrag(location)
         # Pull the code out of the location header fragment
@@ -140,17 +143,22 @@ class RESTClient(MyAirClient):
             allow_redirects=False,
         ) as token_res:
             d = await token_res.json()
+            _LOGGER.debug(f"[get_access_token] token_res: {d}")
             self.access_token = d["access_token"]
             self.id_token = d["id_token"]
+            _LOGGER.debug(f"[get_access_token] access_token: {self.access_token}")
+            _LOGGER.debug(f"[get_access_token] id_token: {self.id_token}")
             return self.access_token
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
-
+        _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
         authz_header = f"bearer {self.access_token}"
+        _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
 
         # We trust this JWT because it is myAir giving it to us
         # So we can pull the middle piece out, which is the payload, and turn it to json
         jwt_data = jwt.decode(self.id_token, options={"verify_signature": False})
+        _LOGGER.debug(f"[gql_query] jwt_data: {jwt_data}")
 
         # The graphql API only works properly if we provide the expected country code
         # The rest of the paramters are required, but don't seem to be further validated
@@ -164,13 +172,16 @@ class RESTClient(MyAirClient):
             "rmdhandsetid": "02c1c662-c289-41fd-a9ae-196ff15b5166",
             "rmdlanguage": "en",
             "rmdhandsetmodel": "Chrome",
-            "rmdhandsetosversion": "96.0.4664.110",
+            "rmdhandsetosversion": "127.0.6533.119",
             "rmdproduct": "myAir",
-            "rmdappversion": "1.0.0",
+            "rmdappversion": "2.0.0",
             "rmdhandsetplatform": "Web",
             "rmdcountry": country_code,
             "accept-language": "en-US,en;q=0.9",
         }
+        _LOGGER.debug(f"[gql_query] headers: {headers}")
+        _LOGGER.debug(f"[gql_query] appsync_url: {US_CONFIG['appsync_url']}")
+
         async with self.session.post(
             US_CONFIG["appsync_url"],
             headers=headers,
@@ -180,6 +191,7 @@ class RESTClient(MyAirClient):
                 "query": query,
             },
         ) as records_response:
+            _LOGGER.debug(f"[gql_query] records_response: {records_response}")
             records_json = await records_response.json()
             return records_json
 
@@ -223,6 +235,7 @@ class RESTClient(MyAirClient):
         )
 
         records_json = await self.gql_query("GetPatientSleepRecords", query)
+        _LOGGER.debug(f"[GetPatientSleepRecords] {records_json}")
         records = records_json["data"]["getPatientWrapper"]["sleepRecords"]["items"]
         return records
 
@@ -244,5 +257,6 @@ query getPatientWrapper {
 """
 
         records_json = await self.gql_query("getPatientWrapper", query)
+        _LOGGER.debug(f"[getPatientWrapper] {records_json}")
         device = records_json["data"]["getPatientWrapper"]["fgDevices"][0]
         return device

@@ -1,7 +1,12 @@
+import logging
+
 from aiohttp import ClientSession
+
 from .legacy_client import LegacyClient
-from .new_client import RESTClient
 from .myair_client import MyAirConfig
+from .new_client import RESTClient
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def get_client(config: MyAirConfig, session: ClientSession):
