@@ -18,15 +18,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import get_client
-from .client.myair_client import MyAirClient, MyAirConfig, MyAirEUConfig
-from .common import (
-    CONF_BEARER_TOKEN,
-    CONF_COUNTRY_CODE,
-    CONF_PASSWORD,
-    CONF_REGION,
-    CONF_USER_NAME,
-    DOMAIN,
-)
+from .client.myair_client import MyAirClient, MyAirConfig
+from .common import CONF_PASSWORD, CONF_REGION, CONF_USER_NAME, DOMAIN
 from .coordinator import MyAirDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -196,16 +189,7 @@ async def async_setup_entry(
     password = config_entry.data[CONF_PASSWORD]
     region = config_entry.data.get(CONF_REGION, "NA")
 
-    if region == "NA":
-        client_config = MyAirConfig(username=username, password=password, region=region)
-    else:
-        client_config = MyAirEUConfig(
-            username=username,
-            password=password,
-            region=region,
-            country_code=config_entry.data.get(CONF_COUNTRY_CODE),
-            bearer_token=config_entry.data.get(CONF_BEARER_TOKEN),
-        )
+    client_config = MyAirConfig(username=username, password=password, region=region)
     client: MyAirClient = get_client(client_config, async_create_clientsession(hass))
     coordinator = MyAirDataUpdateCoordinator(hass, client)
 
@@ -219,10 +203,6 @@ async def async_setup_entry(
         sensors.append(MyAirSleepRecordSensor(key, desc, coordinator))
 
     # Some sensors come from the device. Specifically, the last time the device reported new data
-    # if region == "NA":
-    # EU gives the last sync time on the page, but is is localized both in timezone and in datestring text
-    # So this data is not returned in EU.
-    # We probably have enough data to calculate the right time, but let's skip it until it is asked for
     for key, desc in DEVICE_SENSOR_DESCRIPTIONS.items():
         sensors.append(MyAirDeviceSensor(key, desc, coordinator))
 

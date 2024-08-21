@@ -6,18 +6,12 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import voluptuous as vol
 
 from .client import get_client
-from .client.myair_client import (
-    AuthenticationError,
-    MyAirConfig,
-    MyAirDevice,
-    MyAirEUConfig,
-)
+from .client.myair_client import AuthenticationError, MyAirConfig, MyAirDevice
 from .common import (
-    CONF_BEARER_TOKEN,
-    CONF_COUNTRY_CODE,
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
+    CONF_VERIFICATION_CODE,
     DEFAULT_PREFIX,
     DOMAIN,
     REGION_EU,
@@ -27,21 +21,23 @@ from .common import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def get_device(
-    hass, username, password, region, country_code=None, bearer_token=None
-) -> MyAirDevice:
-    if region == "NA":
-        config = MyAirConfig(username=username, password=password, region=region)
-    else:
-        config = MyAirEUConfig(
-            username=username,
-            password=password,
-            region=region,
-            country_code=country_code,
-            bearer_token=bearer_token,
-        )
+async def get_na_device(hass, username, password, region) -> MyAirDevice:
+    config = MyAirConfig(username=username, password=password, region=region)
     client = get_client(config, async_create_clientsession(hass))
     await client.connect()
+    device = await client.get_user_device_data()
+    return device
+
+
+async def eu_trigger_2fa(hass, username, password, region) -> MyAirDevice:
+    config = MyAirConfig(username=username, password=password, region=region)
+    client = get_client(config, async_create_clientsession(hass))
+    await client.get_state_token_and_trigger_2fa()
+    return client
+
+
+async def get_eu_device(client, verification_code) -> MyAirDevice:
+    await client.verify_2fa_and_get_access_token(verification_code)
     device = await client.get_user_device_data()
     return device
 
@@ -53,6 +49,7 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize flow."""
+        self._client = None
         self._prefix = DEFAULT_PREFIX
         self._user_input = {}
 
@@ -64,9 +61,18 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._user_input = user_input
             region = user_input.get(CONF_REGION, "NA")
             if region == "EU":
+                try:
+                    self._client = await eu_trigger_2fa(
+                        self.hass,
+                        user_input[CONF_USER_NAME],
+                        user_input[CONF_PASSWORD],
+                        region,
+                    )
+                except AuthenticationError:
+                    errors["base"] = "authentication_error"
                 return await self.async_step_eu_details()
             try:
-                device: MyAirDevice = await get_device(
+                device: MyAirDevice = await get_na_device(
                     self.hass,
                     user_input[CONF_USER_NAME],
                     user_input[CONF_PASSWORD],
@@ -112,13 +118,8 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input:
             self._user_input.update(user_input)
             try:
-                device: MyAirDevice = await get_device(
-                    self.hass,
-                    self._user_input[CONF_USER_NAME],
-                    self._user_input[CONF_PASSWORD],
-                    self._user_input.get(CONF_REGION),
-                    self._user_input.get(CONF_COUNTRY_CODE),
-                    self._user_input.get(CONF_BEARER_TOKEN),
+                device: MyAirDevice = await get_eu_device(
+                    self._client, self._user_input.get(CONF_VERIFICATION_CODE, "")
                 )
 
                 serial_number = device["serialNumber"]
@@ -140,39 +141,13 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="eu_details",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_COUNTRY_CODE): vol.In(
-                        {
-                            "AT": "Austria",
-                            "BE": "Belgium",
-                            "CY": "Cyprus",
-                            "CZ": "Czech Republic",
-                            "DK": "Denmark",
-                            "FI": "Finland",
-                            "FR": "France",
-                            "DE": "Germany",
-                            "EL": "Greece",
-                            "IS": "Iceland",
-                            "IE": "Ireland",
-                            "IT": "Italy",
-                            "LU": "Luxembourg",
-                            "MT": "Malta",
-                            "NL": "Netherlands",
-                            "NO": "Norway",
-                            "PL": "Poland",
-                            "PT": "Portugal",
-                            "ZA": "South Africa",
-                            "ES": "Spain",
-                            "SE": "Sweden",
-                            "CH": "Switzerland",
-                            "UK": "United Kingdom",
-                        }
-                    ),
-                    vol.Required(CONF_BEARER_TOKEN): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            multiline=True, prefix="Bearer ", type="text"
-                        )
+                    vol.Required(CONF_VERIFICATION_CODE): selector.TextSelector(
+                        selector.TextSelectorConfig(type="text")
                     ),
                 }
             ),
+            description_placeholders={
+                "username": self._user_input.get(CONF_USER_NAME, "your email address"),
+            },
             errors=errors,
         )

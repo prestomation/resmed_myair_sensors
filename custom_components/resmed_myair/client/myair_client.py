@@ -8,12 +8,6 @@ class AuthenticationError(Exception):
     pass
 
 
-class TwoFactorNotSupportedError(Exception):
-    """This error is thrown when 2-factor/OTP is enabled, this is not yet supported"""
-
-    pass
-
-
 class MyAirConfig(NamedTuple):
     """
     This is our config for logging into MyAir
@@ -26,22 +20,6 @@ class MyAirConfig(NamedTuple):
     username: str
     password: str
     region: Literal["NA", "EU"]
-
-
-class MyAirEUConfig(NamedTuple):
-    """
-    This is our config for logging into MyAir
-    If you are in North America, you only need to set the username/password
-    If you are in a different region, you will likely need to override these values.
-    To do so, you will need to examine the network traffic during login to find the right values
-
-    """
-
-    username: str
-    password: str
-    region: Literal["NA", "EU"]
-    country_code: str
-    bearer_token: str
 
 
 class SleepRecord(TypedDict):

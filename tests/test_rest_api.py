@@ -1,14 +1,12 @@
 """Tests for integration_blueprint api."""
+
 import re
-import asyncio
-import aiohttp
-import json
-import base64
-import jwt
+
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import jwt
 
 from custom_components.resmed_myair.client import MyAirConfig
-from custom_components.resmed_myair.client.new_client import RESTClient, US_CONFIG
+from custom_components.resmed_myair.client.na_client import NA_CONFIG, RESTNAClient
 
 # Let's create something that looks like a production JWT for our tests
 
@@ -39,10 +37,10 @@ au_id_token = jwt.encode(id_token_payload, "secret")
 async def test_api(hass, aioclient_mock, caplog):
 
     config = MyAirConfig(username="usern", password="passw", region="NA")
-    api = RESTClient(config, async_get_clientsession(hass))
+    api = RESTNAClient(config, async_get_clientsession(hass))
 
     aioclient_mock.post(
-        US_CONFIG["authn_url"],
+        NA_CONFIG["authn_url"],
         json={"sessionToken": "aToken"},
     )
 

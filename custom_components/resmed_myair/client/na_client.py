@@ -1,6 +1,4 @@
 import base64
-
-# import requests
 import datetime
 import hashlib
 import logging
@@ -22,7 +20,7 @@ from .myair_client import (
 
 _LOGGER = logging.getLogger(__name__)
 
-US_CONFIG = {
+NA_CONFIG = {
     # This is the clientId that appears in Okta URLs
     "authn_client_id": "aus4ccsxvnidQgLmA297",
     # This is the clientId that appears in request bodies during login
@@ -43,7 +41,7 @@ US_CONFIG = {
 }
 
 
-class RESTClient(MyAirClient):
+class RESTNAClient(MyAirClient):
     """
     This client is currently used in the US.
     In the US, myAir uses oauth on Okta and AWS AppSync GraphQL
@@ -71,7 +69,7 @@ class RESTClient(MyAirClient):
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
         async with self.session.post(
-            US_CONFIG["authn_url"],
+            NA_CONFIG["authn_url"],
             headers=headers,
             json={
                 "username": self.config.username,
@@ -96,20 +94,20 @@ class RESTClient(MyAirClient):
         code_challenge = code_challenge.replace("=", "")
 
         # We use that sessionToken and exchange for an oauth code, using PKCE
-        authorize_url = US_CONFIG["authorize_url"].format(
-            authn_client_id=US_CONFIG["authn_client_id"]
+        authorize_url = NA_CONFIG["authorize_url"].format(
+            authn_client_id=NA_CONFIG["authn_client_id"]
         )
         async with self.session.get(
             authorize_url,
             headers=headers,
             allow_redirects=False,
             params={
-                "client_id": US_CONFIG["authorize_client_id"],
+                "client_id": NA_CONFIG["authorize_client_id"],
                 # For PKCE
                 "code_challenge": code_challenge,
                 "code_challenge_method": "S256",
                 "prompt": "none",
-                "redirect_uri": US_CONFIG["oauth_redirect_url"],
+                "redirect_uri": NA_CONFIG["oauth_redirect_url"],
                 "response_mode": "fragment",
                 "response_type": "code",
                 "sessionToken": session_token,
@@ -126,8 +124,8 @@ class RESTClient(MyAirClient):
         # Now we change the code for an access token
         # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
         token_form = {
-            "client_id": US_CONFIG["authorize_client_id"],
-            "redirect_uri": US_CONFIG["oauth_redirect_url"],
+            "client_id": NA_CONFIG["authorize_client_id"],
+            "redirect_uri": NA_CONFIG["oauth_redirect_url"],
             "grant_type": "authorization_code",
             "code_verifier": code_verifier,
             "code": code,
@@ -137,7 +135,7 @@ class RESTClient(MyAirClient):
             "Content-Type": "application/x-www-form-urlencoded",
         }
         async with self.session.post(
-            US_CONFIG["token_url"].format(authn_client_id=US_CONFIG["authn_client_id"]),
+            NA_CONFIG["token_url"].format(authn_client_id=NA_CONFIG["authn_client_id"]),
             headers=headers,
             data=token_form,
             allow_redirects=False,
@@ -165,7 +163,7 @@ class RESTClient(MyAirClient):
         country_code = jwt_data["myAirCountryId"]
 
         headers = {
-            "x-api-key": US_CONFIG["myair_api_key"],
+            "x-api-key": NA_CONFIG["myair_api_key"],
             "Authorization": authz_header,
             # There are a bunch of resmed headeers sent to this API that seem to be required
             # Unsure if this is ever validated/can break things if these values change
@@ -180,10 +178,10 @@ class RESTClient(MyAirClient):
             "accept-language": "en-US,en;q=0.9",
         }
         _LOGGER.debug(f"[gql_query] headers: {headers}")
-        _LOGGER.debug(f"[gql_query] appsync_url: {US_CONFIG['appsync_url']}")
+        _LOGGER.debug(f"[gql_query] appsync_url: {NA_CONFIG['appsync_url']}")
 
         async with self.session.post(
-            US_CONFIG["appsync_url"],
+            NA_CONFIG["appsync_url"],
             headers=headers,
             json={
                 "operationName": operation_name,

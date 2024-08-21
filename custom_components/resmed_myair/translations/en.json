@@ -12,19 +12,16 @@
                 "description": "Please enter the username/password used in the myAir app or website."
             },
             "eu_details": {
-                "title": "EU Details",
+                "title": "EU Verify 2FA",
                 "data": {
-                    "country_code": "Country Code",
-                    "bearer_token": "Bearer Token"
+                    "verification_code": "One-time verification code"
                 },
-                "data_description": {
-                    "bearer_token": "Enter the full token after 'Bearer '"
-                }
+                "description": "Enter the One-time verification code you received from ResMed to {username}."
             }
         },
         "error": {
             "already_configured": "Device is already configured",
-            "authentication_error": "Invalid username or password. Please verify with myair2.resmed.com"
+            "authentication_error": "Invalid username or password. Please verify at myair.resmed.com"
         },
         "abort": {
             "already_configured": "Device is already configured"

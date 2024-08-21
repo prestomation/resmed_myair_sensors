@@ -1,27 +1,41 @@
+import base64
 import datetime
+import hashlib
 import logging
+import os
+import re
 from typing import Any, List
+from urllib.parse import parse_qs, urldefrag
 
 from aiohttp import ClientSession
+import jwt
 
-from .myair_client import MyAirClient, MyAirDevice, MyAirEUConfig, SleepRecord
+from .myair_client import (
+    AuthenticationError,
+    MyAirClient,
+    MyAirConfig,
+    MyAirDevice,
+    SleepRecord,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 EU_CONFIG = {
     # This is the clientId that appears in Okta URLs
-    # "authn_client_id": "aus4ccsxvnidQgLmA297",  # FIX
+    "authn_client_id": "emfg9cmjqxEPr52cT417",
+    "oauth2_client_id": "aus2uznux2sYKTsEg417",
     # This is the clientId that appears in request bodies during login
-    # "authorize_client_id": "0oa4ccq1v413ypROi297",  # FIX
+    "authorize_client_id": "0oa2uz04d2Pks2NgR417",
     # Used as the x-api-key header for the AppSync GraphQL API
     "myair_api_key": "da2-o66oo6xdnfh5hlfuw5yw5g2dtm",
     # The Okta Endpoint where the creds go
-    # "authn_url": "https://resmed-ext-1.okta.com/api/v1/authn",  # FIX
+    "authn_url": "https://id.resmed.eu/api/v1/authn",
+    "verify_2fa_url": "https://id.resmed.eu/api/v1/authn/factors/{authn_client_id}/verify?rememberDevice=true",
     # When specifying token_url and authorize_url, add {authn_client_id} and your authn_client_id will be substituted in
     # Or you can put the entire URL here if you want, but your authn_client_id will be ignored
-    # "authorize_url": "https://resmed-ext-1.okta.com/oauth2/{authn_client_id}/v1/authorize",  # FIX
+    "authorize_url": "https://id.resmed.eu/oauth2/{oauth2_client_id}/v1/authorize",
     # The endpoint that the 'code' is sent to get an authorization token
-    # "token_url": "https://resmed-ext-1.okta.com/oauth2/{authn_client_id}/v1/token",  # FIX
+    "token_url": "https://id.resmed.eu/oauth2/{oauth2_client_id}/v1/token",
     # The AppSync URL that accepts your token + the API key to return Sleep Records
     "appsync_url": "https://graphql.hyperdrive.resmed.eu/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
@@ -31,124 +45,212 @@ EU_CONFIG = {
 
 class RESTEUClient(MyAirClient):
     """
-    This client is currently used in the US.
-    In the US, myAir uses oauth on Okta and AWS AppSync GraphQL
+    This client is currently used in the EU.
+    In the EU, myAir uses oauth on Okta and AWS AppSync GraphQL
     """
 
-    config: MyAirEUConfig
+    config: MyAirConfig
     access_token: str
     session: ClientSession
 
-    def __init__(self, config: MyAirEUConfig, session: ClientSession):
+    def __init__(self, config: MyAirConfig, session: ClientSession):
         self.config = config
         self.session = session
-        self._country_code = config.country_code
-        self._bearer_token = config.bearer_token
+        self._json_headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        self._authn_client_id = EU_CONFIG["authn_client_id"]
+        self._verify_2fa_url = EU_CONFIG["verify_2fa_url"].format(
+            authn_client_id=self._authn_client_id
+        )
+        self._state_token = None
+        self._session_token = None
 
-    async def connect(self):
-        # for connect, let's login and store the access token
-        # await self.get_access_token()
-        return
+    async def get_state_token_and_trigger_2fa(self):
+        await self.get_state_token()
+        await self.trigger_2fa()
 
-    # async def get_access_token(self) -> str:
-    #     """
-    #     Call this to refresh the access token
-    #     """
-    #     headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    async def verify_2fa_and_get_access_token(self, verification_code):
+        await self.verify_2fa(verification_code)
+        await self.get_access_token()
 
-    #     async with self.session.post(
-    #         EU_CONFIG["authn_url"],
-    #         headers=headers,
-    #         json={
-    #             "username": self.config.username,
-    #             "password": self.config.password,
-    #         },
-    #     ) as authn_res:
-    #         authn_json = await authn_res.json()
-    #         _LOGGER.debug(f"[get_access_token] authn_json: {authn_json}")
+    async def get_state_token(self) -> str:
+        json_query = {
+            "username": self.config.username,
+            "password": self.config.password,
+        }
+        _LOGGER.debug(f"[get_state_token] authn_url: {EU_CONFIG['authn_url']}")
+        _LOGGER.debug(f"[get_state_token] headers: {self._json_headers}")
+        _LOGGER.debug(f"[get_state_token] json_query: {json_query}")
 
-    #     # We've exchanged our user/pass for a session token
-    #     if "sessionToken" not in authn_json:
-    #         raise AuthenticationError()
-    #     session_token = authn_json["sessionToken"]
-    #     # expires_at = authn_json["expiresAt"]
+        async with self.session.post(
+            EU_CONFIG["authn_url"],
+            headers=self._json_headers,
+            json=json_query,
+        ) as authn_res:
+            authn_json = await authn_res.json()
+            _LOGGER.debug(f"[get_state_token] authn_json: {authn_json}")
 
-    #     # myAir uses Authorization Code with PKCE, so we generate our verifier here
-    #     code_verifier = base64.urlsafe_b64encode(os.urandom(40)).decode("utf-8")
-    #     code_verifier = re.sub("[^a-zA-Z0-9]+", "", code_verifier)
+        if "stateToken" not in authn_json:
+            raise AuthenticationError()
+        self._state_token = authn_json["stateToken"]
 
-    #     code_challenge = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-    #     code_challenge = base64.urlsafe_b64encode(code_challenge).decode("utf-8")
-    #     code_challenge = code_challenge.replace("=", "")
+        try:
+            _LOGGER.debug(
+                f"[get_state_token] authn_client_id: {authn_json['_embedded']['factors'][0]['id']}"
+            )
+            self._authn_client_id = authn_json["_embedded"]["factors"][0]["id"]
+        except Exception as e:
+            _LOGGER.info(
+                f"client_id not found in authn, using default. {e.__class__.__qualname__}: {e}"
+            )
+            self._authn_client_id = EU_CONFIG["authn_client_id"]
 
-    #     # We use that sessionToken and exchange for an oauth code, using PKCE
-    #     authorize_url = EU_CONFIG["authorize_url"].format(
-    #         authn_client_id=EU_CONFIG["authn_client_id"]
-    #     )
-    #     async with self.session.get(
-    #         authorize_url,
-    #         headers=headers,
-    #         allow_redirects=False,
-    #         params={
-    #             "client_id": EU_CONFIG["authorize_client_id"],
-    #             # For PKCE
-    #             "code_challenge": code_challenge,
-    #             "code_challenge_method": "S256",
-    #             "prompt": "none",
-    #             "redirect_uri": EU_CONFIG["oauth_redirect_url"],
-    #             "response_mode": "fragment",
-    #             "response_type": "code",
-    #             "sessionToken": session_token,
-    #             "scope": "openid profile email",
-    #             "state": "abcdef",
-    #         },
-    #     ) as code_res:
-    #         _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
-    #         location = code_res.headers["location"]
-    #     fragment = urldefrag(location)
-    #     # Pull the code out of the location header fragment
-    #     code = parse_qs(fragment.fragment)["code"]
+        try:
+            _LOGGER.debug(
+                f"[get_state_token] verify_2fa_url: {authn_json['_embedded']['factors'][0]['_links']['verify']['href']}"
+            )
+            self._verify_2fa_url = f"{authn_json['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
+        except Exception as e:
+            _LOGGER.info(
+                f"verify_2fa_url not found in authn, using default. {e.__class__.__qualname__}: {e}"
+            )
+            self._verify_2fa_url = EU_CONFIG["verify_2fa_url"].format(
+                authn_client_id=self._authn_client_id
+            )
 
-    #     # Now we change the code for an access token
-    #     # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
-    #     token_form = {
-    #         "client_id": EU_CONFIG["authorize_client_id"],
-    #         "redirect_uri": EU_CONFIG["oauth_redirect_url"],
-    #         "grant_type": "authorization_code",
-    #         "code_verifier": code_verifier,
-    #         "code": code,
-    #     }
-    #     headers = {
-    #         "Accept": "application/json",
-    #         "Content-Type": "application/x-www-form-urlencoded",
-    #     }
-    #     async with self.session.post(
-    #         EU_CONFIG["token_url"].format(authn_client_id=EU_CONFIG["authn_client_id"]),
-    #         headers=headers,
-    #         data=token_form,
-    #         allow_redirects=False,
-    #     ) as token_res:
-    #         d = await token_res.json()
-    #         _LOGGER.debug(f"[get_access_token] token_res: {d}")
-    #         self.access_token = d["access_token"]
-    #         self.id_token = d["id_token"]
-    #         _LOGGER.debug(f"[get_access_token] access_token: {self.access_token}")
-    #         _LOGGER.debug(f"[get_access_token] id_token: {self.id_token}")
-    #         return self.access_token
+    async def trigger_2fa(self):
+        json_query = {"passCode": "", "stateToken": self._state_token}
+
+        _LOGGER.debug(f"[trigger_2fa] verify_2fa_url: {self._verify_2fa_url}")
+        _LOGGER.debug(f"[trigger_2fa] headers: {self._json_headers}")
+        _LOGGER.debug(f"[trigger_2fa] json_query: {json_query}")
+
+        async with self.session.post(
+            self._verify_2fa_url,
+            headers=self._json_headers,
+            json=json_query,
+        ) as trigger_2fa_res:
+            trigger_2fa_json = await trigger_2fa_res.json()
+            _LOGGER.debug(f"[trigger_2fa] trigger_2fa_json: {trigger_2fa_json}")
+
+    async def verify_2fa(self, verification_code: str) -> str:
+        _LOGGER.debug(f"[verify_2fa] verification_code: {verification_code}")
+
+        json_query = {"passCode": verification_code, "stateToken": self._state_token}
+
+        _LOGGER.debug(f"[verify_2fa] verify_2fa_url: {self._verify_2fa_url}")
+        _LOGGER.debug(f"[verify_2fa] headers: {self._json_headers}")
+        _LOGGER.debug(f"[verify_2fa] json_query: {json_query}")
+
+        async with self.session.post(
+            self._verify_2fa_url,
+            headers=self._json_headers,
+            json=json_query,
+        ) as verify_2fa_res:
+            verify_2fa_json = await verify_2fa_res.json()
+            _LOGGER.debug(f"[verify_2fa] verify_2fa_json: {verify_2fa_json}")
+
+        # We've exchanged our user/pass for a session token
+        if "sessionToken" not in verify_2fa_json:
+            raise AuthenticationError()
+        self._session_token = verify_2fa_json["sessionToken"]
+
+    async def get_access_token(self) -> str:
+
+        # myAir uses Authorization Code with PKCE, so we generate our verifier here
+        code_verifier = base64.urlsafe_b64encode(os.urandom(40)).decode("utf-8")
+        code_verifier = re.sub("[^a-zA-Z0-9]+", "", code_verifier)
+        _LOGGER.debug(f"[get_access_token] code_verifier: {code_verifier}")
+
+        code_challenge = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        code_challenge = base64.urlsafe_b64encode(code_challenge).decode("utf-8")
+        code_challenge = code_challenge.replace("=", "")
+        _LOGGER.debug(f"[get_access_token] code_challenge: {code_challenge}")
+
+        # We use that sessionToken and exchange for an oauth code, using PKCE
+        authorize_url = EU_CONFIG["authorize_url"].format(
+            oauth2_client_id=EU_CONFIG["oauth2_client_id"]
+        )
+        params_query = {
+            "client_id": EU_CONFIG["authorize_client_id"],
+            # For PKCE
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "prompt": "none",
+            "redirect_uri": EU_CONFIG["oauth_redirect_url"],
+            "response_mode": "fragment",
+            "response_type": "code",
+            "sessionToken": self._session_token,
+            "scope": "openid profile email",
+            "state": "abcdef",
+        }
+        _LOGGER.debug(f"[get_access_token code_res] authorize_url: {authorize_url}")
+        _LOGGER.debug(f"[get_access_token code_res] headers: {self._json_headers}")
+        _LOGGER.debug(f"[get_access_token code_res] params_query: {params_query}")
+
+        async with self.session.get(
+            authorize_url,
+            headers=self._json_headers,
+            allow_redirects=False,
+            params=params_query,
+        ) as code_res:
+            _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
+            location = code_res.headers["location"]
+            _LOGGER.debug(f"[get_access_token] location: {location}")
+        fragment = urldefrag(location)
+        _LOGGER.debug(f"[get_access_token] fragment: {fragment}")
+        # Pull the code out of the location header fragment
+        code = parse_qs(fragment.fragment)["code"]
+        _LOGGER.debug(f"[get_access_token] code: {code}")
+
+        # Now we change the code for an access token
+        # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
+        token_form = {
+            "client_id": EU_CONFIG["authorize_client_id"],
+            "redirect_uri": EU_CONFIG["oauth_redirect_url"],
+            "grant_type": "authorization_code",
+            "code_verifier": code_verifier,
+            "code": code,
+        }
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        token_url = EU_CONFIG["token_url"].format(
+            oauth2_client_id=EU_CONFIG["oauth2_client_id"]
+        )
+        _LOGGER.debug(f"[get_access_token token_res] token_url: {token_url}")
+        _LOGGER.debug(f"[get_access_token token_res] headers: {headers}")
+        _LOGGER.debug(f"[get_access_token token_res] token_form: {token_form}")
+
+        async with self.session.post(
+            token_url,
+            headers=headers,
+            data=token_form,
+            allow_redirects=False,
+        ) as token_res:
+            d = await token_res.json()
+            _LOGGER.debug(f"[get_access_token] token_res: {d}")
+            self.access_token = d["access_token"]
+            self.id_token = d["id_token"]
+            _LOGGER.debug(f"[get_access_token] access_token: {self.access_token}")
+            _LOGGER.debug(f"[get_access_token] id_token: {self.id_token}")
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
         _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
-        authz_header = f"bearer {self._bearer_token}"
+        authz_header = f"Bearer {self.access_token}"
         _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
 
         # We trust this JWT because it is myAir giving it to us
         # So we can pull the middle piece out, which is the payload, and turn it to json
-        # jwt_data = jwt.decode(self.id_token, options={"verify_signature": False})
-        # _LOGGER.debug(f"[gql_query] jwt_data: {jwt_data}")
+        jwt_data = jwt.decode(self.id_token, options={"verify_signature": False})
+        _LOGGER.debug(f"[gql_query] jwt_data: {jwt_data}")
 
         # The graphql API only works properly if we provide the expected country code
         # The rest of the paramters are required, but don't seem to be further validated
-        # country_code = jwt_data["myAirCountryId"]
+        country_code = jwt_data["myAirCountryId"]
 
         headers = {
             "x-api-key": EU_CONFIG["myair_api_key"],
@@ -162,7 +264,7 @@ class RESTEUClient(MyAirClient):
             "rmdproduct": "myAir EU",
             "rmdappversion": "2.0.0",
             "rmdhandsetplatform": "Web",
-            "rmdcountry": self._country_code,
+            "rmdcountry": country_code,
             "accept-language": "en-US,en;q=0.9",
         }
 

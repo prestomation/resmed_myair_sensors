@@ -9,9 +9,6 @@
   "documentation": "https://github.com/prestomation/resmed_myair_sensors/blob/master/README.md",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/prestomation/resmed_myair_sensors/issues",
-  "requirements": [
-    "beautifulsoup4",
-    "PyJWT"
-  ],
+  "requirements": ["PyJWT"],
   "version": "0.1.0"
 }
