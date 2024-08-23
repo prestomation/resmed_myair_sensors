@@ -37,7 +37,7 @@ NA_CONFIG = {
     # The AppSync URL that accepts your token + the API key to return Sleep Records
     "appsync_url": "https://graphql.myair-prd.dht.live/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
-    "oauth_redirect_url": "https://myair2.resmed.com",
+    "oauth_redirect_url": "https://myair.resmed.com",
 }
 
 
@@ -191,6 +191,7 @@ class RESTNAClient(MyAirClient):
         # The rest of the paramters are required, but don't seem to be further validated
         country_code = jwt_data["myAirCountryId"]
 
+        appsync_url = NA_CONFIG["appsync_url"]
         headers = {
             "x-api-key": NA_CONFIG["myair_api_key"],
             "Authorization": authz_header,
@@ -206,26 +207,24 @@ class RESTNAClient(MyAirClient):
             "rmdcountry": country_code,
             "accept-language": "en-US,en;q=0.9",
         }
-
         json_query = {
             "operationName": operation_name,
             "variables": {},
             "query": query,
         }
-
-        _LOGGER.debug(f"[gql_query] appsync_url: {NA_CONFIG['appsync_url']}")
+        _LOGGER.debug(f"[gql_query] appsync_url: {appsync_url}")
         _LOGGER.debug(f"[gql_query] headers: {headers}")
         _LOGGER.debug(f"[gql_query] json_query: {json_query}")
 
         async with self._session.post(
-            NA_CONFIG["appsync_url"],
+            appsync_url,
             headers=headers,
             json=json_query,
         ) as records_response:
             _LOGGER.debug(f"[gql_query] records_response: {records_response}")
             records_json = await records_response.json()
             _LOGGER.debug(f"[gql_query] records_json: {records_json}")
-            return records_json
+        return records_json
 
     async def get_sleep_records(self) -> List[SleepRecord]:
 

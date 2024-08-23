@@ -76,7 +76,6 @@ class RESTEUClient(MyAirClient):
         await self.get_access_token()
 
     async def get_state_token(self) -> str:
-
         authn_url = EU_CONFIG["authn_url"]
         json_query = {
             "username": self._config.username,
@@ -129,7 +128,6 @@ class RESTEUClient(MyAirClient):
 
     async def trigger_2fa(self):
         json_query = {"passCode": "", "stateToken": self._state_token}
-
         _LOGGER.debug(f"[trigger_2fa] 2fa_url: {self._2fa_url}")
         _LOGGER.debug(f"[trigger_2fa] headers: {self._json_headers}")
         _LOGGER.debug(f"[trigger_2fa] json_query: {json_query}")
@@ -158,7 +156,6 @@ class RESTEUClient(MyAirClient):
         _LOGGER.debug(f"[verify_2fa] verification_code: {verification_code}")
 
         json_query = {"passCode": verification_code, "stateToken": self._state_token}
-
         _LOGGER.debug(f"[verify_2fa] 2fa_url: {self._2fa_url}")
         _LOGGER.debug(f"[verify_2fa] headers: {self._json_headers}")
         _LOGGER.debug(f"[verify_2fa] json_query: {json_query}")
@@ -300,6 +297,7 @@ class RESTEUClient(MyAirClient):
         # The rest of the paramters are required, but don't seem to be further validated
         country_code = jwt_data["myAirCountryId"]
 
+        appsync_url = EU_CONFIG["appsync_url"]
         headers = {
             "x-api-key": EU_CONFIG["myair_api_key"],
             "Authorization": authz_header,
@@ -315,19 +313,17 @@ class RESTEUClient(MyAirClient):
             "rmdcountry": country_code,
             "accept-language": "en-US,en;q=0.9",
         }
-
         json_query = {
             "operationName": operation_name,
             "variables": {},
             "query": query,
         }
-
-        _LOGGER.debug(f"[gql_query] appsync_url: {EU_CONFIG['appsync_url']}")
+        _LOGGER.debug(f"[gql_query] appsync_url: {appsync_url}")
         _LOGGER.debug(f"[gql_query] headers: {headers}")
         _LOGGER.debug(f"[gql_query] json_query: {json_query}")
 
         async with self._session.post(
-            EU_CONFIG["appsync_url"],
+            appsync_url,
             headers=headers,
             json=json_query,
         ) as records_response:
@@ -340,10 +336,9 @@ class RESTEUClient(MyAirClient):
                     message=str(records_json),
                     headers=records_response.headers,
                 )
-            return records_json
+        return records_json
 
     async def get_sleep_records(self) -> List[SleepRecord]:
-
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         one_month_ago = (
             datetime.datetime.now() - datetime.timedelta(days=30)

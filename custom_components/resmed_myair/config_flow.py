@@ -17,6 +17,7 @@ from .common import (
     REGION_EU,
     REGION_NA,
 )
+from .const import VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except AuthenticationError:
                 errors["base"] = "authentication_error"
 
+        _LOGGER.info(f"Setting up ResMed myAir Integration Version: {VERSION}")
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(

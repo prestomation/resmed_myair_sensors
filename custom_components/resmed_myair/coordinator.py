@@ -1,11 +1,12 @@
-from typing import List
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.core import HomeAssistant
-from .client.myair_client import MyAirClient, MyAirDevice, SleepRecord
-import logging
-
-from .common import DEFAULT_UPDATE_RATE_MIN
 from datetime import timedelta
+import logging
+from typing import List
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+
+from .client.myair_client import MyAirClient, MyAirDevice, SleepRecord
+from .common import DEFAULT_UPDATE_RATE_MIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
         myair_client: MyAirClient,
     ) -> None:
         """Initialize DataUpdateCoordinator for ResMed myAir."""
+        _LOGGER.debug("Initializing DataUpdateCoordinator for ResMed myAir")
         self.myair_client = myair_client
         super().__init__(
             hass,
