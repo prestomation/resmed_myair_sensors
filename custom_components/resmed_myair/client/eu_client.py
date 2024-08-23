@@ -32,7 +32,7 @@ EU_CONFIG = {
     "myair_api_key": "da2-o66oo6xdnfh5hlfuw5yw5g2dtm",
     # The Okta Endpoint where the creds go
     "authn_url": "https://id.resmed.eu/api/v1/authn",
-    "verify_2fa_url": "https://id.resmed.eu/api/v1/authn/factors/{authn_client_id}/verify?rememberDevice=true",
+    "2fa_url": "https://id.resmed.eu/api/v1/authn/factors/{authn_client_id}/verify?rememberDevice=true",
     # When specifying token_url and authorize_url, add {authn_client_id} and your authn_client_id will be substituted in
     # Or you can put the entire URL here if you want, but your authn_client_id will be ignored
     "authorize_url": "https://id.resmed.eu/oauth2/{oauth2_client_id}/v1/authorize",
@@ -59,7 +59,7 @@ class RESTEUClient(MyAirClient):
             "Accept": "application/json",
         }
         self._authn_client_id = EU_CONFIG["authn_client_id"]
-        self._verify_2fa_url = EU_CONFIG["verify_2fa_url"].format(
+        self._2fa_url = EU_CONFIG["2fa_url"].format(
             authn_client_id=self._authn_client_id
         )
         self._access_token = None
@@ -76,16 +76,18 @@ class RESTEUClient(MyAirClient):
         await self.get_access_token()
 
     async def get_state_token(self) -> str:
+
+        authn_url = EU_CONFIG["authn_url"]
         json_query = {
             "username": self._config.username,
             "password": self._config.password,
         }
-        _LOGGER.debug(f"[get_state_token] authn_url: {EU_CONFIG['authn_url']}")
+        _LOGGER.debug(f"[get_state_token] authn_url: {authn_url}")
         _LOGGER.debug(f"[get_state_token] headers: {self._json_headers}")
         _LOGGER.debug(f"[get_state_token] json_query: {json_query}")
 
         async with self._session.post(
-            EU_CONFIG["authn_url"],
+            authn_url,
             headers=self._json_headers,
             json=json_query,
         ) as authn_res:
@@ -109,38 +111,31 @@ class RESTEUClient(MyAirClient):
         self._state_token = authn_json["stateToken"]
 
         try:
-            _LOGGER.debug(
-                f"[get_state_token] authn_client_id: {authn_json['_embedded']['factors'][0]['id']}"
-            )
             self._authn_client_id = authn_json["_embedded"]["factors"][0]["id"]
         except Exception as e:
-            _LOGGER.info(
-                f"client_id not found in authn, using default. {e.__class__.__qualname__}: {e}"
-            )
             self._authn_client_id = EU_CONFIG["authn_client_id"]
+        _LOGGER.debug(f"[get_state_token] authn_client_id: {self._authn_client_id}")
 
         try:
-            _LOGGER.debug(
-                f"[get_state_token] verify_2fa_url: {authn_json['_embedded']['factors'][0]['_links']['verify']['href']}"
-            )
-            self._verify_2fa_url = f"{authn_json['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
+            self._2fa_url = f"{authn_json['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
         except Exception as e:
             _LOGGER.info(
-                f"verify_2fa_url not found in authn, using default. {e.__class__.__qualname__}: {e}"
+                f"2fa_url not found in authn, using default. {e.__class__.__qualname__}: {e}"
             )
-            self._verify_2fa_url = EU_CONFIG["verify_2fa_url"].format(
+            self._2fa_url = EU_CONFIG["2fa_url"].format(
                 authn_client_id=self._authn_client_id
             )
+        _LOGGER.debug(f"[get_state_token] 2fa_url: {self._2fa_url}")
 
     async def trigger_2fa(self):
         json_query = {"passCode": "", "stateToken": self._state_token}
 
-        _LOGGER.debug(f"[trigger_2fa] verify_2fa_url: {self._verify_2fa_url}")
+        _LOGGER.debug(f"[trigger_2fa] 2fa_url: {self._2fa_url}")
         _LOGGER.debug(f"[trigger_2fa] headers: {self._json_headers}")
         _LOGGER.debug(f"[trigger_2fa] json_query: {json_query}")
 
         async with self._session.post(
-            self._verify_2fa_url,
+            self._2fa_url,
             headers=self._json_headers,
             json=json_query,
         ) as trigger_2fa_res:
@@ -164,12 +159,12 @@ class RESTEUClient(MyAirClient):
 
         json_query = {"passCode": verification_code, "stateToken": self._state_token}
 
-        _LOGGER.debug(f"[verify_2fa] verify_2fa_url: {self._verify_2fa_url}")
+        _LOGGER.debug(f"[verify_2fa] 2fa_url: {self._2fa_url}")
         _LOGGER.debug(f"[verify_2fa] headers: {self._json_headers}")
         _LOGGER.debug(f"[verify_2fa] json_query: {json_query}")
 
         async with self._session.post(
-            self._verify_2fa_url,
+            self._2fa_url,
             headers=self._json_headers,
             json=json_query,
         ) as verify_2fa_res:
@@ -284,8 +279,8 @@ class RESTEUClient(MyAirClient):
                     )
                 self._access_token = token_json["access_token"]
                 self._id_token = token_json["id_token"]
-                _LOGGER.debug(f"[get_access_token] access_token: {self._access_token}")
-                _LOGGER.debug(f"[get_access_token] id_token: {self._id_token}")
+                # _LOGGER.debug(f"[get_access_token] access_token: {self._access_token}")
+                # _LOGGER.debug(f"[get_access_token] id_token: {self._id_token}")
             else:
                 raise ClientResponseError(
                     f"Get Access Token Connection Issue. Status {token_res.status} {token_res.message}"
@@ -294,7 +289,7 @@ class RESTEUClient(MyAirClient):
     async def gql_query(self, operation_name: str, query: str) -> Any:
         _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
         authz_header = f"Bearer {self._access_token}"
-        _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
+        # _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
 
         # We trust this JWT because it is myAir giving it to us
         # So we can pull the middle piece out, which is the payload, and turn it to json
@@ -336,15 +331,15 @@ class RESTEUClient(MyAirClient):
             headers=headers,
             json=json_query,
         ) as records_response:
+            _LOGGER.debug(f"[gql_query] records_response: {records_response}")
             records_json = await records_response.json()
+            _LOGGER.debug(f"[gql_query] records_json: {records_json}")
             if "errors" in records_json:
                 raise HttpProcessingError(
                     code=records_response.status,
                     message=str(records_json),
                     headers=records_response.headers,
                 )
-            _LOGGER.debug(f"[gql_query] records_response: {records_response}")
-            _LOGGER.debug(f"[gql_query] records_json: {records_json}")
             return records_json
 
     async def get_sleep_records(self) -> List[SleepRecord]:
@@ -387,7 +382,7 @@ class RESTEUClient(MyAirClient):
         )
 
         records_json = await self.gql_query("GetPatientSleepRecords", query)
-        _LOGGER.debug(f"[GetPatientSleepRecords] {records_json}")
+        _LOGGER.debug(f"[get_sleep_records] {records_json}")
         records = records_json["data"]["getPatientWrapper"]["sleepRecords"]["items"]
         return records
 
@@ -409,6 +404,6 @@ class RESTEUClient(MyAirClient):
         """
 
         records_json = await self.gql_query("getPatientWrapper", query)
-        _LOGGER.debug(f"[getPatientWrapper] {records_json}")
+        _LOGGER.debug(f"[get_user_device_data] {records_json}")
         device = records_json["data"]["getPatientWrapper"]["fgDevices"][0]
         return device
