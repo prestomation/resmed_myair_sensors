@@ -105,7 +105,7 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         selector.TextSelectorConfig(type="password")
                     ),
                     vol.Required(CONF_REGION, default=REGION_NA): vol.In(
-                        {REGION_NA: "North America", REGION_EU: "EU (Experimental)"}
+                        {REGION_NA: "North America", REGION_EU: "EU (Email 2FA)"}
                     ),
                 }
             ),
