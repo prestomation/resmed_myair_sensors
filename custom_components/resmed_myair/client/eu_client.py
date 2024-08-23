@@ -8,6 +8,8 @@ from typing import Any, List
 from urllib.parse import parse_qs, urldefrag
 
 from aiohttp import ClientSession
+from aiohttp.client_exceptions import ClientResponseError
+from aiohttp.http_exceptions import HttpProcessingError
 import jwt
 
 from .myair_client import (
@@ -49,13 +51,9 @@ class RESTEUClient(MyAirClient):
     In the EU, myAir uses oauth on Okta and AWS AppSync GraphQL
     """
 
-    config: MyAirConfig
-    access_token: str
-    session: ClientSession
-
     def __init__(self, config: MyAirConfig, session: ClientSession):
-        self.config = config
-        self.session = session
+        self._config: MyAirConfig = config
+        self._session: ClientSession = session
         self._json_headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -64,6 +62,8 @@ class RESTEUClient(MyAirClient):
         self._verify_2fa_url = EU_CONFIG["verify_2fa_url"].format(
             authn_client_id=self._authn_client_id
         )
+        self._access_token = None
+        self._id_token = None
         self._state_token = None
         self._session_token = None
 
@@ -77,20 +77,32 @@ class RESTEUClient(MyAirClient):
 
     async def get_state_token(self) -> str:
         json_query = {
-            "username": self.config.username,
-            "password": self.config.password,
+            "username": self._config.username,
+            "password": self._config.password,
         }
         _LOGGER.debug(f"[get_state_token] authn_url: {EU_CONFIG['authn_url']}")
         _LOGGER.debug(f"[get_state_token] headers: {self._json_headers}")
         _LOGGER.debug(f"[get_state_token] json_query: {json_query}")
 
-        async with self.session.post(
+        async with self._session.post(
             EU_CONFIG["authn_url"],
             headers=self._json_headers,
             json=json_query,
         ) as authn_res:
-            authn_json = await authn_res.json()
-            _LOGGER.debug(f"[get_state_token] authn_json: {authn_json}")
+            if authn_res.ok:
+                _LOGGER.debug(f"[get_state_token] authn_res: {authn_res}")
+                authn_json = await authn_res.json()
+                _LOGGER.debug(f"[get_state_token] authn_json: {authn_json}")
+                if "errors" in authn_json:
+                    raise HttpProcessingError(
+                        code=authn_res.status,
+                        message=str(authn_json),
+                        headers=authn_res.headers,
+                    )
+            else:
+                raise ClientResponseError(
+                    f"authn Connection Issue. Status {authn_res.status} {authn_res.message}"
+                )
 
         if "stateToken" not in authn_json:
             raise AuthenticationError()
@@ -127,13 +139,25 @@ class RESTEUClient(MyAirClient):
         _LOGGER.debug(f"[trigger_2fa] headers: {self._json_headers}")
         _LOGGER.debug(f"[trigger_2fa] json_query: {json_query}")
 
-        async with self.session.post(
+        async with self._session.post(
             self._verify_2fa_url,
             headers=self._json_headers,
             json=json_query,
         ) as trigger_2fa_res:
-            trigger_2fa_json = await trigger_2fa_res.json()
-            _LOGGER.debug(f"[trigger_2fa] trigger_2fa_json: {trigger_2fa_json}")
+            if trigger_2fa_res.ok:
+                _LOGGER.debug(f"[trigger_2fa] trigger_2fa_res: {trigger_2fa_res}")
+                trigger_2fa_json = await trigger_2fa_res.json()
+                _LOGGER.debug(f"[trigger_2fa] trigger_2fa_json: {trigger_2fa_json}")
+                if "errors" in trigger_2fa_json:
+                    raise HttpProcessingError(
+                        code=trigger_2fa_res.status,
+                        message=str(trigger_2fa_json),
+                        headers=trigger_2fa_res.headers,
+                    )
+            else:
+                raise ClientResponseError(
+                    f"Trigger 2FA Connection Issue. Status {trigger_2fa_res.status} {trigger_2fa_res.message}"
+                )
 
     async def verify_2fa(self, verification_code: str) -> str:
         _LOGGER.debug(f"[verify_2fa] verification_code: {verification_code}")
@@ -144,13 +168,25 @@ class RESTEUClient(MyAirClient):
         _LOGGER.debug(f"[verify_2fa] headers: {self._json_headers}")
         _LOGGER.debug(f"[verify_2fa] json_query: {json_query}")
 
-        async with self.session.post(
+        async with self._session.post(
             self._verify_2fa_url,
             headers=self._json_headers,
             json=json_query,
         ) as verify_2fa_res:
-            verify_2fa_json = await verify_2fa_res.json()
-            _LOGGER.debug(f"[verify_2fa] verify_2fa_json: {verify_2fa_json}")
+            if verify_2fa_res.ok:
+                _LOGGER.debug(f"[verify_2fa] verify_2fa_res: {verify_2fa_res}")
+                verify_2fa_json = await verify_2fa_res.json()
+                _LOGGER.debug(f"[verify_2fa] verify_2fa_json: {verify_2fa_json}")
+                if "errors" in verify_2fa_json:
+                    raise HttpProcessingError(
+                        code=verify_2fa_res.status,
+                        message=str(verify_2fa_json),
+                        headers=verify_2fa_res.headers,
+                    )
+            else:
+                raise ClientResponseError(
+                    f"Verify 2FA Connection Issue. Status {verify_2fa_res.status} {verify_2fa_res.message}"
+                )
 
         # We've exchanged our user/pass for a session token
         if "sessionToken" not in verify_2fa_json:
@@ -190,15 +226,20 @@ class RESTEUClient(MyAirClient):
         _LOGGER.debug(f"[get_access_token code_res] headers: {self._json_headers}")
         _LOGGER.debug(f"[get_access_token code_res] params_query: {params_query}")
 
-        async with self.session.get(
+        async with self._session.get(
             authorize_url,
             headers=self._json_headers,
             allow_redirects=False,
             params=params_query,
         ) as code_res:
-            _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
-            location = code_res.headers["location"]
-            _LOGGER.debug(f"[get_access_token] location: {location}")
+            if code_res.ok:
+                _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
+                location = code_res.headers["location"]
+                _LOGGER.debug(f"[get_access_token] location: {location}")
+            else:
+                raise ClientResponseError(
+                    f"Get Code Connection Issue. Status {code_res.status} {code_res.message}"
+                )
         fragment = urldefrag(location)
         _LOGGER.debug(f"[get_access_token] fragment: {fragment}")
         # Pull the code out of the location header fragment
@@ -207,7 +248,7 @@ class RESTEUClient(MyAirClient):
 
         # Now we change the code for an access token
         # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
-        token_form = {
+        token_query = {
             "client_id": EU_CONFIG["authorize_client_id"],
             "redirect_uri": EU_CONFIG["oauth_redirect_url"],
             "grant_type": "authorization_code",
@@ -223,29 +264,41 @@ class RESTEUClient(MyAirClient):
         )
         _LOGGER.debug(f"[get_access_token token_res] token_url: {token_url}")
         _LOGGER.debug(f"[get_access_token token_res] headers: {headers}")
-        _LOGGER.debug(f"[get_access_token token_res] token_form: {token_form}")
+        _LOGGER.debug(f"[get_access_token token_res] token_query: {token_query}")
 
-        async with self.session.post(
+        async with self._session.post(
             token_url,
             headers=headers,
-            data=token_form,
+            data=token_query,
             allow_redirects=False,
         ) as token_res:
-            d = await token_res.json()
-            _LOGGER.debug(f"[get_access_token] token_res: {d}")
-            self.access_token = d["access_token"]
-            self.id_token = d["id_token"]
-            _LOGGER.debug(f"[get_access_token] access_token: {self.access_token}")
-            _LOGGER.debug(f"[get_access_token] id_token: {self.id_token}")
+            if token_res.ok:
+                _LOGGER.debug(f"[get_access_token] token_res: {token_res}")
+                token_json = await token_res.json()
+                _LOGGER.debug(f"[get_access_token] token_json: {token_json}")
+                if "errors" in token_json:
+                    raise HttpProcessingError(
+                        token=token_res.status,
+                        message=str(token_json),
+                        headers=token_res.headers,
+                    )
+                self._access_token = token_json["access_token"]
+                self._id_token = token_json["id_token"]
+                # _LOGGER.debug(f"[get_access_token] access_token: {self._access_token}")
+                # _LOGGER.debug(f"[get_access_token] id_token: {self._id_token}")
+            else:
+                raise ClientResponseError(
+                    f"Get Access Token Connection Issue. Status {token_res.status} {token_res.message}"
+                )
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
         _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
-        authz_header = f"Bearer {self.access_token}"
-        _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
+        authz_header = f"Bearer {self._access_token}"
+        # _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
 
         # We trust this JWT because it is myAir giving it to us
         # So we can pull the middle piece out, which is the payload, and turn it to json
-        jwt_data = jwt.decode(self.id_token, options={"verify_signature": False})
+        jwt_data = jwt.decode(self._id_token, options={"verify_signature": False})
         _LOGGER.debug(f"[gql_query] jwt_data: {jwt_data}")
 
         # The graphql API only works properly if we provide the expected country code
@@ -255,7 +308,7 @@ class RESTEUClient(MyAirClient):
         headers = {
             "x-api-key": EU_CONFIG["myair_api_key"],
             "Authorization": authz_header,
-            # There are a bunch of resmed headeers sent to this API that seem to be required
+            # There are a bunch of resmed headers sent to this API that seem to be required
             # Unsure if this is ever validated/can break things if these values change
             "rmdhandsetid": "02c1c662-c289-41fd-a9ae-196ff15b5166",
             "rmdlanguage": "en",
@@ -278,13 +331,20 @@ class RESTEUClient(MyAirClient):
         _LOGGER.debug(f"[gql_query] headers: {headers}")
         _LOGGER.debug(f"[gql_query] json_query: {json_query}")
 
-        async with self.session.post(
+        async with self._session.post(
             EU_CONFIG["appsync_url"],
             headers=headers,
             json=json_query,
         ) as records_response:
             _LOGGER.debug(f"[gql_query] records_response: {records_response}")
             records_json = await records_response.json()
+            _LOGGER.debug(f"[gql_query] records_json: {records_json}")
+            if "errors" in records_json:
+                raise HttpProcessingError(
+                    code=records_response.status,
+                    message=str(records_json),
+                    headers=records_response.headers,
+                )
             return records_json
 
     async def get_sleep_records(self) -> List[SleepRecord]:
@@ -327,7 +387,7 @@ class RESTEUClient(MyAirClient):
         )
 
         records_json = await self.gql_query("GetPatientSleepRecords", query)
-        _LOGGER.debug(f"[GetPatientSleepRecords] {records_json}")
+        _LOGGER.debug(f"[get_sleep_records] {records_json}")
         records = records_json["data"]["getPatientWrapper"]["sleepRecords"]["items"]
         return records
 
@@ -349,6 +409,6 @@ class RESTEUClient(MyAirClient):
         """
 
         records_json = await self.gql_query("getPatientWrapper", query)
-        _LOGGER.debug(f"[getPatientWrapper] {records_json}")
+        _LOGGER.debug(f"[get_user_device_data] {records_json}")
         device = records_json["data"]["getPatientWrapper"]["fgDevices"][0]
         return device

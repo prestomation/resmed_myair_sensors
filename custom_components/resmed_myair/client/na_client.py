@@ -47,16 +47,19 @@ class RESTNAClient(MyAirClient):
     In the US, myAir uses oauth on Okta and AWS AppSync GraphQL
     """
 
-    config: MyAirConfig
-    access_token: str
-    session: ClientSession
-
     def __init__(self, config: MyAirConfig, session: ClientSession):
         assert (
             config.region == "NA"
         ), "REST client used outside NA, this should not happen. Please file a bug"
-        self.config = config
-        self.session = session
+        self._json_headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        self._config: MyAirConfig = config
+        self._session: ClientSession = session
+        self._access_token = None
+        self._config = config
+        self._session = session
 
     async def connect(self):
         # for connect, let's login and store the access token
@@ -66,16 +69,22 @@ class RESTNAClient(MyAirClient):
         """
         Call this to refresh the access token
         """
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        authn_url = NA_CONFIG["authn_url"]
+        json_query = {
+            "username": self._config.username,
+            "password": self._config.password,
+        }
 
-        async with self.session.post(
-            NA_CONFIG["authn_url"],
-            headers=headers,
-            json={
-                "username": self.config.username,
-                "password": self.config.password,
-            },
+        _LOGGER.debug(f"[get_access_token] authn_url: {authn_url}")
+        _LOGGER.debug(f"[get_access_token] headers: {self._json_headers}")
+        _LOGGER.debug(f"[get_access_token] json_query: {json_query}")
+
+        async with self._session.post(
+            authn_url,
+            headers=self._json_headers,
+            json=json_query,
         ) as authn_res:
+            _LOGGER.debug(f"[get_access_token] authn_res: {authn_res}")
             authn_json = await authn_res.json()
             _LOGGER.debug(f"[get_access_token] authn_json: {authn_json}")
 
@@ -97,33 +106,43 @@ class RESTNAClient(MyAirClient):
         authorize_url = NA_CONFIG["authorize_url"].format(
             authn_client_id=NA_CONFIG["authn_client_id"]
         )
-        async with self.session.get(
+
+        params_query = {
+            "client_id": NA_CONFIG["authorize_client_id"],
+            # For PKCE
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "prompt": "none",
+            "redirect_uri": NA_CONFIG["oauth_redirect_url"],
+            "response_mode": "fragment",
+            "response_type": "code",
+            "sessionToken": session_token,
+            "scope": "openid profile email",
+            "state": "abcdef",
+        }
+
+        _LOGGER.debug(f"[get_access_token code_res] authorize_url: {authorize_url}")
+        _LOGGER.debug(f"[get_access_token code_res] headers: {self._json_headers}")
+        _LOGGER.debug(f"[get_access_token code_res] params_query: {params_query}")
+
+        async with self._session.get(
             authorize_url,
-            headers=headers,
+            headers=self._json_headers,
             allow_redirects=False,
-            params={
-                "client_id": NA_CONFIG["authorize_client_id"],
-                # For PKCE
-                "code_challenge": code_challenge,
-                "code_challenge_method": "S256",
-                "prompt": "none",
-                "redirect_uri": NA_CONFIG["oauth_redirect_url"],
-                "response_mode": "fragment",
-                "response_type": "code",
-                "sessionToken": session_token,
-                "scope": "openid profile email",
-                "state": "abcdef",
-            },
+            params=params_query,
         ) as code_res:
             _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
             location = code_res.headers["location"]
+            _LOGGER.debug(f"[get_access_token] location: {location}")
         fragment = urldefrag(location)
+        _LOGGER.debug(f"[get_access_token] fragment: {fragment}")
         # Pull the code out of the location header fragment
         code = parse_qs(fragment.fragment)["code"]
+        _LOGGER.debug(f"[get_access_token] code: {code}")
 
         # Now we change the code for an access token
         # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
-        token_form = {
+        token_query = {
             "client_id": NA_CONFIG["authorize_client_id"],
             "redirect_uri": NA_CONFIG["oauth_redirect_url"],
             "grant_type": "authorization_code",
@@ -134,24 +153,34 @@ class RESTNAClient(MyAirClient):
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        async with self.session.post(
-            NA_CONFIG["token_url"].format(authn_client_id=NA_CONFIG["authn_client_id"]),
+
+        token_url = NA_CONFIG["token_url"].format(
+            authn_client_id=NA_CONFIG["authn_client_id"]
+        )
+
+        _LOGGER.debug(f"[get_access_token token_res] token_url: {token_url}")
+        _LOGGER.debug(f"[get_access_token token_res] headers: {headers}")
+        _LOGGER.debug(f"[get_access_token token_res] token_query: {token_query}")
+
+        async with self._session.post(
+            token_url,
             headers=headers,
-            data=token_form,
+            data=token_query,
             allow_redirects=False,
         ) as token_res:
-            d = await token_res.json()
-            _LOGGER.debug(f"[get_access_token] token_res: {d}")
-            self.access_token = d["access_token"]
-            self.id_token = d["id_token"]
-            _LOGGER.debug(f"[get_access_token] access_token: {self.access_token}")
-            _LOGGER.debug(f"[get_access_token] id_token: {self.id_token}")
+            _LOGGER.debug(f"[get_access_token] token_res: {token_res}")
+            token_json = await token_res.json()
+            _LOGGER.debug(f"[get_access_token] token_json: {token_json}")
+            self.access_token = token_json["access_token"]
+            self.id_token = token_json["id_token"]
+            # _LOGGER.debug(f"[get_access_token] access_token: {self.access_token}")
+            # _LOGGER.debug(f"[get_access_token] id_token: {self.id_token}")
             return self.access_token
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
         _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
-        authz_header = f"bearer {self.access_token}"
-        _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
+        authz_header = f"Bearer {self.access_token}"
+        # _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
 
         # We trust this JWT because it is myAir giving it to us
         # So we can pull the middle piece out, which is the payload, and turn it to json
@@ -165,7 +194,7 @@ class RESTNAClient(MyAirClient):
         headers = {
             "x-api-key": NA_CONFIG["myair_api_key"],
             "Authorization": authz_header,
-            # There are a bunch of resmed headeers sent to this API that seem to be required
+            # There are a bunch of resmed headers sent to this API that seem to be required
             # Unsure if this is ever validated/can break things if these values change
             "rmdhandsetid": "02c1c662-c289-41fd-a9ae-196ff15b5166",
             "rmdlanguage": "en",
@@ -177,20 +206,25 @@ class RESTNAClient(MyAirClient):
             "rmdcountry": country_code,
             "accept-language": "en-US,en;q=0.9",
         }
-        _LOGGER.debug(f"[gql_query] headers: {headers}")
-        _LOGGER.debug(f"[gql_query] appsync_url: {NA_CONFIG['appsync_url']}")
 
-        async with self.session.post(
+        json_query = {
+            "operationName": operation_name,
+            "variables": {},
+            "query": query,
+        }
+
+        _LOGGER.debug(f"[gql_query] appsync_url: {NA_CONFIG['appsync_url']}")
+        _LOGGER.debug(f"[gql_query] headers: {headers}")
+        _LOGGER.debug(f"[gql_query] json_query: {json_query}")
+
+        async with self._session.post(
             NA_CONFIG["appsync_url"],
             headers=headers,
-            json={
-                "operationName": operation_name,
-                "variables": {},
-                "query": query,
-            },
+            json=json_query,
         ) as records_response:
             _LOGGER.debug(f"[gql_query] records_response: {records_response}")
             records_json = await records_response.json()
+            _LOGGER.debug(f"[gql_query] records_json: {records_json}")
             return records_json
 
     async def get_sleep_records(self) -> List[SleepRecord]:
@@ -233,28 +267,28 @@ class RESTNAClient(MyAirClient):
         )
 
         records_json = await self.gql_query("GetPatientSleepRecords", query)
-        _LOGGER.debug(f"[GetPatientSleepRecords] {records_json}")
+        _LOGGER.debug(f"[get_sleep_records] {records_json}")
         records = records_json["data"]["getPatientWrapper"]["sleepRecords"]["items"]
         return records
 
     async def get_user_device_data(self) -> MyAirDevice:
         query = """
-query getPatientWrapper {
-    getPatientWrapper {
-        fgDevices {
-            serialNumber
-            deviceType
-            lastSleepDataReportTime
-            localizedName
-            fgDeviceManufacturerName
-            fgDevicePatientId
-            __typename
+        query getPatientWrapper {
+            getPatientWrapper {
+                fgDevices {
+                    serialNumber
+                    deviceType
+                    lastSleepDataReportTime
+                    localizedName
+                    fgDeviceManufacturerName
+                    fgDevicePatientId
+                    __typename
+                }
+            }
         }
-    }
-}
-"""
+        """
 
         records_json = await self.gql_query("getPatientWrapper", query)
-        _LOGGER.debug(f"[getPatientWrapper] {records_json}")
+        _LOGGER.debug(f"[get_user_device_data] {records_json}")
         device = records_json["data"]["getPatientWrapper"]["fgDevices"][0]
         return device
