@@ -104,6 +104,16 @@ class RESTEUClient(MyAirClient):
                 authn_json = await authn_res.json()
                 _LOGGER.debug(f"[get_state_token] authn_json: {authn_json}")
                 if "errors" in authn_json:
+                    try:
+                        if (
+                            authn_json["errors"][0]["errorInfo"]["errorType"]
+                            == "unauthorized"
+                        ):
+                            raise AuthenticationError(
+                                "Getting unauthorized error on authn step"
+                            )
+                    except TypeError:
+                        pass
                     raise HttpProcessingError(
                         code=authn_res.status,
                         message=str(authn_json),
@@ -115,21 +125,18 @@ class RESTEUClient(MyAirClient):
                 )
 
         if "stateToken" not in authn_json:
-            raise AuthenticationError()
+            raise AuthenticationError("Cannot get stateToken in authn step")
         self._state_token = authn_json["stateToken"]
 
         try:
             self._authn_client_id = authn_json["_embedded"]["factors"][0]["id"]
-        except Exception as e:
+        except Exception:
             self._authn_client_id = EU_CONFIG["authn_client_id"]
         _LOGGER.debug(f"[get_state_token] authn_client_id: {self._authn_client_id}")
 
         try:
             self._2fa_url = f"{authn_json['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
-        except Exception as e:
-            _LOGGER.info(
-                f"2fa_url not found in authn, using default. {e.__class__.__qualname__}: {e}"
-            )
+        except Exception:
             self._2fa_url = EU_CONFIG["2fa_url"].format(
                 authn_client_id=self._authn_client_id
             )
@@ -151,6 +158,16 @@ class RESTEUClient(MyAirClient):
                 trigger_2fa_json = await trigger_2fa_res.json()
                 _LOGGER.debug(f"[trigger_2fa] trigger_2fa_json: {trigger_2fa_json}")
                 if "errors" in trigger_2fa_json:
+                    try:
+                        if (
+                            trigger_2fa_json["errors"][0]["errorInfo"]["errorType"]
+                            == "unauthorized"
+                        ):
+                            raise AuthenticationError(
+                                "Getting unauthorized error on trigger_2fa step"
+                            )
+                    except TypeError:
+                        pass
                     raise HttpProcessingError(
                         code=trigger_2fa_res.status,
                         message=str(trigger_2fa_json),
@@ -179,6 +196,16 @@ class RESTEUClient(MyAirClient):
                 verify_2fa_json = await verify_2fa_res.json()
                 _LOGGER.debug(f"[verify_2fa] verify_2fa_json: {verify_2fa_json}")
                 if "errors" in verify_2fa_json:
+                    try:
+                        if (
+                            verify_2fa_json["errors"][0]["errorInfo"]["errorType"]
+                            == "unauthorized"
+                        ):
+                            raise AuthenticationError(
+                                "Getting unauthorized error on verify_2fa step"
+                            )
+                    except TypeError:
+                        pass
                     raise HttpProcessingError(
                         code=verify_2fa_res.status,
                         message=str(verify_2fa_json),
@@ -191,7 +218,7 @@ class RESTEUClient(MyAirClient):
 
         # We've exchanged our user/pass for a session token
         if "sessionToken" not in verify_2fa_json:
-            raise AuthenticationError()
+            raise AuthenticationError("Cannot get sessionToken in verify_2fa step")
         self._session_token = verify_2fa_json["sessionToken"]
 
     async def get_access_token(self) -> str:
@@ -278,6 +305,16 @@ class RESTEUClient(MyAirClient):
                 token_json = await token_res.json()
                 _LOGGER.debug(f"[get_access_token] token_json: {token_json}")
                 if "errors" in token_json:
+                    try:
+                        if (
+                            token_json["errors"][0]["errorInfo"]["errorType"]
+                            == "unauthorized"
+                        ):
+                            raise AuthenticationError(
+                                "Getting unauthorized error on get_access_token step"
+                            )
+                    except TypeError:
+                        pass
                     raise HttpProcessingError(
                         token=token_res.status,
                         message=str(token_json),
@@ -340,6 +377,16 @@ class RESTEUClient(MyAirClient):
             records_json = await records_response.json()
             _LOGGER.debug(f"[gql_query] records_json: {records_json}")
             if "errors" in records_json:
+                try:
+                    if (
+                        records_json["errors"][0]["errorInfo"]["errorType"]
+                        == "unauthorized"
+                    ):
+                        raise AuthenticationError(
+                            "Getting unauthorized error on ggl_query step"
+                        )
+                except TypeError:
+                    pass
                 raise HttpProcessingError(
                     code=records_response.status,
                     message=str(records_json),

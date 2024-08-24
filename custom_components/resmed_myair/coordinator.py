@@ -3,9 +3,15 @@ import logging
 from typing import List
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .client.myair_client import MyAirClient, MyAirDevice, SleepRecord
+from .client.myair_client import (
+    AuthenticationError,
+    MyAirClient,
+    MyAirDevice,
+    SleepRecord,
+)
 from .common import DEFAULT_UPDATE_RATE_MIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,8 +42,16 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> None:
         """Fetch data from from the myAir client and store it in the coordinator."""
         _LOGGER.info("Updating from myAir")
-        await self.myair_client.connect()
-        self.device = await self.myair_client.get_user_device_data()
-        self.sleep_records = await self.myair_client.get_sleep_records()
-
+        try:
+            await self.myair_client.connect()
+            self.device = await self.myair_client.get_user_device_data()
+            self.sleep_records = await self.myair_client.get_sleep_records()
+        except AuthenticationError as e:
+            raise ConfigEntryAuthFailed(
+                f"Authentication Error while updating. {e.__class__.__qualname__}: {e}"
+            ) from e
+        except Exception as e:
+            raise UpdateFailed(
+                f"Error while updating data. {e.__class__.__qualname__}: {e}"
+            ) from e
         return

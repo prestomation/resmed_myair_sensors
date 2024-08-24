@@ -1,5 +1,7 @@
 import logging
 
+from aiohttp.client_exceptions import ClientResponseError
+from aiohttp.http_exceptions import HttpProcessingError
 from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -74,9 +76,17 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         self._user_input[CONF_PASSWORD],
                         region,
                     )
-                except AuthenticationError:
+                    return await self.async_step_eu_details()
+                except (
+                    AuthenticationError,
+                    HttpProcessingError,
+                    ClientResponseError,
+                ) as e:
+                    _LOGGER.error(
+                        f"Connection Error with eu_trigger_2fa. {e.__class__.__qualname__}: {e}"
+                    )
                     errors["base"] = "authentication_error"
-                return await self.async_step_eu_details()
+
             try:
                 device: MyAirDevice = await get_na_device(
                     self.hass,
@@ -97,7 +107,10 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
                     data=self._user_input,
                 )
-            except AuthenticationError:
+            except (AuthenticationError, HttpProcessingError, ClientResponseError) as e:
+                _LOGGER.error(
+                    f"Connection Error with get_na_device. {e.__class__.__qualname__}: {e}"
+                )
                 errors["base"] = "authentication_error"
 
         _LOGGER.info(f"Setting up ResMed myAir Integration Version: {VERSION}")
@@ -145,7 +158,10 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
                     data=self._user_input,
                 )
-            except AuthenticationError:
+            except (AuthenticationError, HttpProcessingError, ClientResponseError) as e:
+                _LOGGER.error(
+                    f"Connection Error with get_eu_device. {e.__class__.__qualname__}: {e}"
+                )
                 errors["base"] = "authentication_error"
 
         return self.async_show_form(
