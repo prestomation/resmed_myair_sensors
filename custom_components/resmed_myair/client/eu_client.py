@@ -7,7 +7,7 @@ import re
 from typing import Any, List
 from urllib.parse import parse_qs, urldefrag
 
-from aiohttp import ClientSession
+from aiohttp import ClientResponse, ClientSession
 from aiohttp.client_exceptions import ClientResponseError
 from aiohttp.http_exceptions import HttpProcessingError
 import jwt
@@ -16,6 +16,7 @@ from custom_components.resmed_myair.common import CONF_ACCESS_TOKEN
 
 from .myair_client import (
     AuthenticationError,
+    IncompleteAccountError,
     MyAirClient,
     MyAirConfig,
     MyAirDevice,
@@ -84,6 +85,31 @@ class RESTEUClient(MyAirClient):
         await self.verify_2fa(verification_code)
         await self.get_access_token()
 
+    async def _resmed_response_error_check(
+        self, step: str, response: ClientResponse, resp_dict: dict
+    ):
+        if "errors" in resp_dict:
+            try:
+                error_message = f"{resp_dict['errors'][0]['errorInfo']['errorType']}: {resp_dict['errors'][0]['errorInfo']['errorCode']}"
+                if resp_dict["errors"][0]["errorInfo"]["errorType"] == "unauthorized":
+                    raise AuthenticationError(
+                        f"Getting unauthorized error on {step} step. {error_message}"
+                    )
+                if (
+                    resp_dict["errors"][0]["errorInfo"]["errorType"] == "badRequest"
+                    and resp_dict["errors"][0]["errorInfo"]["errorCode"]
+                    == "onboardingFlowInProgress"
+                ):
+                    raise IncompleteAccountError(f"{error_message}")
+            except TypeError:
+                error_message = "Error"
+                pass
+            raise HttpProcessingError(
+                code=response.status,
+                message=f"{step} step: {error_message}. {resp_dict})",
+                headers=response.headers,
+            )
+
     async def get_state_token(self) -> str:
         authn_url = EU_CONFIG["authn_url"]
         json_query = {
@@ -101,41 +127,26 @@ class RESTEUClient(MyAirClient):
         ) as authn_res:
             if authn_res.ok:
                 _LOGGER.debug(f"[get_state_token] authn_res: {authn_res}")
-                authn_json = await authn_res.json()
-                _LOGGER.debug(f"[get_state_token] authn_json: {authn_json}")
-                if "errors" in authn_json:
-                    try:
-                        if (
-                            authn_json["errors"][0]["errorInfo"]["errorType"]
-                            == "unauthorized"
-                        ):
-                            raise AuthenticationError(
-                                "Getting unauthorized error on authn step"
-                            )
-                    except TypeError:
-                        pass
-                    raise HttpProcessingError(
-                        code=authn_res.status,
-                        message=str(authn_json),
-                        headers=authn_res.headers,
-                    )
+                authn_dict = await authn_res.json()
+                _LOGGER.debug(f"[get_state_token] authn_dict: {authn_dict}")
+                await self._resmed_response_error_check("authn", authn_res, authn_dict)
             else:
                 raise ClientResponseError(
                     f"authn Connection Issue. Status {authn_res.status} {authn_res.message}"
                 )
 
-        if "stateToken" not in authn_json:
+        if "stateToken" not in authn_dict:
             raise AuthenticationError("Cannot get stateToken in authn step")
-        self._state_token = authn_json["stateToken"]
+        self._state_token = authn_dict["stateToken"]
 
         try:
-            self._authn_client_id = authn_json["_embedded"]["factors"][0]["id"]
+            self._authn_client_id = authn_dict["_embedded"]["factors"][0]["id"]
         except Exception:
             self._authn_client_id = EU_CONFIG["authn_client_id"]
         _LOGGER.debug(f"[get_state_token] authn_client_id: {self._authn_client_id}")
 
         try:
-            self._2fa_url = f"{authn_json['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
+            self._2fa_url = f"{authn_dict['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
         except Exception:
             self._2fa_url = EU_CONFIG["2fa_url"].format(
                 authn_client_id=self._authn_client_id
@@ -155,24 +166,11 @@ class RESTEUClient(MyAirClient):
         ) as trigger_2fa_res:
             if trigger_2fa_res.ok:
                 _LOGGER.debug(f"[trigger_2fa] trigger_2fa_res: {trigger_2fa_res}")
-                trigger_2fa_json = await trigger_2fa_res.json()
-                _LOGGER.debug(f"[trigger_2fa] trigger_2fa_json: {trigger_2fa_json}")
-                if "errors" in trigger_2fa_json:
-                    try:
-                        if (
-                            trigger_2fa_json["errors"][0]["errorInfo"]["errorType"]
-                            == "unauthorized"
-                        ):
-                            raise AuthenticationError(
-                                "Getting unauthorized error on trigger_2fa step"
-                            )
-                    except TypeError:
-                        pass
-                    raise HttpProcessingError(
-                        code=trigger_2fa_res.status,
-                        message=str(trigger_2fa_json),
-                        headers=trigger_2fa_res.headers,
-                    )
+                trigger_2fa_dict = await trigger_2fa_res.json()
+                _LOGGER.debug(f"[trigger_2fa] trigger_2fa_dict: {trigger_2fa_dict}")
+                await self._resmed_response_error_check(
+                    "trigger_2fa", trigger_2fa_res, trigger_2fa_dict
+                )
             else:
                 raise ClientResponseError(
                     f"Trigger 2FA Connection Issue. Status {trigger_2fa_res.status} {trigger_2fa_res.message}"
@@ -193,33 +191,20 @@ class RESTEUClient(MyAirClient):
         ) as verify_2fa_res:
             if verify_2fa_res.ok:
                 _LOGGER.debug(f"[verify_2fa] verify_2fa_res: {verify_2fa_res}")
-                verify_2fa_json = await verify_2fa_res.json()
-                _LOGGER.debug(f"[verify_2fa] verify_2fa_json: {verify_2fa_json}")
-                if "errors" in verify_2fa_json:
-                    try:
-                        if (
-                            verify_2fa_json["errors"][0]["errorInfo"]["errorType"]
-                            == "unauthorized"
-                        ):
-                            raise AuthenticationError(
-                                "Getting unauthorized error on verify_2fa step"
-                            )
-                    except TypeError:
-                        pass
-                    raise HttpProcessingError(
-                        code=verify_2fa_res.status,
-                        message=str(verify_2fa_json),
-                        headers=verify_2fa_res.headers,
-                    )
+                verify_2fa_dict = await verify_2fa_res.json()
+                _LOGGER.debug(f"[verify_2fa] verify_2fa_dict: {verify_2fa_dict}")
+                await self._resmed_response_error_check(
+                    "verify_2fa", verify_2fa_res, verify_2fa_dict
+                )
             else:
                 raise ClientResponseError(
                     f"Verify 2FA Connection Issue. Status {verify_2fa_res.status} {verify_2fa_res.message}"
                 )
 
         # We've exchanged our user/pass for a session token
-        if "sessionToken" not in verify_2fa_json:
+        if "sessionToken" not in verify_2fa_dict:
             raise AuthenticationError("Cannot get sessionToken in verify_2fa step")
-        self._session_token = verify_2fa_json["sessionToken"]
+        self._session_token = verify_2fa_dict["sessionToken"]
 
     async def get_access_token(self) -> str:
 
@@ -302,26 +287,13 @@ class RESTEUClient(MyAirClient):
         ) as token_res:
             if token_res.ok:
                 _LOGGER.debug(f"[get_access_token] token_res: {token_res}")
-                token_json = await token_res.json()
-                _LOGGER.debug(f"[get_access_token] token_json: {token_json}")
-                if "errors" in token_json:
-                    try:
-                        if (
-                            token_json["errors"][0]["errorInfo"]["errorType"]
-                            == "unauthorized"
-                        ):
-                            raise AuthenticationError(
-                                "Getting unauthorized error on get_access_token step"
-                            )
-                    except TypeError:
-                        pass
-                    raise HttpProcessingError(
-                        token=token_res.status,
-                        message=str(token_json),
-                        headers=token_res.headers,
-                    )
-                self._access_token = token_json["access_token"]
-                self._id_token = token_json["id_token"]
+                token_dict = await token_res.json()
+                _LOGGER.debug(f"[get_access_token] token_dict: {token_dict}")
+                await self._resmed_response_error_check(
+                    "get_access_token", token_res, token_dict
+                )
+                self._access_token = token_dict["access_token"]
+                self._id_token = token_dict["id_token"]
                 # _LOGGER.debug(f"[get_access_token] access_token: {self._access_token}")
                 # _LOGGER.debug(f"[get_access_token] id_token: {self._id_token}")
             else:
@@ -372,27 +344,14 @@ class RESTEUClient(MyAirClient):
             appsync_url,
             headers=headers,
             json=json_query,
-        ) as records_response:
-            _LOGGER.debug(f"[gql_query] records_response: {records_response}")
-            records_json = await records_response.json()
-            _LOGGER.debug(f"[gql_query] records_json: {records_json}")
-            if "errors" in records_json:
-                try:
-                    if (
-                        records_json["errors"][0]["errorInfo"]["errorType"]
-                        == "unauthorized"
-                    ):
-                        raise AuthenticationError(
-                            "Getting unauthorized error on ggl_query step"
-                        )
-                except TypeError:
-                    pass
-                raise HttpProcessingError(
-                    code=records_response.status,
-                    message=str(records_json),
-                    headers=records_response.headers,
-                )
-        return records_json
+        ) as records_res:
+            _LOGGER.debug(f"[gql_query] records_res: {records_res}")
+            records_dict = await records_res.json()
+            _LOGGER.debug(f"[gql_query] records_dict: {records_dict}")
+            await self._resmed_response_error_check(
+                "ggl_query", records_res, records_dict
+            )
+        return records_dict
 
     async def get_sleep_records(self) -> List[SleepRecord]:
         today = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -432,9 +391,9 @@ class RESTEUClient(MyAirClient):
             "DATE", today
         )
 
-        records_json = await self.gql_query("GetPatientSleepRecords", query)
-        _LOGGER.debug(f"[get_sleep_records] {records_json}")
-        records = records_json["data"]["getPatientWrapper"]["sleepRecords"]["items"]
+        records_dict = await self.gql_query("GetPatientSleepRecords", query)
+        _LOGGER.debug(f"[get_sleep_records] {records_dict}")
+        records = records_dict["data"]["getPatientWrapper"]["sleepRecords"]["items"]
         return records
 
     async def get_user_device_data(self) -> MyAirDevice:
@@ -454,8 +413,8 @@ class RESTEUClient(MyAirClient):
         }
         """
 
-        records_json = await self.gql_query("getPatientWrapper", query)
-        records_json.update({CONF_ACCESS_TOKEN: self._access_token})
-        _LOGGER.debug(f"[get_user_device_data] {records_json}")
-        device = records_json["data"]["getPatientWrapper"]["fgDevices"][0]
+        records_dict = await self.gql_query("getPatientWrapper", query)
+        records_dict.update({CONF_ACCESS_TOKEN: self._access_token})
+        _LOGGER.debug(f"[get_user_device_data] {records_dict}")
+        device = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
         return device

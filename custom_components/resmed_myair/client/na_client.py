@@ -85,14 +85,14 @@ class RESTNAClient(MyAirClient):
             json=json_query,
         ) as authn_res:
             _LOGGER.debug(f"[get_access_token] authn_res: {authn_res}")
-            authn_json = await authn_res.json()
-            _LOGGER.debug(f"[get_access_token] authn_json: {authn_json}")
+            authn_dict = await authn_res.json()
+            _LOGGER.debug(f"[get_access_token] authn_dict: {authn_dict}")
 
         # We've exchanged our user/pass for a session token
-        if "sessionToken" not in authn_json:
+        if "sessionToken" not in authn_dict:
             raise AuthenticationError()
-        session_token = authn_json["sessionToken"]
-        # expires_at = authn_json["expiresAt"]
+        session_token = authn_dict["sessionToken"]
+        # expires_at = authn_dict["expiresAt"]
 
         # myAir uses Authorization Code with PKCE, so we generate our verifier here
         code_verifier = base64.urlsafe_b64encode(os.urandom(40)).decode("utf-8")
@@ -169,10 +169,10 @@ class RESTNAClient(MyAirClient):
             allow_redirects=False,
         ) as token_res:
             _LOGGER.debug(f"[get_access_token] token_res: {token_res}")
-            token_json = await token_res.json()
-            _LOGGER.debug(f"[get_access_token] token_json: {token_json}")
-            self.access_token = token_json["access_token"]
-            self.id_token = token_json["id_token"]
+            token_dict = await token_res.json()
+            _LOGGER.debug(f"[get_access_token] token_dict: {token_dict}")
+            self.access_token = token_dict["access_token"]
+            self.id_token = token_dict["id_token"]
             # _LOGGER.debug(f"[get_access_token] access_token: {self.access_token}")
             # _LOGGER.debug(f"[get_access_token] id_token: {self.id_token}")
             return self.access_token
@@ -220,11 +220,11 @@ class RESTNAClient(MyAirClient):
             appsync_url,
             headers=headers,
             json=json_query,
-        ) as records_response:
-            _LOGGER.debug(f"[gql_query] records_response: {records_response}")
-            records_json = await records_response.json()
-            _LOGGER.debug(f"[gql_query] records_json: {records_json}")
-        return records_json
+        ) as records_res:
+            _LOGGER.debug(f"[gql_query] records_res: {records_res}")
+            records_dict = await records_res.json()
+            _LOGGER.debug(f"[gql_query] records_dict: {records_dict}")
+        return records_dict
 
     async def get_sleep_records(self) -> List[SleepRecord]:
 
@@ -265,9 +265,9 @@ class RESTNAClient(MyAirClient):
             "DATE", today
         )
 
-        records_json = await self.gql_query("GetPatientSleepRecords", query)
-        _LOGGER.debug(f"[get_sleep_records] {records_json}")
-        records = records_json["data"]["getPatientWrapper"]["sleepRecords"]["items"]
+        records_dict = await self.gql_query("GetPatientSleepRecords", query)
+        _LOGGER.debug(f"[get_sleep_records] {records_dict}")
+        records = records_dict["data"]["getPatientWrapper"]["sleepRecords"]["items"]
         return records
 
     async def get_user_device_data(self) -> MyAirDevice:
@@ -287,7 +287,7 @@ class RESTNAClient(MyAirClient):
         }
         """
 
-        records_json = await self.gql_query("getPatientWrapper", query)
-        _LOGGER.debug(f"[get_user_device_data] {records_json}")
-        device = records_json["data"]["getPatientWrapper"]["fgDevices"][0]
+        records_dict = await self.gql_query("getPatientWrapper", query)
+        _LOGGER.debug(f"[get_user_device_data] {records_dict}")
+        device = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
         return device

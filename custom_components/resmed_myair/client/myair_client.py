@@ -8,6 +8,12 @@ class AuthenticationError(Exception):
     pass
 
 
+class IncompleteAccountError(Exception):
+    """This error is thrown when ResMed reports that the account is not fully setup"""
+
+    pass
+
+
 class MyAirConfig(NamedTuple):
     """
     This is our config for logging into MyAir

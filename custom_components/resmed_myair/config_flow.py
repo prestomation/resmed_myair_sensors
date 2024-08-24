@@ -8,7 +8,12 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import voluptuous as vol
 
 from .client import get_client
-from .client.myair_client import AuthenticationError, MyAirConfig, MyAirDevice
+from .client.myair_client import (
+    AuthenticationError,
+    IncompleteAccountError,
+    MyAirConfig,
+    MyAirDevice,
+)
 from .common import (
     CONF_ACCESS_TOKEN,
     CONF_PASSWORD,
@@ -86,6 +91,11 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         f"Connection Error with eu_trigger_2fa. {e.__class__.__qualname__}: {e}"
                     )
                     errors["base"] = "authentication_error"
+                except IncompleteAccountError as e:
+                    _LOGGER.error(
+                        f"myAir Account Setup Incomplete with eu_trigger_2fa. {e.__class__.__qualname__}: {e}"
+                    )
+                    return self.async_abort(reason="incomplete_account")
 
             try:
                 device: MyAirDevice = await get_na_device(
@@ -112,7 +122,11 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     f"Connection Error with get_na_device. {e.__class__.__qualname__}: {e}"
                 )
                 errors["base"] = "authentication_error"
-
+            except IncompleteAccountError as e:
+                _LOGGER.error(
+                    f"myAir Account Setup Incomplete with get_na_device. {e.__class__.__qualname__}: {e}"
+                )
+                return self.async_abort(reason="incomplete_account")
         _LOGGER.info(f"Setting up ResMed myAir Integration Version: {VERSION}")
         return self.async_show_form(
             step_id="user",
@@ -163,7 +177,11 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     f"Connection Error with get_eu_device. {e.__class__.__qualname__}: {e}"
                 )
                 errors["base"] = "2fa_error"
-
+            except IncompleteAccountError as e:
+                _LOGGER.error(
+                    f"myAir Account Setup Incomplete with get_eu_device. {e.__class__.__qualname__}: {e}"
+                )
+                return self.async_abort(reason="incomplete_account")
         return self.async_show_form(
             step_id="eu_details",
             data_schema=vol.Schema(
