@@ -10,8 +10,9 @@ from typing import List
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.redact import async_redact_data
 
-from .common import CONF_REGION, DOMAIN
+from .common import CONF_REGION, DOMAIN, KEYS_TO_REDACT
 from .const import VERSION
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,7 +22,9 @@ PLATFORMS: List[str] = ["sensor"]
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up from a config entry."""
     _LOGGER.info(f"Starting ResMed myAir Integration Version: {VERSION}")
-    _LOGGER.debug(f"[init async_setup_entry] entry: {config_entry.data}")
+    _LOGGER.debug(
+        f"[init async_setup_entry] config_entry.data: {async_redact_data(config_entry.data, KEYS_TO_REDACT)}"
+    )
     hass.data.setdefault(DOMAIN, {})
     hass_data = dict(config_entry.data)
     hass.data[DOMAIN][config_entry.entry_id] = hass_data

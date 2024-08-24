@@ -5,6 +5,7 @@ from aiohttp.http_exceptions import HttpProcessingError
 from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.redact import async_redact_data
 import voluptuous as vol
 
 from .client import get_client
@@ -17,12 +18,14 @@ from .client.myair_client import (
 )
 from .common import (
     CONF_ACCESS_TOKEN,
+    CONF_COUNTRY_CODE,
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
     CONF_VERIFICATION_CODE,
     DEFAULT_PREFIX,
     DOMAIN,
+    KEYS_TO_REDACT,
     REGION_EU,
     REGION_NA,
 )
@@ -32,9 +35,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def get_na_device(hass, username, password, region) -> MyAirDevice:
-    config = MyAirConfig(
-        username=username, password=password, region=region, access_token=None
-    )
+    config = MyAirConfig(username=username, password=password, region=region)
     client = get_client(config, async_create_clientsession(hass))
     await client.connect()
     device = await client.get_user_device_data()
@@ -42,9 +43,7 @@ async def get_na_device(hass, username, password, region) -> MyAirDevice:
 
 
 async def eu_trigger_2fa(hass, username, password, region) -> MyAirDevice:
-    config = MyAirConfig(
-        username=username, password=password, region=region, access_token=None
-    )
+    config = MyAirConfig(username=username, password=password, region=region)
     client = get_client(config, async_create_clientsession(hass))
     await client.get_state_token_and_trigger_2fa()
     return client
@@ -115,7 +114,12 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 await self.async_set_unique_id(serial_number)
                 self._abort_if_unique_id_configured()
-                _LOGGER.debug(f"[async_step_user] user_input: {self._user_input}")
+                self._user_input.update(
+                    {CONF_COUNTRY_CODE: device.get(CONF_COUNTRY_CODE, None)}
+                )
+                _LOGGER.debug(
+                    f"[async_step_user] user_input: {async_redact_data(self._user_input, KEYS_TO_REDACT)}"
+                )
                 return self.async_create_entry(
                     title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
                     data=self._user_input,
@@ -178,7 +182,12 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_input.update(
                     {CONF_ACCESS_TOKEN: device.get(CONF_ACCESS_TOKEN, None)}
                 )
-                _LOGGER.debug(f"[async_step_eu_details] user_input: {self._user_input}")
+                self._user_input.update(
+                    {CONF_COUNTRY_CODE: device.get(CONF_COUNTRY_CODE, None)}
+                )
+                _LOGGER.debug(
+                    f"[async_step_eu_details] user_input: {async_redact_data(self._user_input, KEYS_TO_REDACT)}"
+                )
                 return self.async_create_entry(
                     title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
                     data=self._user_input,

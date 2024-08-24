@@ -30,7 +30,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
         myair_client: MyAirClient,
     ) -> None:
         """Initialize DataUpdateCoordinator for ResMed myAir."""
-        _LOGGER.debug("Initializing DataUpdateCoordinator for ResMed myAir")
+        _LOGGER.info("Initializing DataUpdateCoordinator for ResMed myAir")
         self.myair_client = myair_client
         super().__init__(
             hass,
