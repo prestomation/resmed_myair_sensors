@@ -8,6 +8,7 @@ import voluptuous as vol
 from .client import get_client
 from .client.myair_client import AuthenticationError, MyAirConfig, MyAirDevice
 from .common import (
+    CONF_ACCESS_TOKEN,
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
@@ -23,7 +24,9 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def get_na_device(hass, username, password, region) -> MyAirDevice:
-    config = MyAirConfig(username=username, password=password, region=region)
+    config = MyAirConfig(
+        username=username, password=password, region=region, access_token=None
+    )
     client = get_client(config, async_create_clientsession(hass))
     await client.connect()
     device = await client.get_user_device_data()
@@ -31,7 +34,9 @@ async def get_na_device(hass, username, password, region) -> MyAirDevice:
 
 
 async def eu_trigger_2fa(hass, username, password, region) -> MyAirDevice:
-    config = MyAirConfig(username=username, password=password, region=region)
+    config = MyAirConfig(
+        username=username, password=password, region=region, access_token=None
+    )
     client = get_client(config, async_create_clientsession(hass))
     await client.get_state_token_and_trigger_2fa()
     return client
@@ -65,8 +70,8 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 try:
                     self._client = await eu_trigger_2fa(
                         self.hass,
-                        user_input[CONF_USER_NAME],
-                        user_input[CONF_PASSWORD],
+                        self._user_input[CONF_USER_NAME],
+                        self._user_input[CONF_PASSWORD],
                         region,
                     )
                 except AuthenticationError:
@@ -75,8 +80,8 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 device: MyAirDevice = await get_na_device(
                     self.hass,
-                    user_input[CONF_USER_NAME],
-                    user_input[CONF_PASSWORD],
+                    self._user_input[CONF_USER_NAME],
+                    self._user_input[CONF_PASSWORD],
                     region,
                 )
 
@@ -90,7 +95,7 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 return self.async_create_entry(
                     title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
-                    data=user_input,
+                    data=self._user_input,
                 )
             except AuthenticationError:
                 errors["base"] = "authentication_error"
@@ -131,7 +136,11 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 await self.async_set_unique_id(serial_number)
                 self._abort_if_unique_id_configured()
-
+                self._user_input.pop(CONF_VERIFICATION_CODE)
+                self._user_input.update(
+                    {CONF_ACCESS_TOKEN: device.get(CONF_ACCESS_TOKEN, None)}
+                )
+                _LOGGER.debug(f"[async_step_eu_details] user_input: {self._user_input}")
                 return self.async_create_entry(
                     title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
                     data=self._user_input,

@@ -12,6 +12,8 @@ from aiohttp.client_exceptions import ClientResponseError
 from aiohttp.http_exceptions import HttpProcessingError
 import jwt
 
+from custom_components.resmed_myair.common import CONF_ACCESS_TOKEN
+
 from .myair_client import (
     AuthenticationError,
     MyAirClient,
@@ -62,10 +64,17 @@ class RESTEUClient(MyAirClient):
         self._2fa_url = EU_CONFIG["2fa_url"].format(
             authn_client_id=self._authn_client_id
         )
-        self._access_token = None
+
+        self._access_token = (
+            self._config.access_token if self._config.access_token else None
+        )
         self._id_token = None
         self._state_token = None
         self._session_token = None
+
+    async def connect(self):
+        # We will use the existing access token
+        return
 
     async def get_state_token_and_trigger_2fa(self):
         await self.get_state_token()
@@ -399,6 +408,7 @@ class RESTEUClient(MyAirClient):
         """
 
         records_json = await self.gql_query("getPatientWrapper", query)
+        records_json.update({CONF_ACCESS_TOKEN: self._access_token})
         _LOGGER.debug(f"[get_user_device_data] {records_json}")
         device = records_json["data"]["getPatientWrapper"]["fgDevices"][0]
         return device

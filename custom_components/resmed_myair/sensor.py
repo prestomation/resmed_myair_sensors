@@ -19,7 +19,13 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import get_client
 from .client.myair_client import MyAirClient, MyAirConfig
-from .common import CONF_PASSWORD, CONF_REGION, CONF_USER_NAME, DOMAIN
+from .common import (
+    CONF_ACCESS_TOKEN,
+    CONF_PASSWORD,
+    CONF_REGION,
+    CONF_USER_NAME,
+    DOMAIN,
+)
 from .coordinator import MyAirDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -185,11 +191,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up myAir sensors."""
+    _LOGGER.debug(f"[sensor async_setup_entry] config_entry.data: {config_entry.data}")
     username = config_entry.data[CONF_USER_NAME]
     password = config_entry.data[CONF_PASSWORD]
     region = config_entry.data.get(CONF_REGION, "NA")
+    access_token = config_entry.data.get(CONF_ACCESS_TOKEN, None)
 
-    client_config = MyAirConfig(username=username, password=password, region=region)
+    client_config = MyAirConfig(
+        username=username, password=password, region=region, access_token=access_token
+    )
     client: MyAirClient = get_client(client_config, async_create_clientsession(hass))
     coordinator = MyAirDataUpdateCoordinator(hass, client)
 
