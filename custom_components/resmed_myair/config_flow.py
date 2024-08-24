@@ -162,7 +162,7 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(
                     f"Connection Error with get_eu_device. {e.__class__.__qualname__}: {e}"
                 )
-                errors["base"] = "authentication_error"
+                errors["base"] = "2fa_error"
 
         return self.async_show_form(
             step_id="eu_details",

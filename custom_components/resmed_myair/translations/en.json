@@ -21,7 +21,8 @@
         },
         "error": {
             "already_configured": "Device is already configured",
-            "authentication_error": "Invalid username or password. Please verify at myair.resmed.com"
+            "authentication_error": "Invalid username or password. Please verify at myair.resmed.com",
+            "2fa_error": "Unable to verify 2FA. Ensure code is correct."
         },
         "abort": {
             "already_configured": "Device is already configured"
