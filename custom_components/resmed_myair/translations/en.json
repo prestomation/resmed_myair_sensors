@@ -24,6 +24,7 @@
             "2fa_error": "Unable to verify 2FA. Ensure code is correct."
         },
         "abort": {
+            "already_configured": "Device is already configured",
             "incomplete_account": "myAir Account Setup is Incomplete. Login to the myAir website and ensure that CPAP data is showing. Also, ensure that the Time Zone is set under My Account."
         }
     }

@@ -13,6 +13,7 @@ from .client.myair_client import (
     IncompleteAccountError,
     MyAirConfig,
     MyAirDevice,
+    ParsingError,
 )
 from .common import (
     CONF_ACCESS_TOKEN,
@@ -104,7 +105,9 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._user_input[CONF_PASSWORD],
                     region,
                 )
-
+                _LOGGER.debug(f"[async_step_user] device: {device}")
+                if "serialNumber" not in device:
+                    raise ParsingError(f"Unable to get Serial Number from Device Data")
                 serial_number = device["serialNumber"]
                 _LOGGER.info(
                     f"ResMed MyAir: Found device with serial number {serial_number}"
@@ -112,12 +115,17 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 await self.async_set_unique_id(serial_number)
                 self._abort_if_unique_id_configured()
-
+                _LOGGER.debug(f"[async_step_user] user_input: {self._user_input}")
                 return self.async_create_entry(
                     title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
                     data=self._user_input,
                 )
-            except (AuthenticationError, HttpProcessingError, ClientResponseError) as e:
+            except (
+                AuthenticationError,
+                HttpProcessingError,
+                ClientResponseError,
+                ParsingError,
+            ) as e:
                 _LOGGER.error(
                     f"Connection Error with get_na_device. {e.__class__.__qualname__}: {e}"
                 )
@@ -155,7 +163,10 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 device: MyAirDevice = await get_eu_device(
                     self._client, self._user_input.get(CONF_VERIFICATION_CODE, "")
                 )
+                _LOGGER.debug(f"[async_step_eu_details] device: {device}")
 
+                if "serialNumber" not in device:
+                    raise ParsingError(f"Unable to get Serial Number from Device Data")
                 serial_number = device["serialNumber"]
                 _LOGGER.info(
                     f"ResMed MyAir: Found device with serial number {serial_number}"
@@ -172,7 +183,12 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
                     data=self._user_input,
                 )
-            except (AuthenticationError, HttpProcessingError, ClientResponseError) as e:
+            except (
+                AuthenticationError,
+                HttpProcessingError,
+                ClientResponseError,
+                ParsingError,
+            ) as e:
                 _LOGGER.error(
                     f"Connection Error with get_eu_device. {e.__class__.__qualname__}: {e}"
                 )

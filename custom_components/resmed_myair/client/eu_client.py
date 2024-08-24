@@ -20,6 +20,7 @@ from .myair_client import (
     MyAirClient,
     MyAirConfig,
     MyAirDevice,
+    ParsingError,
     SleepRecord,
 )
 
@@ -247,6 +248,8 @@ class RESTEUClient(MyAirClient):
         ) as code_res:
             if code_res.ok:
                 _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
+                if "location" not in code_res.headers:
+                    raise ParsingError("Unable to get location from code_res")
                 location = code_res.headers["location"]
                 _LOGGER.debug(f"[get_access_token] location: {location}")
             else:
@@ -292,6 +295,10 @@ class RESTEUClient(MyAirClient):
                 await self._resmed_response_error_check(
                     "get_access_token", token_res, token_dict
                 )
+                if "access_token" not in token_dict:
+                    raise ParsingError("access_token not in token_dict")
+                if "id_token" not in token_dict:
+                    raise ParsingError("id_token not in token_dict")
                 self._access_token = token_dict["access_token"]
                 self._id_token = token_dict["id_token"]
                 # _LOGGER.debug(f"[get_access_token] access_token: {self._access_token}")
@@ -308,11 +315,19 @@ class RESTEUClient(MyAirClient):
 
         # We trust this JWT because it is myAir giving it to us
         # So we can pull the middle piece out, which is the payload, and turn it to json
-        jwt_data = jwt.decode(self._id_token, options={"verify_signature": False})
+        try:
+            jwt_data = jwt.decode(self._id_token, options={"verify_signature": False})
+        except Exception as e:
+            _LOGGER.error(
+                f"Error decoding id_token into jwt_data. {e.__class__.__qualname__}: {e}"
+            )
+            raise ParsingError("Unable to decode id_token into jwt_data") from e
         _LOGGER.debug(f"[gql_query] jwt_data: {jwt_data}")
 
         # The graphql API only works properly if we provide the expected country code
         # The rest of the paramters are required, but don't seem to be further validated
+        if "myAirCountryId" not in jwt_data:
+            raise ParsingError("myAirCountryId not found in jwt_data")
         country_code = jwt_data["myAirCountryId"]
 
         appsync_url = EU_CONFIG["appsync_url"]
@@ -391,9 +406,17 @@ class RESTEUClient(MyAirClient):
             "DATE", today
         )
 
+        _LOGGER.debug(f"[get_sleep_records] Starting Query")
         records_dict = await self.gql_query("GetPatientSleepRecords", query)
-        _LOGGER.debug(f"[get_sleep_records] {records_dict}")
-        records = records_dict["data"]["getPatientWrapper"]["sleepRecords"]["items"]
+        _LOGGER.debug(f"[get_sleep_records] records_dict: {records_dict}")
+        try:
+            records = records_dict["data"]["getPatientWrapper"]["sleepRecords"]["items"]
+        except Exception as e:
+            _LOGGER.error(
+                f"Error getting Patient Sleep Records. {e.__class__.__qualname__}: {e}"
+            )
+            raise ParsingError("Error getting Patient Sleep Records") from e
+        _LOGGER.debug(f"[get_sleep_records] records: {records}")
         return records
 
     async def get_user_device_data(self) -> MyAirDevice:
@@ -413,8 +436,16 @@ class RESTEUClient(MyAirClient):
         }
         """
 
+        _LOGGER.debug(f"[get_user_device_data] Starting Query")
         records_dict = await self.gql_query("getPatientWrapper", query)
-        records_dict.update({CONF_ACCESS_TOKEN: self._access_token})
-        _LOGGER.debug(f"[get_user_device_data] {records_dict}")
-        device = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
+        _LOGGER.debug(f"[get_user_device_data] records_dict: {records_dict}")
+        try:
+            device = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
+        except Exception as e:
+            _LOGGER.error(
+                f"Error getting User Device Data. {e.__class__.__qualname__}: {e}"
+            )
+            raise ParsingError("Error getting User Device Data") from e
+        device.update({CONF_ACCESS_TOKEN: self._access_token})
+        _LOGGER.debug(f"[get_user_device_data] device: {device}")
         return device

@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import List, Literal, NamedTuple, TypedDict
+from typing import List, Literal, NamedTuple, NotRequired, TypedDict
 
 
 class AuthenticationError(Exception):
@@ -10,6 +10,12 @@ class AuthenticationError(Exception):
 
 class IncompleteAccountError(Exception):
     """This error is thrown when ResMed reports that the account is not fully setup"""
+
+    pass
+
+
+class ParsingError(Exception):
+    """This error is thrown when the expected data is not found in the result"""
 
     pass
 
@@ -26,7 +32,7 @@ class MyAirConfig(NamedTuple):
     username: str
     password: str
     region: Literal["NA", "EU"]
-    access_token: str
+    access_token: str = None
 
 
 class SleepRecord(TypedDict):
@@ -58,7 +64,8 @@ class MyAirDevice(TypedDict):
     fgDevicePatientId: str
 
     # URI on the domain: https://static.myair-prd.dht.live/
-    imagePath: str
+    imagePath: NotRequired[str]
+    access_token: NotRequired[str]
 
 
 class MyAirClient(ABC):
