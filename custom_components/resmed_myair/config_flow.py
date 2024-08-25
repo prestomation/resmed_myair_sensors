@@ -167,7 +167,9 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 device: MyAirDevice = await get_eu_device(
                     self._client, self._user_input.get(CONF_VERIFICATION_CODE, "")
                 )
-                _LOGGER.debug(f"[async_step_eu_details] device: {device}")
+                _LOGGER.debug(
+                    f"[async_step_eu_details] device: {async_redact_data(device, KEYS_TO_REDACT)}"
+                )
 
                 if "serialNumber" not in device:
                     raise ParsingError(f"Unable to get Serial Number from Device Data")

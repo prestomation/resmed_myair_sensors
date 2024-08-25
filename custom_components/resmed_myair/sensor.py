@@ -22,6 +22,7 @@ from .client import get_client
 from .client.myair_client import MyAirClient, MyAirConfig
 from .common import (
     CONF_ACCESS_TOKEN,
+    CONF_COUNTRY_CODE,
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
@@ -199,10 +200,15 @@ async def async_setup_entry(
     username = config_entry.data[CONF_USER_NAME]
     password = config_entry.data[CONF_PASSWORD]
     region = config_entry.data.get(CONF_REGION, "NA")
+    country_code = config_entry.data.get(CONF_COUNTRY_CODE, None)
     access_token = config_entry.data.get(CONF_ACCESS_TOKEN, None)
 
     client_config = MyAirConfig(
-        username=username, password=password, region=region, access_token=access_token
+        username=username,
+        password=password,
+        region=region,
+        country_code=country_code,
+        access_token=access_token,
     )
     client: MyAirClient = get_client(client_config, async_create_clientsession(hass))
     coordinator = MyAirDataUpdateCoordinator(hass, client)

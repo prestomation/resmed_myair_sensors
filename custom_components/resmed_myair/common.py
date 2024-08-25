@@ -13,4 +13,13 @@ CONF_ACCESS_TOKEN = "access_token"
 REGION_NA = "NA"
 REGION_EU = "EU"
 
-KEYS_TO_REDACT = ["access_token", "Authorization", "password", "Password"]
+KEYS_TO_REDACT = [
+    "access_token",
+    "Authorization",
+    "firstName",
+    "id_token",
+    "lastName",
+    "name",
+    "password",
+    "Password",
+]

@@ -365,10 +365,14 @@ class RESTEUClient(MyAirClient):
             # The graphql API only works properly if we provide the expected country code
             # The rest of the paramters are required, but don't seem to be further validated
             if "myAirCountryId" not in jwt_data:
+                _LOGGER.error(f"myAirCountryId not found in jwt_data")
                 raise ParsingError("myAirCountryId not found in jwt_data")
             self._country_code = jwt_data["myAirCountryId"]
             _LOGGER.info(f"Country Code: {self._country_code}")
         if not self._country_code:
+            _LOGGER.error(
+                "country_code not defined and id_token not present to identify it"
+            )
             raise ParsingError(
                 "country_code not defined and id_token not present to identify it"
             )
