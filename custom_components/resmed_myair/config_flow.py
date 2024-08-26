@@ -19,7 +19,6 @@ from .client.myair_client import (
 )
 from .common import (
     AUTHN_SUCCESS,
-    CONF_CLIENT,
     CONF_COOKIES,
     CONF_PASSWORD,
     CONF_REGION,
@@ -145,7 +144,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             try:
                 status, device = await get_2fa_device(
-                    self._data.get(CONF_CLIENT, None),
+                    self._client,
                     self._data.get(CONF_VERIFICATION_CODE, ""),
                 )
                 if status == AUTHN_SUCCESS:
@@ -286,7 +285,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             try:
                 status, device = await get_2fa_device(
-                    self._data.get(CONF_CLIENT, None),
+                    self._client,
                     self._data.get(CONF_VERIFICATION_CODE, ""),
                 )
                 if status == AUTHN_SUCCESS:
