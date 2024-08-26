@@ -17,7 +17,7 @@ from .client.myair_client import (
     MyAirConfig,
     ParsingError,
 )
-from .common import (
+from .const import (
     AUTHN_SUCCESS,
     CONF_COOKIES,
     CONF_PASSWORD,
@@ -28,8 +28,8 @@ from .common import (
     KEYS_TO_REDACT,
     REGION_EU,
     REGION_NA,
+    VERSION,
 )
-from .const import VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._data.get(CONF_VERIFICATION_CODE, ""),
                 )
                 if status == AUTHN_SUCCESS:
-                    self._data.pop(CONF_VERIFICATION_CODE)
+                    self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._data.update({CONF_COOKIES: self._client.cookies})
                     _LOGGER.debug(
                         f"[async_step_verify_2fa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
@@ -296,17 +296,20 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._data.get(CONF_VERIFICATION_CODE, ""),
                 )
                 if status == AUTHN_SUCCESS:
-                    self._data.pop(CONF_VERIFICATION_CODE)
+                    self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._data.update({CONF_COOKIES: self._client.cookies})
                     _LOGGER.debug(
                         f"[async_step_reauth_verify_2fa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
                     )
 
-                self.hass.config_entries.async_update_entry(
-                    self._entry, data={**self._data}
-                )
-                await self.hass.config_entries.async_reload(self._entry.entry_id)
-                return self.async_abort(reason="reauth_successful")
+                    self.hass.config_entries.async_update_entry(
+                        self._entry, data={**self._data}
+                    )
+                    await self.hass.config_entries.async_reload(self._entry.entry_id)
+                    return self.async_abort(reason="reauth_successful")
+                else:
+                    _LOGGER.error(f"Issue verifying 2FA. Status: {status}")
+                    errors["base"] = "2fa_error"
             except (
                 AuthenticationError,
                 HttpProcessingError,

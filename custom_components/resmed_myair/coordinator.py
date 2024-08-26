@@ -13,7 +13,7 @@ from .client.myair_client import (
     MyAirDevice,
     SleepRecord,
 )
-from .common import DEFAULT_UPDATE_RATE_MIN, KEYS_TO_REDACT
+from .const import DEFAULT_UPDATE_RATE_MIN, KEYS_TO_REDACT
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -20,7 +20,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client import get_client
 from .client.myair_client import MyAirClient, MyAirConfig
-from .common import (
+from .const import (
     CONF_COOKIES,
     CONF_PASSWORD,
     CONF_REGION,

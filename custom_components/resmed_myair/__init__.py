@@ -12,8 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.redact import async_redact_data
 
-from .common import CONF_REGION, DOMAIN, KEYS_TO_REDACT, REGION_NA
-from .const import VERSION
+from .const import CONF_REGION, DOMAIN, KEYS_TO_REDACT, REGION_NA, VERSION
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS: List[str] = ["sensor"]
@@ -56,6 +55,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info(f"Unloading: {async_redact_data(entry.data, KEYS_TO_REDACT)}")
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok

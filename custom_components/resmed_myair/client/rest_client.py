@@ -14,7 +14,7 @@ from homeassistant.helpers.redact import async_redact_data
 import jwt
 from yarl import URL
 
-from custom_components.resmed_myair.common import (
+from custom_components.resmed_myair.const import (
     AUTH_NEEDS_2FA,
     AUTHN_SUCCESS,
     KEYS_TO_REDACT,
