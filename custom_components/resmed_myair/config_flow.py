@@ -1,8 +1,10 @@
+from collections.abc import Mapping
 import logging
+from typing import Any
 
 from aiohttp.client_exceptions import ClientResponseError
 from aiohttp.http_exceptions import HttpProcessingError
-from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.redact import async_redact_data
@@ -13,12 +15,12 @@ from .client.myair_client import (
     AuthenticationError,
     IncompleteAccountError,
     MyAirConfig,
-    MyAirDevice,
     ParsingError,
 )
 from .common import (
-    CONF_ACCESS_TOKEN,
-    CONF_COUNTRY_CODE,
+    AUTHN_SUCCESS,
+    CONF_CLIENT,
+    CONF_COOKIES,
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
@@ -34,28 +36,23 @@ from .const import VERSION
 _LOGGER = logging.getLogger(__name__)
 
 
-async def get_na_device(hass, username, password, region) -> MyAirDevice:
+async def get_device(hass, username, password, region):
     config = MyAirConfig(username=username, password=password, region=region)
     client = get_client(config, async_create_clientsession(hass))
-    await client.connect()
+    status = await client.connect(initial=True)
+    device = None
+    if status == AUTHN_SUCCESS:
+        device = await client.get_user_device_data()
+    return status, device, client
+
+
+async def get_2fa_device(client, verification_code):
+    status = await client.verify_2fa_and_get_access_token(verification_code)
     device = await client.get_user_device_data()
-    return device
+    return status, device
 
 
-async def eu_trigger_2fa(hass, username, password, region) -> MyAirDevice:
-    config = MyAirConfig(username=username, password=password, region=region)
-    client = get_client(config, async_create_clientsession(hass))
-    await client.get_state_token_and_trigger_2fa()
-    return client
-
-
-async def get_eu_device(client, verification_code) -> MyAirDevice:
-    await client.verify_2fa_and_get_access_token(verification_code)
-    device = await client.get_user_device_data()
-    return device
-
-
-class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
 
     # For future migration support
     VERSION = 2
@@ -63,67 +60,50 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize flow."""
         self._client = None
+        self._entry: ConfigEntry
         self._prefix = DEFAULT_PREFIX
-        self._user_input = {}
+        self._data = {}
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(self, user_input=None) -> ConfigFlowResult:
         """Handle the initial step."""
-        errors = {}
-        user_input = user_input or {}
+        errors: dict[str, str] = {}
+        user_input: dict[str, Any] | None = user_input or {}
         if user_input:
-            self._user_input = user_input
+            self._data = user_input
             region = user_input.get(CONF_REGION, "NA")
-            if region == "EU":
-                try:
-                    self._client = await eu_trigger_2fa(
-                        self.hass,
-                        self._user_input[CONF_USER_NAME],
-                        self._user_input[CONF_PASSWORD],
-                        region,
-                    )
-                    return await self.async_step_eu_details()
-                except (
-                    AuthenticationError,
-                    HttpProcessingError,
-                    ClientResponseError,
-                ) as e:
-                    _LOGGER.error(
-                        f"Connection Error with eu_trigger_2fa. {e.__class__.__qualname__}: {e}"
-                    )
-                    errors["base"] = "authentication_error"
-                except IncompleteAccountError as e:
-                    _LOGGER.error(
-                        f"myAir Account Setup Incomplete with eu_trigger_2fa. {e.__class__.__qualname__}: {e}"
-                    )
-                    return self.async_abort(reason="incomplete_account")
-
             try:
-                device: MyAirDevice = await get_na_device(
+                status, device, self._client = await get_device(
                     self.hass,
-                    self._user_input[CONF_USER_NAME],
-                    self._user_input[CONF_PASSWORD],
+                    self._data[CONF_USER_NAME],
+                    self._data[CONF_PASSWORD],
                     region,
                 )
-                _LOGGER.debug(f"[async_step_user] device: {device}")
-                if "serialNumber" not in device:
-                    raise ParsingError(f"Unable to get Serial Number from Device Data")
-                serial_number = device["serialNumber"]
-                _LOGGER.info(
-                    f"ResMed MyAir: Found device with serial number {serial_number}"
-                )
+                if status == AUTHN_SUCCESS:
+                    _LOGGER.debug(
+                        f"[async_step_user] device: {async_redact_data(device, KEYS_TO_REDACT)}"
+                    )
+                    if "serialNumber" not in device:
+                        raise ParsingError(
+                            f"Unable to get Serial Number from Device Data"
+                        )
+                    serial_number = device["serialNumber"]
+                    _LOGGER.info(
+                        f"ResMed myAir: Found device with serial number {serial_number}"
+                    )
 
-                await self.async_set_unique_id(serial_number)
-                self._abort_if_unique_id_configured()
-                self._user_input.update(
-                    {CONF_COUNTRY_CODE: device.get(CONF_COUNTRY_CODE, None)}
-                )
-                _LOGGER.debug(
-                    f"[async_step_user] user_input: {async_redact_data(self._user_input, KEYS_TO_REDACT)}"
-                )
-                return self.async_create_entry(
-                    title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
-                    data=self._user_input,
-                )
+                    await self.async_set_unique_id(serial_number)
+                    self._abort_if_unique_id_configured()
+                    self._data.update({CONF_COOKIES: self._client.cookies})
+                    _LOGGER.debug(
+                        f"[async_step_user] data: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+                    )
+
+                    return self.async_create_entry(
+                        title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
+                        data=self._data,
+                    )
+                else:
+                    return await self.async_step_verify_2fa()
             except (
                 AuthenticationError,
                 HttpProcessingError,
@@ -131,12 +111,12 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ParsingError,
             ) as e:
                 _LOGGER.error(
-                    f"Connection Error with get_na_device. {e.__class__.__qualname__}: {e}"
+                    f"Connection Error with async_step_user. {e.__class__.__qualname__}: {e}"
                 )
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
                 _LOGGER.error(
-                    f"myAir Account Setup Incomplete with get_na_device. {e.__class__.__qualname__}: {e}"
+                    f"ResMed myAir Account Setup Incomplete with async_step_user. {e.__class__.__qualname__}: {e}"
                 )
                 return self.async_abort(reason="incomplete_account")
         _LOGGER.info(f"Setting up ResMed myAir Integration Version: {VERSION}")
@@ -158,42 +138,26 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_eu_details(self, user_input=None):
-        errors = {}
-        user_input = user_input or {}
+    async def async_step_verify_2fa(self, user_input=None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        user_input: dict[str, Any] | None = user_input or {}
         if user_input:
-            self._user_input.update(user_input)
+            self._data.update(user_input)
             try:
-                device: MyAirDevice = await get_eu_device(
-                    self._client, self._user_input.get(CONF_VERIFICATION_CODE, "")
+                status, device = await get_2fa_device(
+                    self._data.get(CONF_CLIENT, None),
+                    self._data.get(CONF_VERIFICATION_CODE, ""),
                 )
-                _LOGGER.debug(
-                    f"[async_step_eu_details] device: {async_redact_data(device, KEYS_TO_REDACT)}"
-                )
-
-                if "serialNumber" not in device:
-                    raise ParsingError(f"Unable to get Serial Number from Device Data")
-                serial_number = device["serialNumber"]
-                _LOGGER.info(
-                    f"ResMed MyAir: Found device with serial number {serial_number}"
-                )
-
-                await self.async_set_unique_id(serial_number)
-                self._abort_if_unique_id_configured()
-                self._user_input.pop(CONF_VERIFICATION_CODE)
-                self._user_input.update(
-                    {CONF_ACCESS_TOKEN: device.get(CONF_ACCESS_TOKEN, None)}
-                )
-                self._user_input.update(
-                    {CONF_COUNTRY_CODE: device.get(CONF_COUNTRY_CODE, None)}
-                )
-                _LOGGER.debug(
-                    f"[async_step_eu_details] user_input: {async_redact_data(self._user_input, KEYS_TO_REDACT)}"
-                )
-                return self.async_create_entry(
-                    title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
-                    data=self._user_input,
-                )
+                if status == AUTHN_SUCCESS:
+                    self._data.pop(CONF_VERIFICATION_CODE)
+                    self._data.update({CONF_COOKIES: self._client.cookies})
+                    _LOGGER.debug(
+                        f"[async_step_verify_2fa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+                    )
+                    return self.async_create_entry(
+                        title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
+                        data=self._data,
+                    )
             except (
                 AuthenticationError,
                 HttpProcessingError,
@@ -201,16 +165,17 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ParsingError,
             ) as e:
                 _LOGGER.error(
-                    f"Connection Error with get_eu_device. {e.__class__.__qualname__}: {e}"
+                    f"Connection Error with verify_2fa. {e.__class__.__qualname__}: {e}"
                 )
                 errors["base"] = "2fa_error"
             except IncompleteAccountError as e:
                 _LOGGER.error(
-                    f"myAir Account Setup Incomplete with get_eu_device. {e.__class__.__qualname__}: {e}"
+                    f"ResMed myAir Account Setup Incomplete with verify_2fa. {e.__class__.__qualname__}: {e}"
                 )
                 return self.async_abort(reason="incomplete_account")
+
         return self.async_show_form(
-            step_id="eu_details",
+            step_id="verify_2fa",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_VERIFICATION_CODE): selector.TextSelector(
@@ -219,7 +184,150 @@ class MyAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             description_placeholders={
-                "username": self._user_input.get(CONF_USER_NAME, "your email address"),
+                "username": self._data.get(CONF_USER_NAME, "your email address"),
+            },
+            errors=errors,
+        )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Handle configuration by re-auth."""
+        if entry := self.hass.config_entries.async_get_entry(self.context["entry_id"]):
+            self._entry = entry
+        _LOGGER.debug(
+            f"[async_step_reauth] entry: {async_redact_data(self._entry, KEYS_TO_REDACT)}"
+        )
+        _LOGGER.debug(
+            f"[async_step_reauth] entry_data: {async_redact_data(entry_data, KEYS_TO_REDACT)}"
+        )
+        self._data.update(entry_data)
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Dialog that informs the user that reauth is required."""
+        errors: dict[str, str] = {}
+
+        if user_input:
+            self._data = user_input
+            region = user_input.get(CONF_REGION, "NA")
+            try:
+                status, device, self._client = await get_device(
+                    self.hass,
+                    self._data[CONF_USER_NAME],
+                    self._data[CONF_PASSWORD],
+                    region,
+                )
+                if status == AUTHN_SUCCESS:
+                    _LOGGER.debug(
+                        f"[async_step_reauth_confirm] device: {async_redact_data(device, KEYS_TO_REDACT)}"
+                    )
+                    if "serialNumber" not in device:
+                        raise ParsingError(
+                            f"Unable to get Serial Number from Device Data"
+                        )
+                    serial_number = device["serialNumber"]
+                    _LOGGER.info(
+                        f"ResMed myAir: Found device with serial number {serial_number}"
+                    )
+
+                    # await self.async_set_unique_id(serial_number)
+                    # self._abort_if_unique_id_configured()
+                    self._data.update({CONF_COOKIES: self._client.cookies})
+                    _LOGGER.debug(
+                        f"[async_step_reauth_confirm] data: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+                    )
+
+                    self.hass.config_entries.async_update_entry(
+                        self._entry, data={**self._data}
+                    )
+                    await self.hass.config_entries.async_reload(self._entry.entry_id)
+                    return self.async_abort(reason="reauth_successful")
+                else:
+                    return await self.async_step_verify_2fa()
+            except (
+                AuthenticationError,
+                HttpProcessingError,
+                ClientResponseError,
+                ParsingError,
+            ) as e:
+                _LOGGER.error(
+                    f"Connection Error with reauth_confirm. {e.__class__.__qualname__}: {e}"
+                )
+                errors["base"] = "authentication_error"
+            except IncompleteAccountError as e:
+                _LOGGER.error(
+                    f"ResMed myAir Account Setup Incomplete with reauth_confirm. {e.__class__.__qualname__}: {e}"
+                )
+                return self.async_abort(reason="incomplete_account")
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_USER_NAME): selector.TextSelector(
+                        selector.TextSelectorConfig(type="text")
+                    ),
+                    vol.Required(CONF_PASSWORD): selector.TextSelector(
+                        selector.TextSelectorConfig(type="password")
+                    ),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_reauth_verify_2fa(self, user_input=None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        user_input: dict[str, Any] | None = user_input or {}
+
+        if user_input:
+            self._data.update(user_input)
+            try:
+                status, device = await get_2fa_device(
+                    self._data.get(CONF_CLIENT, None),
+                    self._data.get(CONF_VERIFICATION_CODE, ""),
+                )
+                if status == AUTHN_SUCCESS:
+                    self._data.pop(CONF_VERIFICATION_CODE)
+                    self._data.update({CONF_COOKIES: self._client.cookies})
+                    _LOGGER.debug(
+                        f"[async_step_reauth_verify_2fa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+                    )
+
+                self.hass.config_entries.async_update_entry(
+                    self._entry, data={**self._data}
+                )
+                await self.hass.config_entries.async_reload(self._entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+            except (
+                AuthenticationError,
+                HttpProcessingError,
+                ClientResponseError,
+                ParsingError,
+            ) as e:
+                _LOGGER.error(
+                    f"Connection Error with reauth_verify_2fa. {e.__class__.__qualname__}: {e}"
+                )
+                errors["base"] = "2fa_error"
+            except IncompleteAccountError as e:
+                _LOGGER.error(
+                    f"ResMed myAir Account Setup Incomplete with reauth_verify_2fa. {e.__class__.__qualname__}: {e}"
+                )
+                return self.async_abort(reason="incomplete_account")
+
+        return self.async_show_form(
+            step_id="reauth_verify_2fa",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_VERIFICATION_CODE): selector.TextSelector(
+                        selector.TextSelectorConfig(type="text")
+                    ),
+                }
+            ),
+            description_placeholders={
+                "username": self._data.get(CONF_USER_NAME, "your email address"),
             },
             errors=errors,
         )

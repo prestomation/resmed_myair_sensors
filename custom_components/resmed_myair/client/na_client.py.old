@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from typing import Any, List
-from urllib.parse import parse_qs, urldefrag
+from urllib.parse import parse_qs, urldefrag, urlparse
 
 from aiohttp import ClientResponse, ClientSession
 from aiohttp.client_exceptions import ClientResponseError
@@ -118,6 +118,11 @@ class RESTNAClient(MyAirClient):
         _LOGGER.debug(
             f"[get_access_token authn] json_query: {async_redact_data(json_query, KEYS_TO_REDACT)}"
         )
+        cookie_domain = f"{urlparse(authn_url).scheme}://{urlparse(authn_url).hostname}"
+        _LOGGER.debug(f"[get_access_token authn] cookie_domain: {cookie_domain}")
+        _LOGGER.debug(
+            f"[get_access_token authn] cookies: {self._session.cookie_jar.filter_cookies(cookie_domain)}"
+        )
 
         async with self._session.post(
             authn_url,
@@ -170,6 +175,13 @@ class RESTNAClient(MyAirClient):
         _LOGGER.debug(
             f"[get_access_token code] params_query: {async_redact_data(params_query, KEYS_TO_REDACT)}"
         )
+        cookie_domain = (
+            f"{urlparse(authorize_url).scheme}://{urlparse(authorize_url).hostname}"
+        )
+        _LOGGER.debug(f"[get_access_token code] cookie_domain: {cookie_domain}")
+        _LOGGER.debug(
+            f"[get_access_token code] cookies: {self._session.cookie_jar.filter_cookies(cookie_domain)}"
+        )
 
         async with self._session.get(
             authorize_url,
@@ -211,6 +223,11 @@ class RESTNAClient(MyAirClient):
         _LOGGER.debug(
             f"[get_access_token token] token_query: {async_redact_data(token_query, KEYS_TO_REDACT)}"
         )
+        cookie_domain = f"{urlparse(token_url).scheme}://{urlparse(token_url).hostname}"
+        _LOGGER.debug(f"[get_access_token token] cookie_domain: {cookie_domain}")
+        _LOGGER.debug(
+            f"[get_access_token token] cookies: {self._session.cookie_jar.filter_cookies(cookie_domain)}"
+        )
 
         async with self._session.post(
             token_url,
@@ -239,6 +256,9 @@ class RESTNAClient(MyAirClient):
                 raise ClientResponseError(
                     f"Get Access Token Connection Issue. Status {token_res.status} {token_res.message}"
                 )
+        _LOGGER.debug(
+            f"[get_access_token token] post-token cookies: {self._session.cookie_jar.filter_cookies(cookie_domain)}"
+        )
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
         _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
@@ -300,6 +320,13 @@ class RESTNAClient(MyAirClient):
         )
         _LOGGER.debug(
             f"[gql_query] json_query: {async_redact_data(json_query, KEYS_TO_REDACT)}"
+        )
+        cookie_domain = (
+            f"{urlparse(appsync_url).scheme}://{urlparse(appsync_url).hostname}"
+        )
+        _LOGGER.debug(f"[gql_query] cookie_domain: {cookie_domain}")
+        _LOGGER.debug(
+            f"[gql_query] cookies: {self._session.cookie_jar.filter_cookies(cookie_domain)}"
         )
 
         async with self._session.post(

@@ -11,8 +11,23 @@
                 },
                 "description": "Please enter the username/password used in the myAir app or website."
             },
-            "eu_details": {
-                "title": "EU Verify 2FA",
+            "verify_2fa": {
+                "title": "Verify 2FA",
+                "data": {
+                    "verification_code": "One-time verification code"
+                },
+                "description": "Enter the One-time verification code you received from ResMed to {username}."
+            },
+            "reauth_confirm": {
+                "title": "ResMed myAir Reauthentication",
+                "description": "The ResMed myAir integration needs to reauthenticate your account",
+                "data": {
+                    "Username": "Username",
+                    "Password": "Password"                
+                }
+            },
+            "reauth_verify_2fa": {
+                "title": "Verify 2FA",
                 "data": {
                     "verification_code": "One-time verification code"
                 },
@@ -25,7 +40,8 @@
         },
         "abort": {
             "already_configured": "Device is already configured",
-            "incomplete_account": "myAir Account Setup is Incomplete. Login to the myAir website and ensure that CPAP data is showing. Also, ensure that the Time Zone is set under My Account."
+            "incomplete_account": "ResMed myAir Account Setup is Incomplete. Login to the myAir website and ensure that CPAP data is showing. Also, ensure that the Time Zone is set under My Account.",
+            "reauth_successful": "ResMed myAir Reauthentication Successful"
         }
     }
 }

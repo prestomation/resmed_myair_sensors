@@ -32,8 +32,6 @@ class MyAirConfig(NamedTuple):
     username: str
     password: str
     region: Literal["NA", "EU"]
-    country_code: str = None
-    access_token: str = None
 
 
 class SleepRecord(TypedDict):
@@ -66,8 +64,6 @@ class MyAirDevice(TypedDict):
 
     # URI on the domain: https://static.myair-prd.dht.live/
     imagePath: NotRequired[str]
-    country_code: NotRequired[str]
-    access_token: NotRequired[str]
 
 
 class MyAirClient(ABC):

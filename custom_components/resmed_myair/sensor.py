@@ -21,8 +21,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .client import get_client
 from .client.myair_client import MyAirClient, MyAirConfig
 from .common import (
-    CONF_ACCESS_TOKEN,
-    CONF_COUNTRY_CODE,
+    CONF_COOKIES,
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
@@ -197,20 +196,17 @@ async def async_setup_entry(
     _LOGGER.debug(
         f"[sensor async_setup_entry] config_entry.data: {async_redact_data(config_entry.data, KEYS_TO_REDACT)}"
     )
-    username = config_entry.data[CONF_USER_NAME]
-    password = config_entry.data[CONF_PASSWORD]
-    region = config_entry.data.get(CONF_REGION, "NA")
-    country_code = config_entry.data.get(CONF_COUNTRY_CODE, None)
-    access_token = config_entry.data.get(CONF_ACCESS_TOKEN, None)
 
     client_config = MyAirConfig(
-        username=username,
-        password=password,
-        region=region,
-        country_code=country_code,
-        access_token=access_token,
+        username=config_entry.data.get(CONF_USER_NAME),
+        password=config_entry.data.get(CONF_PASSWORD),
+        region=config_entry.data.get(CONF_REGION),
     )
     client: MyAirClient = get_client(client_config, async_create_clientsession(hass))
+    cookies = config_entry.data.get(CONF_COOKIES, None)
+    _LOGGER.debug(f"[sensor async_setup_entry] cookies: {cookies}")
+    if cookies is not None:
+        await client.load_cookies(cookies)
     coordinator = MyAirDataUpdateCoordinator(hass, client)
 
     hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = coordinator
@@ -233,7 +229,9 @@ async def async_setup_entry(
 
     async_add_entities(sensors, False)
 
-    sanitized_username = username.replace("@", "_").replace(".", "_")
+    sanitized_username = (
+        config_entry.data.get(CONF_USER_NAME).replace("@", "_").replace(".", "_")
+    )
 
     async def refresh(data):
         await coordinator.async_refresh()
