@@ -12,7 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.redact import async_redact_data
 
-from .common import CONF_REGION, DOMAIN, KEYS_TO_REDACT
+from .common import CONF_REGION, DOMAIN, KEYS_TO_REDACT, REGION_NA
 from .const import VERSION
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ async def async_migrate_entry(hass, config_entry: ConfigEntry):
 
         new = {**config_entry.data}
         # v1 only supported NA by its implicit nature, so lets set it here
-        new[CONF_REGION] = "NA"
+        new[CONF_REGION] = REGION_NA
 
         config_entry.version = 2
         hass.config_entries.async_update_entry(config_entry, data=new)

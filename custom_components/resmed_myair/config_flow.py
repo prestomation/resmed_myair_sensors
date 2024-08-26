@@ -24,7 +24,6 @@ from .common import (
     CONF_REGION,
     CONF_USER_NAME,
     CONF_VERIFICATION_CODE,
-    DEFAULT_PREFIX,
     DOMAIN,
     KEYS_TO_REDACT,
     REGION_EU,
@@ -36,16 +35,20 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def get_device(hass, username, password, region):
+    _LOGGER.debug("[get_device] Starting")
     config = MyAirConfig(username=username, password=password, region=region)
     client = get_client(config, async_create_clientsession(hass))
     status = await client.connect(initial=True)
     device = None
     if status == AUTHN_SUCCESS:
+        _LOGGER.info("2FA Not Needed. Proceeding")
         device = await client.get_user_device_data()
+    _LOGGER.info("2FA Needed. Triggered Email")
     return status, device, client
 
 
 async def get_2fa_device(client, verification_code):
+    _LOGGER.debug("[get_2fa_device] Starting")
     status = await client.verify_2fa_and_get_access_token(verification_code)
     device = await client.get_user_device_data()
     return status, device
@@ -60,7 +63,6 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize flow."""
         self._client = None
         self._entry: ConfigEntry
-        self._prefix = DEFAULT_PREFIX
         self._data = {}
 
     async def async_step_user(self, user_input=None) -> ConfigFlowResult:
@@ -69,13 +71,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         user_input: dict[str, Any] | None = user_input or {}
         if user_input:
             self._data = user_input
-            region = user_input.get(CONF_REGION, "NA")
             try:
                 status, device, self._client = await get_device(
                     self.hass,
                     self._data[CONF_USER_NAME],
                     self._data[CONF_PASSWORD],
-                    region,
+                    self._data[CONF_REGION],
                 )
                 if status == AUTHN_SUCCESS:
                     _LOGGER.debug(
@@ -118,6 +119,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     f"ResMed myAir Account Setup Incomplete with async_step_user. {e.__class__.__qualname__}: {e}"
                 )
                 return self.async_abort(reason="incomplete_account")
+
         _LOGGER.info(f"Setting up ResMed myAir Integration Version: {VERSION}")
         return self.async_show_form(
             step_id="user",
@@ -157,6 +159,9 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
                         data=self._data,
                     )
+                else:
+                    _LOGGER.error(f"Issue verifying 2FA. Status: {status}")
+                    errors["base"] = "2fa_error"
             except (
                 AuthenticationError,
                 HttpProcessingError,
@@ -173,6 +178,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
                 return self.async_abort(reason="incomplete_account")
 
+        _LOGGER.info("Showing Verify 2FA Form")
         return self.async_show_form(
             step_id="verify_2fa",
             data_schema=vol.Schema(
@@ -192,6 +198,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         self, entry_data: Mapping[str, Any]
     ) -> ConfigFlowResult:
         """Handle configuration by re-auth."""
+        _LOGGER.info("Starting ResMed myAir Reauthorization")
         if entry := self.hass.config_entries.async_get_entry(self.context["entry_id"]):
             self._entry = entry
         _LOGGER.debug(
@@ -210,14 +217,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input:
-            self._data = user_input
-            region = user_input.get(CONF_REGION, "NA")
+            self._data.update(user_input)
             try:
                 status, device, self._client = await get_device(
                     self.hass,
                     self._data[CONF_USER_NAME],
                     self._data[CONF_PASSWORD],
-                    region,
+                    self._data[CONF_REGION],
                 )
                 if status == AUTHN_SUCCESS:
                     _LOGGER.debug(
@@ -245,7 +251,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     await self.hass.config_entries.async_reload(self._entry.entry_id)
                     return self.async_abort(reason="reauth_successful")
                 else:
-                    return await self.async_step_verify_2fa()
+                    return await self.async_step_reauth_verify_2fa()
             except (
                 AuthenticationError,
                 HttpProcessingError,
@@ -262,6 +268,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
                 return self.async_abort(reason="incomplete_account")
 
+        _LOGGER.info("Showing Reauth Confirm Form")
         return self.async_show_form(
             step_id="reauth_confirm",
             data_schema=vol.Schema(
@@ -316,6 +323,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
                 return self.async_abort(reason="incomplete_account")
 
+        _LOGGER.info("Showing Reauth Verify 2FA Form")
         return self.async_show_form(
             step_id="reauth_verify_2fa",
             data_schema=vol.Schema(

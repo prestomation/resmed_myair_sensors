@@ -18,6 +18,7 @@ from custom_components.resmed_myair.common import (
     AUTH_NEEDS_2FA,
     AUTHN_SUCCESS,
     KEYS_TO_REDACT,
+    REGION_NA,
 )
 
 from .myair_client import (
@@ -103,7 +104,7 @@ class RESTClient(MyAirClient):
         self._state_token = None
         self._session_token = None
         self._cookies = None
-        if self._config.region == "NA":
+        if self._config.region == REGION_NA:
             self._static_config = NA_CONFIG
         else:
             self._static_config = EU_CONFIG
@@ -151,9 +152,13 @@ class RESTClient(MyAirClient):
             await self.get_access_token()
         return status
 
-    async def verify_2fa_and_get_access_token(self, verification_code):
-        await self.verify_2fa(verification_code)
-        await self.get_access_token()
+    async def verify_2fa_and_get_access_token(self, verification_code) -> str:
+        status = await self.verify_2fa(verification_code)
+        if status == AUTHN_SUCCESS:
+            await self.get_access_token()
+        else:
+            raise AuthenticationError(f"Issue verifying 2FA. Status: {status}")
+        return status
 
     async def _resmed_response_error_check(
         self, step: str, response: ClientResponse, resp_dict: dict
@@ -208,7 +213,7 @@ class RESTClient(MyAirClient):
                 await self._resmed_response_error_check("authn", authn_res, authn_dict)
             else:
                 raise ClientResponseError(
-                    f"authn Connection Issue. Status {authn_res.status} {authn_res.message}"
+                    f"authn Connection Issue. Status {authn_res.status} {authn_res.reason}"
                 )
         if "status" not in authn_dict:
             raise AuthenticationError("Cannot get status in authn step")
@@ -263,7 +268,7 @@ class RESTClient(MyAirClient):
                 )
             else:
                 raise ClientResponseError(
-                    f"Trigger 2FA Connection Issue. Status {trigger_2fa_res.status} {trigger_2fa_res.message}"
+                    f"Trigger 2FA Connection Issue. Status {trigger_2fa_res.status} {trigger_2fa_res.reason}"
                 )
 
     async def verify_2fa(self, verification_code: str) -> str:
@@ -292,7 +297,7 @@ class RESTClient(MyAirClient):
                 )
             else:
                 raise ClientResponseError(
-                    f"Verify 2FA Connection Issue. Status {verify_2fa_res.status} {verify_2fa_res.message}"
+                    f"Verify 2FA Connection Issue. Status {verify_2fa_res.status} {verify_2fa_res.reason}"
                 )
         if "status" not in verify_2fa_dict:
             raise AuthenticationError("Cannot get status in authn step")
@@ -357,7 +362,7 @@ class RESTClient(MyAirClient):
                 _LOGGER.debug(f"[get_access_token code] location: {location}")
             else:
                 raise ClientResponseError(
-                    f"Get Code Connection Issue. Status {code_res.status} {code_res.message}"
+                    f"Get Code Connection Issue. Status {code_res.status} {code_res.reason}"
                 )
 
         fragment = urldefrag(location)
@@ -415,7 +420,7 @@ class RESTClient(MyAirClient):
                 # _LOGGER.debug(f"[get_access_token] id_token: {self._id_token}")
             else:
                 raise ClientResponseError(
-                    f"Get Access Token Connection Issue. Status {token_res.status} {token_res.message}"
+                    f"Get Access Token Connection Issue. Status {token_res.status} {token_res.reason}"
                 )
 
         cookie_dict = {}
@@ -507,7 +512,7 @@ class RESTClient(MyAirClient):
                 )
             else:
                 raise ClientResponseError(
-                    f"GraphQL Connection Issue. Status {records_res.status} {records_res.message}"
+                    f"GraphQL Connection Issue. Status {records_res.status} {records_res.reason}"
                 )
         return records_dict
 
