@@ -2,22 +2,25 @@ name-template: "$RESOLVED_VERSION"
 tag-template: "$RESOLVED_VERSION"
 change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
 sort-direction: ascending
+exclude-labels:
+  - "ignore-for-release"
+  - "dependencies"
 autolabeler:
   - label: "chore"
     title:
-      - "/chore:/i"
+      - "/chore/i"
   - label: "bugfix"
     title:
-      - "/fix:/i"
+      - "/fix/i"
   - label: "feature"
     title:
-      - "/feat:/i"
+      - "/feat/i"
   - label: "enhancement"
     title:
-      - "/refactor:/i"
+      - "/refactor/i"
   - label: "code-quality"
     title:
-      - "/tests:/i"
+      - "/tests/i"
 categories:
   - title: ":boom: Breaking Change :boom:"
     labels:
@@ -36,6 +39,7 @@ categories:
   - title: ":wrench: Maintenance :wrench:"
     labels:
       - "chore"
+      - "github_actions"
   - title: ":mortar_board: Code Quality :mortar_board:"
     labels:
       - "code-quality"

@@ -1,18 +1,15 @@
 version: 2
 updates:
-- package-ecosystem: pip
-  directory: "/"
-  labels:
-    - "pr: dependency-update"
-  schedule:
-    interval: daily
-    time: "06:00"
-  open-pull-requests-limit: 10
-- package-ecosystem: github-actions
-  directory: /
-  groups:
-    github-actions:
-      patterns:
-        - "*"  # Group all Actions updates into a single larger pull request
-  schedule:
-    interval: weekly
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 10
+  - package-ecosystem: github-actions
+    directory: /
+    groups:
+      github-actions:
+        patterns:
+          - "*" # Group all Actions updates into a single larger pull request
+    schedule:
+      interval: weekly
