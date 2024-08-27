@@ -202,7 +202,10 @@ async def async_setup_entry(
         password=config_entry.data.get(CONF_PASSWORD),
         region=config_entry.data.get(CONF_REGION),
     )
-    client: MyAirClient = get_client(client_config, async_create_clientsession(hass))
+    client: MyAirClient = get_client(
+        client_config,
+        async_create_clientsession(hass, raise_for_status=True),
+    )
     cookies = config_entry.data.get(CONF_COOKIES, None)
     _LOGGER.debug(f"[sensor async_setup_entry] cookies: {cookies}")
     if cookies is not None:

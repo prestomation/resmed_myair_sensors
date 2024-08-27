@@ -1,4 +1,4 @@
-VERSION = "v0.0.10-2FA"  # Version updated by release workflow
+VERSION = "v0.0.11-2FA"  # Version updated by release workflow
 
 DOMAIN = "resmed_myair"
 DEFAULT_UPDATE_RATE_MIN = 30
@@ -20,10 +20,15 @@ REGION_EU = "EU"
 KEYS_TO_REDACT = [
     "access_token",
     "Authorization",
+    "email",
     "firstName",
     "id_token",
     "lastName",
+    "login",
     "name",
     "password",
     "Password",
+    "preferred_username",
+    "username",
+    "Username",
 ]

@@ -8,7 +8,6 @@ from typing import Any, List
 from urllib.parse import parse_qs, urldefrag
 
 from aiohttp import ClientResponse, ClientSession
-from aiohttp.client_exceptions import ClientResponseError
 from aiohttp.http_exceptions import HttpProcessingError
 from homeassistant.helpers.redact import async_redact_data
 import jwt
@@ -52,7 +51,7 @@ EU_CONFIG = {
     # The endpoint that the 'code' is sent to get an authorization token
     "token_url": "https://id.resmed.eu/oauth2/{oauth2_client_id}/v1/token",
     # The AppSync URL that accepts your token + the API key to return Sleep Records
-    "appsync_url": "https://graphql.hyperdrive.resmed.eu/graphql",
+    "graphql_url": "https://graphql.hyperdrive.resmed.eu/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
     "oauth_redirect_url": "https://myair.resmed.eu",
 }
@@ -76,7 +75,7 @@ NA_CONFIG = {
     # The endpoint that the 'code' is sent to get an authorization token
     "token_url": "https://resmed-ext-1.okta.com/oauth2/{oauth2_client_id}/v1/token",
     # The AppSync URL that accepts your token + the API key to return Sleep Records
-    "appsync_url": "https://graphql.myair-prd.dht.live/graphql",
+    "graphql_url": "https://graphql.myair-prd.dht.live/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
     "oauth_redirect_url": "https://myair.resmed.com",
 }
@@ -119,10 +118,14 @@ class RESTClient(MyAirClient):
 
     async def load_cookies(self, cookies):
         self._cookies = cookies
-        _LOGGER.debug(f"[load_cookies] cookies: {self._cookies}")
-        self._session.cookie_jar.update_cookies(
-            self._cookies,
-            response_url=URL(f"https://{self._static_config['base_url']}"),
+        _LOGGER.debug(f"[load_cookies] cookies to load: {self._cookies}")
+        cookie_url = URL(f"https://{self._static_config['base_url']}")
+        self._session.cookie_jar.update_cookies(self._cookies)
+        _LOGGER.debug("[load_cookies] All Loaded Cookies:")
+        for cookie in self._session.cookie_jar:
+            _LOGGER.debug(f"{cookie}")
+        _LOGGER.debug(
+            f"[load_cookies] loaded cookies for {cookie_url}: {self._session.cookie_jar.filter_cookies(cookie_url)}"
         )
 
     async def connect(self, initial=False):
@@ -203,18 +206,14 @@ class RESTClient(MyAirClient):
             authn_url,
             headers=self._json_headers,
             json=json_query,
+            cookies=self._cookies,
         ) as authn_res:
-            if authn_res.ok:
-                _LOGGER.debug(f"[authn_check] authn_res: {authn_res}")
-                authn_dict = await authn_res.json()
-                _LOGGER.debug(
-                    f"[authn_check] authn_dict: {async_redact_data(authn_dict, KEYS_TO_REDACT)}"
-                )
-                await self._resmed_response_error_check("authn", authn_res, authn_dict)
-            else:
-                raise ClientResponseError(
-                    f"authn Connection Issue. Status {authn_res.status} {authn_res.reason}"
-                )
+            _LOGGER.debug(f"[authn_check] authn_res: {authn_res}")
+            authn_dict = await authn_res.json()
+            _LOGGER.debug(
+                f"[authn_check] authn_dict: {async_redact_data(authn_dict, KEYS_TO_REDACT)}"
+            )
+            await self._resmed_response_error_check("authn", authn_res, authn_dict)
         if "status" not in authn_dict:
             raise AuthenticationError("Cannot get status in authn step")
         status = authn_dict["status"]
@@ -256,20 +255,16 @@ class RESTClient(MyAirClient):
             self._2fa_url,
             headers=self._json_headers,
             json=json_query,
+            cookies=self._cookies,
         ) as trigger_2fa_res:
-            if trigger_2fa_res.ok:
-                _LOGGER.debug(f"[trigger_2fa] trigger_2fa_res: {trigger_2fa_res}")
-                trigger_2fa_dict = await trigger_2fa_res.json()
-                _LOGGER.debug(
-                    f"[trigger_2fa] trigger_2fa_dict: {async_redact_data(trigger_2fa_dict, KEYS_TO_REDACT)}"
-                )
-                await self._resmed_response_error_check(
-                    "trigger_2fa", trigger_2fa_res, trigger_2fa_dict
-                )
-            else:
-                raise ClientResponseError(
-                    f"Trigger 2FA Connection Issue. Status {trigger_2fa_res.status} {trigger_2fa_res.reason}"
-                )
+            _LOGGER.debug(f"[trigger_2fa] trigger_2fa_res: {trigger_2fa_res}")
+            trigger_2fa_dict = await trigger_2fa_res.json()
+            _LOGGER.debug(
+                f"[trigger_2fa] trigger_2fa_dict: {async_redact_data(trigger_2fa_dict, KEYS_TO_REDACT)}"
+            )
+            await self._resmed_response_error_check(
+                "trigger_2fa", trigger_2fa_res, trigger_2fa_dict
+            )
 
     async def verify_2fa(self, verification_code: str) -> str:
         _LOGGER.debug(f"[verify_2fa] verification_code: {verification_code}")
@@ -285,20 +280,16 @@ class RESTClient(MyAirClient):
             self._2fa_url,
             headers=self._json_headers,
             json=json_query,
+            cookies=self._cookies,
         ) as verify_2fa_res:
-            if verify_2fa_res.ok:
-                _LOGGER.debug(f"[verify_2fa] verify_2fa_res: {verify_2fa_res}")
-                verify_2fa_dict = await verify_2fa_res.json()
-                _LOGGER.debug(
-                    f"[verify_2fa] verify_2fa_dict: {async_redact_data(verify_2fa_dict, KEYS_TO_REDACT)}"
-                )
-                await self._resmed_response_error_check(
-                    "verify_2fa", verify_2fa_res, verify_2fa_dict
-                )
-            else:
-                raise ClientResponseError(
-                    f"Verify 2FA Connection Issue. Status {verify_2fa_res.status} {verify_2fa_res.reason}"
-                )
+            _LOGGER.debug(f"[verify_2fa] verify_2fa_res: {verify_2fa_res}")
+            verify_2fa_dict = await verify_2fa_res.json()
+            _LOGGER.debug(
+                f"[verify_2fa] verify_2fa_dict: {async_redact_data(verify_2fa_dict, KEYS_TO_REDACT)}"
+            )
+            await self._resmed_response_error_check(
+                "verify_2fa", verify_2fa_res, verify_2fa_dict
+            )
         if "status" not in verify_2fa_dict:
             raise AuthenticationError("Cannot get status in authn step")
         status = verify_2fa_dict["status"]
@@ -353,17 +344,13 @@ class RESTClient(MyAirClient):
             headers=self._json_headers,
             allow_redirects=False,
             params=params_query,
+            cookies=self._cookies,
         ) as code_res:
-            if code_res.ok:
-                _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
-                if "location" not in code_res.headers:
-                    raise ParsingError("Unable to get location from code_res")
-                location = code_res.headers["location"]
-                _LOGGER.debug(f"[get_access_token code] location: {location}")
-            else:
-                raise ClientResponseError(
-                    f"Get Code Connection Issue. Status {code_res.status} {code_res.reason}"
-                )
+            _LOGGER.debug(f"[get_access_token] code_res: {code_res}")
+            if "location" not in code_res.headers:
+                raise ParsingError("Unable to get location from code_res")
+            location = code_res.headers["location"]
+            _LOGGER.debug(f"[get_access_token code] location: {location}")
 
         fragment = urldefrag(location)
         _LOGGER.debug(f"[get_access_token code] fragment: {fragment}")
@@ -400,35 +387,45 @@ class RESTClient(MyAirClient):
             headers=headers,
             data=token_query,
             allow_redirects=False,
+            cookies=self._cookies,
         ) as token_res:
-            if token_res.ok:
-                _LOGGER.debug(f"[get_access_token] token_res: {token_res}")
-                token_dict = await token_res.json()
-                _LOGGER.debug(
-                    f"[get_access_token] token_dict: {async_redact_data(token_dict, KEYS_TO_REDACT)}"
-                )
-                await self._resmed_response_error_check(
-                    "get_access_token", token_res, token_dict
-                )
-                if "access_token" not in token_dict:
-                    raise ParsingError("access_token not in token_dict")
-                if "id_token" not in token_dict:
-                    raise ParsingError("id_token not in token_dict")
-                self._access_token = token_dict["access_token"]
-                self._id_token = token_dict["id_token"]
-                # _LOGGER.debug(f"[get_access_token] access_token: {self._access_token}")
-                # _LOGGER.debug(f"[get_access_token] id_token: {self._id_token}")
-            else:
-                raise ClientResponseError(
-                    f"Get Access Token Connection Issue. Status {token_res.status} {token_res.reason}"
-                )
+            _LOGGER.debug(f"[get_access_token] token_res: {token_res}")
+            token_dict = await token_res.json()
+            _LOGGER.debug(
+                f"[get_access_token] token_dict: {async_redact_data(token_dict, KEYS_TO_REDACT)}"
+            )
+            await self._resmed_response_error_check(
+                "get_access_token", token_res, token_dict
+            )
+            if "access_token" not in token_dict:
+                raise ParsingError("access_token not in token_dict")
+            if "id_token" not in token_dict:
+                raise ParsingError("id_token not in token_dict")
+            self._access_token = token_dict["access_token"]
+            self._id_token = token_dict["id_token"]
+            # _LOGGER.debug(f"[get_access_token] access_token: {self._access_token}")
+            # _LOGGER.debug(f"[get_access_token] id_token: {self._id_token}")
 
         cookie_dict = {}
         for cookie in self._session.cookie_jar:
-            if cookie["domain"] == self._static_config["base_url"]:
-                cookie_dict.update({cookie.key: cookie.value})
+            cookie_dict.update({cookie.key: cookie.value})
         _LOGGER.debug(f"[get_access_token token] post-token cookie_dict: {cookie_dict}")
-        self._cookies = cookie_dict
+        if self._cookies is None:
+            cookie_dict.pop("JSESSIONID", None)
+            cookie_dict.pop("t", None)
+            _LOGGER.debug(
+                f"[get_access_token token] post-token cookie_dict post-cleanup: {cookie_dict}"
+            )
+            _LOGGER.info("Setting saved cookies")
+            self._cookies = cookie_dict
+        else:
+            _LOGGER.info("Cookies alreay set, not updating")
+            _LOGGER.debug(
+                f"[get_access_token token] set DT: {self._cookies.get('DT')}, new DT: {cookie_dict.get('DT')}"
+            )
+            _LOGGER.debug(
+                f"[get_access_token token] set sid: {self._cookies.get('sid')}, new sid: {cookie_dict.get('sid')}"
+            )
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
         _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
@@ -467,7 +464,7 @@ class RESTClient(MyAirClient):
             )
         _LOGGER.debug(f"[gql_query] country_code: {self._country_code}")
 
-        appsync_url = self._static_config["appsync_url"]
+        graphql_url = self._static_config["graphql_url"]
         headers = {
             "x-api-key": self._static_config["myair_api_key"],
             "Authorization": authz_header,
@@ -488,7 +485,7 @@ class RESTClient(MyAirClient):
             "variables": {},
             "query": query,
         }
-        _LOGGER.debug(f"[gql_query] appsync_url: {appsync_url}")
+        _LOGGER.debug(f"[gql_query] graphql_url: {graphql_url}")
         _LOGGER.debug(
             f"[gql_query] headers: {async_redact_data(headers, KEYS_TO_REDACT)}"
         )
@@ -497,23 +494,19 @@ class RESTClient(MyAirClient):
         )
 
         async with self._session.post(
-            appsync_url,
+            graphql_url,
             headers=headers,
             json=json_query,
         ) as records_res:
-            if records_res.ok:
-                _LOGGER.debug(f"[gql_query] records_res: {records_res}")
-                records_dict = await records_res.json()
-                _LOGGER.debug(
-                    f"[gql_query] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
-                )
-                await self._resmed_response_error_check(
-                    "gql_query", records_res, records_dict
-                )
-            else:
-                raise ClientResponseError(
-                    f"GraphQL Connection Issue. Status {records_res.status} {records_res.reason}"
-                )
+            _LOGGER.debug(f"[gql_query] records_res: {records_res}")
+            records_dict = await records_res.json()
+            _LOGGER.debug(
+                f"[gql_query] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
+            )
+            await self._resmed_response_error_check(
+                "gql_query", records_res, records_dict
+            )
+
         return records_dict
 
     async def get_sleep_records(self) -> List[SleepRecord]:

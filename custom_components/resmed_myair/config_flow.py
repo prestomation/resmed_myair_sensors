@@ -37,13 +37,14 @@ _LOGGER = logging.getLogger(__name__)
 async def get_device(hass, username, password, region):
     _LOGGER.debug("[get_device] Starting")
     config = MyAirConfig(username=username, password=password, region=region)
-    client = get_client(config, async_create_clientsession(hass))
+    client = get_client(config, async_create_clientsession(hass, raise_for_status=True))
     status = await client.connect(initial=True)
     device = None
     if status == AUTHN_SUCCESS:
         _LOGGER.info("2FA Not Needed. Proceeding")
         device = await client.get_user_device_data()
-    _LOGGER.info("2FA Needed. Triggered Email")
+    else:
+        _LOGGER.info("2FA Needed. Triggered Email")
     return status, device, client
 
 
