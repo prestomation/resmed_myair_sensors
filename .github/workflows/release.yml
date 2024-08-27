@@ -12,14 +12,20 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Get Version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      - name: Debug Variables
+        run: |
+          echo "github.event_name: ${{ github.event_name }}"
+          echo "github.ref_name: ${{ github.ref_name }}"
+          echo "github.workspace: ${{ github.workspace }}"          
+          echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
+          echo "github.event.release.target_commitish: ${{ github.event.release.target_commitish }}"
+          echo "github.event.release.prerelease: ${{ github.event.release.prerelease }}"
+          echo "github.event.release.draft: ${{ github.event.release.draft }}"
 
       - name: "Set version number"
         run: |
-          sed -i '/VERSION = /c\VERSION = "${{ steps.get_version.outputs.VERSION }}"' ${{ github.workspace }}/custom_components/resmed_myair/const.py
-          sed -i '/version/c\  \"version\": \"${{ steps.get_version.outputs.VERSION }}\"' ${{ github.workspace }}/custom_components/resmed_myair/manifest.json
+            sed -i 's/\"version\"\s*\:\s*\".*\"/\"version\"\:\"${{ github.ref_name }}\"/g' ${{ github.workspace }}/custom_components/resmed_myair/manifest.json
+            sed -i 's/VERSION\s*\=\s*\".*\"/VERSION \= \"${{ github.ref_name }}\"/' ${{ github.workspace }}/custom_components/resmed_myair/const.py          
       # Pack the resmed_myair dir as a zip and upload to the release
       - name: ZIP Component Dir
         run: |
