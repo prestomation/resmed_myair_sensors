@@ -34,22 +34,22 @@ _LOGGER = logging.getLogger(__name__)
 
 EU_CONFIG = {
     "product": "myAir EU",
-    "base_url": "id.resmed.eu",
+    "okta_url": "id.resmed.eu",
     # This is the clientId that appears in Okta URLs
-    "authn_client_id": "emfg9cmjqxEPr52cT417",
-    "oauth2_client_id": "aus2uznux2sYKTsEg417",
+    "email_factor_id": "emfg9cmjqxEPr52cT417",
+    "auth_server_id": "aus2uznux2sYKTsEg417",
     # This is the clientId that appears in request bodies during login
     "authorize_client_id": "0oa2uz04d2Pks2NgR417",
     # Used as the x-api-key header for the AppSync GraphQL API
     "myair_api_key": "da2-o66oo6xdnfh5hlfuw5yw5g2dtm",
     # The Okta Endpoint where the creds go
     "authn_url": "https://id.resmed.eu/api/v1/authn",
-    "2fa_url": "https://id.resmed.eu/api/v1/authn/factors/{authn_client_id}/verify?rememberDevice=true",
-    # When specifying token_url and authorize_url, add {authn_client_id} and your authn_client_id will be substituted in
-    # Or you can put the entire URL here if you want, but your authn_client_id will be ignored
-    "authorize_url": "https://id.resmed.eu/oauth2/{oauth2_client_id}/v1/authorize",
+    "2fa_url": "https://id.resmed.eu/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
+    # When specifying token_url and authorize_url, add {email_factor_id} and your email_factor_id will be substituted in
+    # Or you can put the entire URL here if you want, but your email_factor_id will be ignored
+    "authorize_url": "https://id.resmed.eu/oauth2/{auth_server_id}/v1/authorize",
     # The endpoint that the 'code' is sent to get an authorization token
-    "token_url": "https://id.resmed.eu/oauth2/{oauth2_client_id}/v1/token",
+    "token_url": "https://id.resmed.eu/oauth2/{auth_server_id}/v1/token",
     # The AppSync URL that accepts your token + the API key to return Sleep Records
     "graphql_url": "https://graphql.hyperdrive.resmed.eu/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
@@ -58,22 +58,22 @@ EU_CONFIG = {
 
 NA_CONFIG = {
     "product": "myAir",
-    "base_url": "resmed-ext-1.okta.com",
+    "okta_url": "resmed-ext-1.okta.com",
     # This is the clientId that appears in Okta URLs
-    "authn_client_id": "aus4ccsxvnidQgLmA297",
-    "oauth2_client_id": "aus4ccsxvnidQgLmA297",
+    "email_factor_id": "xxx",
+    "auth_server_id": "aus4ccsxvnidQgLmA297",
     # This is the clientId that appears in request bodies during login
     "authorize_client_id": "0oa4ccq1v413ypROi297",
     # Used as the x-api-key header for the AppSync GraphQL API
     "myair_api_key": "da2-cenztfjrezhwphdqtwtbpqvzui",
     # The Okta Endpoint where the creds go
     "authn_url": "https://resmed-ext-1.okta.com/api/v1/authn",
-    "2fa_url": "https://resmed-ext-1.okta.com/api/v1/authn/factors/{authn_client_id}/verify?rememberDevice=true",
-    # When specifying token_url and authorize_url, add {authn_client_id} and your authn_client_id will be substituted in
-    # Or you can put the entire URL here if you want, but your authn_client_id will be ignored
-    "authorize_url": "https://resmed-ext-1.okta.com/oauth2/{oauth2_client_id}/v1/authorize",
+    "2fa_url": "https://resmed-ext-1.okta.com/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
+    # When specifying token_url and authorize_url, add {email_factor_id} and your email_factor_id will be substituted in
+    # Or you can put the entire URL here if you want, but your email_factor_id will be ignored
+    "authorize_url": "https://resmed-ext-1.okta.com/oauth2/{auth_server_id}/v1/authorize",
     # The endpoint that the 'code' is sent to get an authorization token
-    "token_url": "https://resmed-ext-1.okta.com/oauth2/{oauth2_client_id}/v1/token",
+    "token_url": "https://resmed-ext-1.okta.com/oauth2/{auth_server_id}/v1/token",
     # The AppSync URL that accepts your token + the API key to return Sleep Records
     "graphql_url": "https://graphql.myair-prd.dht.live/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
@@ -107,9 +107,9 @@ class RESTClient(MyAirClient):
             self._static_config = NA_CONFIG
         else:
             self._static_config = EU_CONFIG
-        self._authn_client_id = self._static_config["authn_client_id"]
+        self._email_factor_id = self._static_config["email_factor_id"]
         self._2fa_url = self._static_config["2fa_url"].format(
-            authn_client_id=self._authn_client_id
+            email_factor_id=self._email_factor_id
         )
 
     @property
@@ -119,13 +119,13 @@ class RESTClient(MyAirClient):
     async def load_cookies(self, cookies):
         self._cookies = cookies
         _LOGGER.debug(f"[load_cookies] cookies to load: {self._cookies}")
-        cookie_url = URL(f"https://{self._static_config['base_url']}")
+        cookie_url = URL(f"https://{self._static_config['okta_url']}")
         self._session.cookie_jar.update_cookies(self._cookies)
-        _LOGGER.debug("[load_cookies] All Loaded Cookies:")
+        _LOGGER.debug("[load_cookies] All Loaded Cookies:\n")
         for cookie in self._session.cookie_jar:
             _LOGGER.debug(f"{cookie}")
         _LOGGER.debug(
-            f"[load_cookies] loaded cookies for {cookie_url}: {self._session.cookie_jar.filter_cookies(cookie_url)}"
+            f"[load_cookies] loaded cookies:\n{self._session.cookie_jar.filter_cookies(cookie_url)}"
         )
 
     async def connect(self, initial=False):
@@ -222,15 +222,15 @@ class RESTClient(MyAirClient):
                 raise AuthenticationError("Cannot get stateToken in authn step")
             self._state_token = authn_dict["stateToken"]
             try:
-                self._authn_client_id = authn_dict["_embedded"]["factors"][0]["id"]
+                self._email_factor_id = authn_dict["_embedded"]["factors"][0]["id"]
             except Exception:
-                self._authn_client_id = self._static_config["authn_client_id"]
-            _LOGGER.debug(f"[authn_check] authn_client_id: {self._authn_client_id}")
+                self._email_factor_id = self._static_config["email_factor_id"]
+            _LOGGER.debug(f"[authn_check] email_factor_id: {self._email_factor_id}")
             try:
                 self._2fa_url = f"{authn_dict['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
             except Exception:
                 self._2fa_url = self._static_config["2fa_url"].format(
-                    authn_client_id=self._authn_client_id
+                    email_factor_id=self._email_factor_id
                 )
             _LOGGER.debug(f"[authn_check] 2fa_url: {self._2fa_url}")
         elif status == AUTHN_SUCCESS:
@@ -316,7 +316,7 @@ class RESTClient(MyAirClient):
 
         # We use that sessionToken and exchange for an oauth code, using PKCE
         authorize_url = self._static_config["authorize_url"].format(
-            oauth2_client_id=self._static_config["oauth2_client_id"]
+            auth_server_id=self._static_config["auth_server_id"]
         )
         params_query = {
             "client_id": self._static_config["authorize_client_id"],
@@ -372,7 +372,7 @@ class RESTClient(MyAirClient):
             "Content-Type": "application/x-www-form-urlencoded",
         }
         token_url = self._static_config["token_url"].format(
-            oauth2_client_id=self._static_config["oauth2_client_id"]
+            auth_server_id=self._static_config["auth_server_id"]
         )
         _LOGGER.debug(f"[get_access_token token] token_url: {token_url}")
         _LOGGER.debug(
