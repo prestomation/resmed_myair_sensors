@@ -4,3 +4,5 @@ venv
 .venv
 .coverage
 .idea
+Thumbs.db
+.DS_Store
