@@ -11,8 +11,8 @@
                 },
                 "description": "Please enter the username/password used in the myAir app or website."
             },
-            "verify_2fa": {
-                "title": "Verify 2FA",
+            "verify_mfa": {
+                "title": "Verify MFA",
                 "data": {
                     "verification_code": "One-time verification code"
                 },
@@ -26,8 +26,8 @@
                     "Password": "Password"                
                 }
             },
-            "reauth_verify_2fa": {
-                "title": "Verify 2FA",
+            "reauth_verify_mfa": {
+                "title": "Verify MFA",
                 "data": {
                     "verification_code": "One-time verification code"
                 },
@@ -36,7 +36,7 @@
         },
         "error": {
             "authentication_error": "Invalid username or password. Please verify at myair.resmed.com",
-            "2fa_error": "Unable to verify 2FA. Ensure code is correct."
+            "mfa_error": "Unable to verify MFA. Ensure code is correct."
         },
         "abort": {
             "already_configured": "Device is already configured",

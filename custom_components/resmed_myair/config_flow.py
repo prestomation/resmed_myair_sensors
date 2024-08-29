@@ -47,16 +47,16 @@ async def get_device(hass, username, password, region):
     status = await client.connect(initial=True)
     device = None
     if status == AUTHN_SUCCESS:
-        _LOGGER.info("2FA Not Needed. Proceeding")
+        _LOGGER.info("MFA Not Needed. Proceeding")
         device = await client.get_user_device_data()
     else:
-        _LOGGER.info("2FA Needed. Triggered Email")
+        _LOGGER.info("MFA Needed. Triggered Email")
     return status, device, client
 
 
-async def get_2fa_device(client, verification_code):
-    _LOGGER.debug("[get_2fa_device] Starting")
-    status = await client.verify_2fa_and_get_access_token(verification_code)
+async def get_mfa_device(client, verification_code):
+    _LOGGER.debug("[get_mfa_device] Starting")
+    status = await client.verify_mfa_and_get_access_token(verification_code)
     device = await client.get_user_device_data()
     return status, device
 
@@ -110,7 +110,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         data=self._data,
                     )
                 else:
-                    return await self.async_step_verify_2fa()
+                    return await self.async_step_verify_mfa()
             except (
                 AuthenticationError,
                 HttpProcessingError,
@@ -139,20 +139,20 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         selector.TextSelectorConfig(type="password")
                     ),
                     vol.Required(CONF_REGION, default=REGION_NA): vol.In(
-                        {REGION_NA: "North America", REGION_EU: "EU (Email 2FA)"}
+                        {REGION_NA: "North America", REGION_EU: "EU (Email MFA)"}
                     ),
                 }
             ),
             errors=errors,
         )
 
-    async def async_step_verify_2fa(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_verify_mfa(self, user_input=None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         user_input: dict[str, Any] | None = user_input or {}
         if user_input:
             self._data.update(user_input)
             try:
-                status, device = await get_2fa_device(
+                status, device = await get_mfa_device(
                     self._client,
                     self._data.get(CONF_VERIFICATION_CODE, ""),
                 )
@@ -160,15 +160,15 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
                     _LOGGER.debug(
-                        f"[async_step_verify_2fa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+                        f"[async_step_verify_mfa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
                     )
                     return self.async_create_entry(
                         title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
                         data=self._data,
                     )
                 else:
-                    _LOGGER.error(f"Issue verifying 2FA. Status: {status}")
-                    errors["base"] = "2fa_error"
+                    _LOGGER.error(f"Issue verifying MFA. Status: {status}")
+                    errors["base"] = "mfa_error"
             except (
                 AuthenticationError,
                 HttpProcessingError,
@@ -176,18 +176,18 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 ParsingError,
             ) as e:
                 _LOGGER.error(
-                    f"Connection Error with verify_2fa. {e.__class__.__qualname__}: {e}"
+                    f"Connection Error with verify_mfa. {e.__class__.__qualname__}: {e}"
                 )
-                errors["base"] = "2fa_error"
+                errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
                 _LOGGER.error(
-                    f"ResMed myAir Account Setup Incomplete with verify_2fa. {e.__class__.__qualname__}: {e}"
+                    f"ResMed myAir Account Setup Incomplete with verify_mfa. {e.__class__.__qualname__}: {e}"
                 )
                 return self.async_abort(reason="incomplete_account")
 
-        _LOGGER.info("Showing Verify 2FA Form")
+        _LOGGER.info("Showing Verify MFA Form")
         return self.async_show_form(
-            step_id="verify_2fa",
+            step_id="verify_mfa",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_VERIFICATION_CODE): selector.TextSelector(
@@ -244,7 +244,6 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     _LOGGER.info(
                         f"ResMed myAir: Found device with serial number {serial_number}"
                     )
-
                     # await self.async_set_unique_id(serial_number)
                     # self._abort_if_unique_id_configured()
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
@@ -258,7 +257,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     await self.hass.config_entries.async_reload(self._entry.entry_id)
                     return self.async_abort(reason="reauth_successful")
                 else:
-                    return await self.async_step_reauth_verify_2fa()
+                    return await self.async_step_reauth_verify_mfa()
             except (
                 AuthenticationError,
                 HttpProcessingError,
@@ -291,7 +290,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_reauth_verify_2fa(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_reauth_verify_mfa(self, user_input=None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         user_input: dict[str, Any] | None = user_input or {}
 
@@ -299,7 +298,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
 
             try:
-                status, device = await get_2fa_device(
+                status, device = await get_mfa_device(
                     self._client,
                     self._data.get(CONF_VERIFICATION_CODE, ""),
                 )
@@ -307,7 +306,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
                     _LOGGER.debug(
-                        f"[async_step_reauth_verify_2fa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+                        f"[async_step_reauth_verify_mfa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
                     )
 
                     self.hass.config_entries.async_update_entry(
@@ -316,8 +315,8 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     await self.hass.config_entries.async_reload(self._entry.entry_id)
                     return self.async_abort(reason="reauth_successful")
                 else:
-                    _LOGGER.error(f"Issue verifying 2FA. Status: {status}")
-                    errors["base"] = "2fa_error"
+                    _LOGGER.error(f"Issue verifying MFA. Status: {status}")
+                    errors["base"] = "mfa_error"
             except (
                 AuthenticationError,
                 HttpProcessingError,
@@ -325,18 +324,18 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 ParsingError,
             ) as e:
                 _LOGGER.error(
-                    f"Connection Error with reauth_verify_2fa. {e.__class__.__qualname__}: {e}"
+                    f"Connection Error with reauth_verify_mfa. {e.__class__.__qualname__}: {e}"
                 )
-                errors["base"] = "2fa_error"
+                errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
                 _LOGGER.error(
-                    f"ResMed myAir Account Setup Incomplete with reauth_verify_2fa. {e.__class__.__qualname__}: {e}"
+                    f"ResMed myAir Account Setup Incomplete with reauth_verify_mfa. {e.__class__.__qualname__}: {e}"
                 )
                 return self.async_abort(reason="incomplete_account")
 
-        _LOGGER.info("Showing Reauth Verify 2FA Form")
+        _LOGGER.info("Showing Reauth Verify MFA Form")
         return self.async_show_form(
-            step_id="reauth_verify_2fa",
+            step_id="reauth_verify_mfa",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_VERIFICATION_CODE): selector.TextSelector(

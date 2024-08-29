@@ -14,7 +14,7 @@ from homeassistant.helpers.redact import async_redact_data
 import jwt
 
 from custom_components.resmed_myair.const import (
-    AUTH_NEEDS_2FA,
+    AUTH_NEEDS_MFA,
     AUTHN_SUCCESS,
     KEYS_TO_REDACT,
     REGION_NA,
@@ -44,7 +44,7 @@ EU_CONFIG = {
     "myair_api_key": "da2-o66oo6xdnfh5hlfuw5yw5g2dtm",
     # The Okta Endpoint where the creds go
     "authn_url": "https://{okta_url}/api/v1/authn",
-    "2fa_url": "https://{okta_url}/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
+    "mfa_url": "https://{okta_url}/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
     # When specifying token_url and authorize_url, add {email_factor_id} and your email_factor_id will be substituted in
     # Or you can put the entire URL here if you want, but your email_factor_id will be ignored
     "authorize_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/authorize",
@@ -69,7 +69,7 @@ NA_CONFIG = {
     "myair_api_key": "da2-cenztfjrezhwphdqtwtbpqvzui",
     # The Okta Endpoint where the creds go
     "authn_url": "https://{okta_url}/api/v1/authn",
-    "2fa_url": "https://{okta_url}/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
+    "mfa_url": "https://{okta_url}/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
     # When specifying token_url and authorize_url, add {email_factor_id} and your email_factor_id will be substituted in
     # Or you can put the entire URL here if you want, but your email_factor_id will be ignored
     "authorize_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/authorize",
@@ -111,7 +111,7 @@ class RESTClient(MyAirClient):
         else:
             self._static_config = EU_CONFIG
         self._email_factor_id = self._static_config["email_factor_id"]
-        self._2fa_url = self._static_config["2fa_url"].format(
+        self._mfa_url = self._static_config["mfa_url"].format(
             okta_url=self._static_config["okta_url"],
             email_factor_id=self._email_factor_id,
         )
@@ -160,12 +160,12 @@ class RESTClient(MyAirClient):
             _LOGGER.debug("[connect] access_token already active, proceeding")
             return AUTHN_SUCCESS
         status = await self.authn_check()
-        if status == AUTH_NEEDS_2FA:
+        if status == AUTH_NEEDS_MFA:
             self._uses_mfa = True
             if initial:
-                await self.trigger_2fa()
+                await self.trigger_mfa()
             else:
-                raise AuthenticationError(f"Need to Re-Verify 2FA")
+                raise AuthenticationError(f"Need to Re-Verify MFA")
         else:
             await self.get_access_token()
         return status
@@ -230,12 +230,12 @@ class RESTClient(MyAirClient):
         return False
 
 
-    async def verify_2fa_and_get_access_token(self, verification_code) -> str:
-        status = await self.verify_2fa(verification_code)
+    async def verify_mfa_and_get_access_token(self, verification_code) -> str:
+        status = await self.verify_mfa(verification_code)
         if status == AUTHN_SUCCESS:
             await self.get_access_token()
         else:
-            raise AuthenticationError(f"Issue verifying 2FA. Status: {status}")
+            raise AuthenticationError(f"Issue verifying MFA. Status: {status}")
         return status
 
     async def _resmed_response_error_check(
@@ -294,7 +294,7 @@ class RESTClient(MyAirClient):
         if "status" not in authn_dict:
             raise AuthenticationError("Cannot get status in authn step")
         status = authn_dict["status"]
-        if status == AUTH_NEEDS_2FA:
+        if status == AUTH_NEEDS_MFA:
             if "stateToken" not in authn_dict:
                 raise AuthenticationError("Cannot get stateToken in authn step")
             self._state_token = authn_dict["stateToken"]
@@ -304,13 +304,13 @@ class RESTClient(MyAirClient):
                 self._email_factor_id = self._static_config["email_factor_id"]
             _LOGGER.debug(f"[authn_check] email_factor_id: {self._email_factor_id}")
             try:
-                self._2fa_url = f"{authn_dict['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
+                self._mfa_url = f"{authn_dict['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
             except Exception:
-                self._2fa_url = self._static_config["2fa_url"].format(
+                self._mfa_url = self._static_config["mfa_url"].format(
                     okta_url=self._static_config["okta_url"],
                     email_factor_id=self._email_factor_id,
                 )
-            _LOGGER.debug(f"[authn_check] 2fa_url: {self._2fa_url}")
+            _LOGGER.debug(f"[authn_check] mfa_url: {self._mfa_url}")
         elif status == AUTHN_SUCCESS:
             if "sessionToken" not in authn_dict:
                 raise AuthenticationError("Cannot get sessionToken in authn step")
@@ -319,63 +319,63 @@ class RESTClient(MyAirClient):
             raise AuthenticationError(f"Unknown status in authn step: {status}")
         return status
 
-    async def trigger_2fa(self):
+    async def trigger_mfa(self):
         json_query = {"passCode": "", "stateToken": self._state_token}
-        _LOGGER.debug(f"[trigger_2fa] 2fa_url: {self._2fa_url}")
+        _LOGGER.debug(f"[trigger_mfa] mfa_url: {self._mfa_url}")
         _LOGGER.debug(
-            f"[trigger_2fa] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
+            f"[trigger_mfa] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
         )
         _LOGGER.debug(
-            f"[trigger_2fa] json_query: {async_redact_data(json_query, KEYS_TO_REDACT)}"
+            f"[trigger_mfa] json_query: {async_redact_data(json_query, KEYS_TO_REDACT)}"
         )
 
         async with self._session.post(
-            self._2fa_url,
+            self._mfa_url,
             headers=self._json_headers,
             json=json_query,
             cookies=self._cookies,
-        ) as trigger_2fa_res:
-            _LOGGER.debug(f"[trigger_2fa] trigger_2fa_res: {trigger_2fa_res}")
-            trigger_2fa_dict = await trigger_2fa_res.json()
+        ) as trigger_mfa_res:
+            _LOGGER.debug(f"[trigger_mfa] trigger_mfa_res: {trigger_mfa_res}")
+            trigger_mfa_dict = await trigger_mfa_res.json()
             _LOGGER.debug(
-                f"[trigger_2fa] trigger_2fa_dict: {async_redact_data(trigger_2fa_dict, KEYS_TO_REDACT)}"
+                f"[trigger_mfa] trigger_mfa_dict: {async_redact_data(trigger_mfa_dict, KEYS_TO_REDACT)}"
             )
             await self._resmed_response_error_check(
-                "trigger_2fa", trigger_2fa_res, trigger_2fa_dict
+                "trigger_mfa", trigger_mfa_res, trigger_mfa_dict
             )
 
-    async def verify_2fa(self, verification_code: str) -> str:
-        _LOGGER.debug(f"[verify_2fa] verification_code: {verification_code}")
+    async def verify_mfa(self, verification_code: str) -> str:
+        _LOGGER.debug(f"[verify_mfa] verification_code: {verification_code}")
 
         json_query = {"passCode": verification_code, "stateToken": self._state_token}
-        _LOGGER.debug(f"[verify_2fa] 2fa_url: {self._2fa_url}")
+        _LOGGER.debug(f"[verify_mfa] mfa_url: {self._mfa_url}")
         _LOGGER.debug(
-            f"[verify_2fa] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
+            f"[verify_mfa] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
         )
-        _LOGGER.debug(f"[verify_2fa] json_query: {json_query}")
+        _LOGGER.debug(f"[verify_mfa] json_query: {json_query}")
 
         async with self._session.post(
-            self._2fa_url,
+            self._mfa_url,
             headers=self._json_headers,
             json=json_query,
             cookies=self._cookies,
-        ) as verify_2fa_res:
-            _LOGGER.debug(f"[verify_2fa] verify_2fa_res: {verify_2fa_res}")
-            verify_2fa_dict = await verify_2fa_res.json()
+        ) as verify_mfa_res:
+            _LOGGER.debug(f"[verify_mfa] verify_mfa_res: {verify_mfa_res}")
+            verify_mfa_dict = await verify_mfa_res.json()
             _LOGGER.debug(
-                f"[verify_2fa] verify_2fa_dict: {async_redact_data(verify_2fa_dict, KEYS_TO_REDACT)}"
+                f"[verify_mfa] verify_mfa_dict: {async_redact_data(verify_mfa_dict, KEYS_TO_REDACT)}"
             )
             await self._resmed_response_error_check(
-                "verify_2fa", verify_2fa_res, verify_2fa_dict
+                "verify_mfa", verify_mfa_res, verify_mfa_dict
             )
-        if "status" not in verify_2fa_dict:
+        if "status" not in verify_mfa_dict:
             raise AuthenticationError("Cannot get status in authn step")
-        status = verify_2fa_dict["status"]
+        status = verify_mfa_dict["status"]
         if status == AUTHN_SUCCESS:
             # We've exchanged our user/pass for a session token
-            if "sessionToken" not in verify_2fa_dict:
-                raise AuthenticationError("Cannot get sessionToken in verify_2fa step")
-            self._session_token = verify_2fa_dict["sessionToken"]
+            if "sessionToken" not in verify_mfa_dict:
+                raise AuthenticationError("Cannot get sessionToken in verify_mfa step")
+            self._session_token = verify_mfa_dict["sessionToken"]
         else:
             raise AuthenticationError(f"Unknown status in authn step: {status}")
         return status
