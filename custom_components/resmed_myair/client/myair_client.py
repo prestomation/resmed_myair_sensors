@@ -32,6 +32,7 @@ class MyAirConfig(NamedTuple):
     username: str
     password: str
     region: Literal["NA", "EU"]
+    device_token: str = None
 
 
 class SleepRecord(TypedDict):

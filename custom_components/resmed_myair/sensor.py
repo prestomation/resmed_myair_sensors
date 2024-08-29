@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import logging
 from typing import Dict, List
 
+from aiohttp import DummyCookieJar
 from dateutil import parser
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -21,7 +22,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .client import get_client
 from .client.myair_client import MyAirClient, MyAirConfig
 from .const import (
-    CONF_COOKIES,
+    CONF_DEVICE_TOKEN,
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
@@ -201,15 +202,15 @@ async def async_setup_entry(
         username=config_entry.data.get(CONF_USER_NAME),
         password=config_entry.data.get(CONF_PASSWORD),
         region=config_entry.data.get(CONF_REGION),
+        device_token=config_entry.data.get(CONF_DEVICE_TOKEN, None),
     )
     client: MyAirClient = get_client(
         client_config,
-        async_create_clientsession(hass, raise_for_status=True),
+        async_create_clientsession(
+            hass, cookie_jar=DummyCookieJar(), raise_for_status=True
+        ),
     )
-    cookies = config_entry.data.get(CONF_COOKIES, None)
-    _LOGGER.debug(f"[sensor async_setup_entry] cookies: {cookies}")
-    if cookies is not None:
-        await client.load_cookies(cookies)
+
     coordinator = MyAirDataUpdateCoordinator(hass, client)
 
     hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = coordinator

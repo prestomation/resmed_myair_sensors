@@ -1,4 +1,4 @@
-VERSION = "v0.0.11-2FA"  # Version updated by release workflow
+VERSION = "v0.0.12-2FA"  # Version updated by release workflow
 
 DOMAIN = "resmed_myair"
 DEFAULT_UPDATE_RATE_MIN = 30
@@ -11,8 +11,7 @@ CONF_USER_NAME = "Username"
 CONF_PASSWORD = "Password"
 CONF_REGION = "Region"
 CONF_VERIFICATION_CODE = "verification_code"
-CONF_CLIENT = "client"
-CONF_COOKIES = "cookies"
+CONF_DEVICE_TOKEN = "device_token"
 
 REGION_NA = "NA"
 REGION_EU = "EU"

@@ -1,6 +1,7 @@
 import base64
 import datetime
 import hashlib
+from http.cookies import SimpleCookie
 import logging
 import os
 import re
@@ -11,7 +12,6 @@ from aiohttp import ClientResponse, ClientSession
 from aiohttp.http_exceptions import HttpProcessingError
 from homeassistant.helpers.redact import async_redact_data
 import jwt
-from yarl import URL
 
 from custom_components.resmed_myair.const import (
     AUTH_NEEDS_2FA,
@@ -43,13 +43,14 @@ EU_CONFIG = {
     # Used as the x-api-key header for the AppSync GraphQL API
     "myair_api_key": "da2-o66oo6xdnfh5hlfuw5yw5g2dtm",
     # The Okta Endpoint where the creds go
-    "authn_url": "https://id.resmed.eu/api/v1/authn",
-    "2fa_url": "https://id.resmed.eu/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
+    "authn_url": "https://{okta_url}/api/v1/authn",
+    "2fa_url": "https://{okta_url}/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
     # When specifying token_url and authorize_url, add {email_factor_id} and your email_factor_id will be substituted in
     # Or you can put the entire URL here if you want, but your email_factor_id will be ignored
-    "authorize_url": "https://id.resmed.eu/oauth2/{auth_server_id}/v1/authorize",
+    "authorize_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/authorize",
     # The endpoint that the 'code' is sent to get an authorization token
-    "token_url": "https://id.resmed.eu/oauth2/{auth_server_id}/v1/token",
+    "token_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/token",
+    "introspect_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/introspect",
     # The AppSync URL that accepts your token + the API key to return Sleep Records
     "graphql_url": "https://graphql.hyperdrive.resmed.eu/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
@@ -67,19 +68,19 @@ NA_CONFIG = {
     # Used as the x-api-key header for the AppSync GraphQL API
     "myair_api_key": "da2-cenztfjrezhwphdqtwtbpqvzui",
     # The Okta Endpoint where the creds go
-    "authn_url": "https://resmed-ext-1.okta.com/api/v1/authn",
-    "2fa_url": "https://resmed-ext-1.okta.com/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
+    "authn_url": "https://{okta_url}/api/v1/authn",
+    "2fa_url": "https://{okta_url}/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
     # When specifying token_url and authorize_url, add {email_factor_id} and your email_factor_id will be substituted in
     # Or you can put the entire URL here if you want, but your email_factor_id will be ignored
-    "authorize_url": "https://resmed-ext-1.okta.com/oauth2/{auth_server_id}/v1/authorize",
+    "authorize_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/authorize",
     # The endpoint that the 'code' is sent to get an authorization token
-    "token_url": "https://resmed-ext-1.okta.com/oauth2/{auth_server_id}/v1/token",
+    "token_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/token",
+    "introspect_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/introspect",
     # The AppSync URL that accepts your token + the API key to return Sleep Records
     "graphql_url": "https://graphql.myair-prd.dht.live/graphql",
     # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
     "oauth_redirect_url": "https://myair.resmed.com",
 }
-
 
 class RESTClient(MyAirClient):
     """
@@ -102,51 +103,65 @@ class RESTClient(MyAirClient):
         self._id_token = None
         self._state_token = None
         self._session_token = None
-        self._cookies = None
+        self._cookie_dt = self._config.device_token
+        self._cookie_sid = None
+        self._uses_mfa = False
         if self._config.region == REGION_NA:
             self._static_config = NA_CONFIG
         else:
             self._static_config = EU_CONFIG
         self._email_factor_id = self._static_config["email_factor_id"]
         self._2fa_url = self._static_config["2fa_url"].format(
-            email_factor_id=self._email_factor_id
+            okta_url=self._static_config["okta_url"],
+            email_factor_id=self._email_factor_id,
         )
 
     @property
-    def cookies(self):
-        return self._cookies
+    def device_token(self):
+        return self._cookie_dt
 
-    async def load_cookies(self, cookies):
-        self._cookies = cookies
-        _LOGGER.debug(f"[load_cookies] cookies to load: {self._cookies}")
-        cookie_url = URL(f"https://{self._static_config['okta_url']}")
-        self._session.cookie_jar.update_cookies(self._cookies)
-        _LOGGER.debug("[load_cookies] All Loaded Cookies:\n")
-        for cookie in self._session.cookie_jar:
-            _LOGGER.debug(f"{cookie}")
-        _LOGGER.debug(
-            f"[load_cookies] loaded cookies:\n{self._session.cookie_jar.filter_cookies(cookie_url)}"
-        )
+    @property
+    def _cookies(self):
+        cookies = {}
+        if self._cookie_dt:
+            cookies["DT"] = self._cookie_dt
+        if self._cookie_sid:
+            cookies["sid"] = self._cookie_sid
+        # _LOGGER.debug(f"[cookies] returning cookies: {cookies}")
+        return cookies
+
+    async def _load_cookies(self, cookies):
+        # _LOGGER.debug(f"[load_cookies] cookies to load: {cookies}")
+        if cookies.get("DT", None) and cookies.get("DT", None) != self._cookie_dt:
+            if self._cookie_dt is not None:
+                _LOGGER.warning(f"Changing Device Token from: {self._cookie_dt}, to: {cookies.get("DT", None)}")
+            self._cookie_dt = cookies.get("DT", self._cookie_dt)
+        self._cookie_sid = cookies.get("sid", self._cookie_sid)
+        _LOGGER.debug(f"[load_cookies] loaded cookies: {self._cookies}")
+
+    async def _extract_and_load_cookies(self, cookie_headers):
+        cookies = {}
+
+        for header in cookie_headers:
+            cookie = SimpleCookie(header)
+            for key, morsel in cookie.items():
+                if key.lower() in ("dt", "sid"):
+                    cookies[key] = morsel.value
+
+        _LOGGER.debug(f"[extract_and_load_cookies] extracted cookies: {cookies}")
+        await self._load_cookies(cookies)
 
     async def connect(self, initial=False):
-        # Thought process:
-        # Check authn
-        #     if success:
-        #         use sessionToken to get_acces_token
-        #     if mfa_required:
-        #         use stateToken
-        #         if initial setup:
-        #             trigger 2FA
-        #             return that 2FA required
-        #         elseif update:
-        #             trigger reauth
-
-        # ToDo:
-        # - Keep client from config_flow to coordinator - Not working
-        # - Save cookies even across restart (save in config_entry)
-
+        if self._cookie_dt is None:
+            await self._get_initial_dt()
+        if self._cookie_dt is None and self._uses_mfa:
+            _LOGGER.warning("Device Token isn't set. This will require frequent reauthentication.")
+        if self._access_token and await self._is_access_token_active():
+            _LOGGER.debug("[connect] access_token already active, proceeding")
+            return AUTHN_SUCCESS
         status = await self.authn_check()
         if status == AUTH_NEEDS_2FA:
+            self._uses_mfa = True
             if initial:
                 await self.trigger_2fa()
             else:
@@ -154,6 +169,66 @@ class RESTClient(MyAirClient):
         else:
             await self.get_access_token()
         return status
+
+    async def _get_initial_dt(self):
+        initial_dt_url = self._static_config["authorize_url"].format(
+            okta_url=self._static_config["okta_url"],
+            auth_server_id=self._static_config["auth_server_id"],
+        )
+        _LOGGER.debug(f"[get_initial_dt] initial_dt_url: {initial_dt_url}")
+        _LOGGER.debug(
+            f"[get_initial_dt] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
+        )
+
+        async with self._session.get(
+            initial_dt_url,
+            headers=self._json_headers,
+            raise_for_status=False, # This will likely return a 400 which is ok. Just need the device token.
+            allow_redirects=False,
+        ) as initial_dt_res:
+            _LOGGER.debug(f"[get_initial_dt] initial_dt_res: {initial_dt_res}")
+
+        await self._extract_and_load_cookies(initial_dt_res.headers.getall('set-cookie', []))
+
+    async def _is_access_token_active(self):
+        introspect_url = self._static_config["introspect_url"].format(
+            okta_url=self._static_config["okta_url"],
+            auth_server_id=self._static_config["auth_server_id"],
+        )
+
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+
+        introspect_query = {
+            "client_id": self._static_config["authorize_client_id"],
+            "token_type_hint": "access_token",
+            "token": self._access_token,
+        }
+        _LOGGER.debug(f"[is_access_token_active] introspect_url: {introspect_url}")
+        _LOGGER.debug(
+            f"[is_access_token_active] headers: {async_redact_data(headers, KEYS_TO_REDACT)}"
+        )
+        _LOGGER.debug(
+            f"[is_access_token_active] introspect_query: {async_redact_data(introspect_query, KEYS_TO_REDACT)}"
+        )
+
+        async with self._session.post(
+            introspect_url, headers=headers, data=introspect_query, cookies=self._cookies
+        ) as introspect_res:
+            _LOGGER.debug(f"[is_access_token_active] introspect_res: {introspect_res}")
+            introspect_dict = await introspect_res.json()
+            _LOGGER.debug(
+                f"[is_access_token_active] introspect_dict: {async_redact_data(introspect_dict, KEYS_TO_REDACT)}"
+            )
+            await self._resmed_response_error_check(
+                "introspect_query", introspect_res, introspect_dict
+            )
+        if introspect_dict.get("active", None) is True:
+            return True
+        return False
+
 
     async def verify_2fa_and_get_access_token(self, verification_code) -> str:
         status = await self.verify_2fa(verification_code)
@@ -176,7 +251,7 @@ class RESTClient(MyAirClient):
                 if (
                     resp_dict["errors"][0]["errorInfo"]["errorType"] == "badRequest"
                     and resp_dict["errors"][0]["errorInfo"]["errorCode"]
-                    == "onboardingFlowInProgress"
+                    in ("onboardingFlowInProgress", "equipmentNotAssigned")
                 ):
                     raise IncompleteAccountError(f"{error_message}")
             except TypeError:
@@ -189,7 +264,9 @@ class RESTClient(MyAirClient):
             )
 
     async def authn_check(self) -> str:
-        authn_url = self._static_config["authn_url"]
+        authn_url = self._static_config["authn_url"].format(
+            okta_url=self._static_config["okta_url"]
+        )
         json_query = {
             "username": self._config.username,
             "password": self._config.password,
@@ -230,7 +307,8 @@ class RESTClient(MyAirClient):
                 self._2fa_url = f"{authn_dict['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
             except Exception:
                 self._2fa_url = self._static_config["2fa_url"].format(
-                    email_factor_id=self._email_factor_id
+                    okta_url=self._static_config["okta_url"],
+                    email_factor_id=self._email_factor_id,
                 )
             _LOGGER.debug(f"[authn_check] 2fa_url: {self._2fa_url}")
         elif status == AUTHN_SUCCESS:
@@ -316,7 +394,8 @@ class RESTClient(MyAirClient):
 
         # We use that sessionToken and exchange for an oauth code, using PKCE
         authorize_url = self._static_config["authorize_url"].format(
-            auth_server_id=self._static_config["auth_server_id"]
+            okta_url=self._static_config["okta_url"],
+            auth_server_id=self._static_config["auth_server_id"],
         )
         params_query = {
             "client_id": self._static_config["authorize_client_id"],
@@ -358,6 +437,8 @@ class RESTClient(MyAirClient):
         code = parse_qs(fragment.fragment)["code"]
         _LOGGER.debug(f"[get_access_token] code: {code}")
 
+        await self._extract_and_load_cookies(code_res.headers.getall('set-cookie', []))
+
         # Now we change the code for an access token
         # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
         token_query = {
@@ -372,7 +453,8 @@ class RESTClient(MyAirClient):
             "Content-Type": "application/x-www-form-urlencoded",
         }
         token_url = self._static_config["token_url"].format(
-            auth_server_id=self._static_config["auth_server_id"]
+            okta_url=self._static_config["okta_url"],
+            auth_server_id=self._static_config["auth_server_id"],
         )
         _LOGGER.debug(f"[get_access_token token] token_url: {token_url}")
         _LOGGER.debug(
@@ -405,27 +487,6 @@ class RESTClient(MyAirClient):
             self._id_token = token_dict["id_token"]
             # _LOGGER.debug(f"[get_access_token] access_token: {self._access_token}")
             # _LOGGER.debug(f"[get_access_token] id_token: {self._id_token}")
-
-        cookie_dict = {}
-        for cookie in self._session.cookie_jar:
-            cookie_dict.update({cookie.key: cookie.value})
-        _LOGGER.debug(f"[get_access_token token] post-token cookie_dict: {cookie_dict}")
-        if self._cookies is None:
-            cookie_dict.pop("JSESSIONID", None)
-            cookie_dict.pop("t", None)
-            _LOGGER.debug(
-                f"[get_access_token token] post-token cookie_dict post-cleanup: {cookie_dict}"
-            )
-            _LOGGER.info("Setting saved cookies")
-            self._cookies = cookie_dict
-        else:
-            _LOGGER.info("Cookies alreay set, not updating")
-            _LOGGER.debug(
-                f"[get_access_token token] set DT: {self._cookies.get('DT')}, new DT: {cookie_dict.get('DT')}"
-            )
-            _LOGGER.debug(
-                f"[get_access_token token] set sid: {self._cookies.get('sid')}, new sid: {cookie_dict.get('sid')}"
-            )
 
     async def gql_query(self, operation_name: str, query: str) -> Any:
         _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
@@ -475,7 +536,7 @@ class RESTClient(MyAirClient):
             "rmdhandsetmodel": "Chrome",
             "rmdhandsetosversion": "127.0.6533.119",
             "rmdproduct": self._static_config["product"],
-            "rmdappversion": "2.0.0",
+            "rmdappversion": "1.0.0",
             "rmdhandsetplatform": "Web",
             "rmdcountry": self._country_code,
             "accept-language": "en-US,en;q=0.9",

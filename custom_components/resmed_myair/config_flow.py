@@ -2,6 +2,7 @@ from collections.abc import Mapping
 import logging
 from typing import Any
 
+from aiohttp import DummyCookieJar
 from aiohttp.client_exceptions import ClientResponseError
 from aiohttp.http_exceptions import HttpProcessingError
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
@@ -19,7 +20,7 @@ from .client.myair_client import (
 )
 from .const import (
     AUTHN_SUCCESS,
-    CONF_COOKIES,
+    CONF_DEVICE_TOKEN,
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
@@ -37,7 +38,12 @@ _LOGGER = logging.getLogger(__name__)
 async def get_device(hass, username, password, region):
     _LOGGER.debug("[get_device] Starting")
     config = MyAirConfig(username=username, password=password, region=region)
-    client = get_client(config, async_create_clientsession(hass, raise_for_status=True))
+    client = get_client(
+        config,
+        async_create_clientsession(
+            hass, cookie_jar=DummyCookieJar(), raise_for_status=True
+        ),
+    )
     status = await client.connect(initial=True)
     device = None
     if status == AUTHN_SUCCESS:
@@ -94,7 +100,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
 
                     await self.async_set_unique_id(serial_number)
                     self._abort_if_unique_id_configured()
-                    self._data.update({CONF_COOKIES: self._client.cookies})
+                    self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
                     _LOGGER.debug(
                         f"[async_step_user] data: {async_redact_data(self._data, KEYS_TO_REDACT)}"
                     )
@@ -152,7 +158,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
                 if status == AUTHN_SUCCESS:
                     self._data.pop(CONF_VERIFICATION_CODE, None)
-                    self._data.update({CONF_COOKIES: self._client.cookies})
+                    self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
                     _LOGGER.debug(
                         f"[async_step_verify_2fa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
                     )
@@ -241,7 +247,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
 
                     # await self.async_set_unique_id(serial_number)
                     # self._abort_if_unique_id_configured()
-                    self._data.update({CONF_COOKIES: self._client.cookies})
+                    self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
                     _LOGGER.debug(
                         f"[async_step_reauth_confirm] data: {async_redact_data(self._data, KEYS_TO_REDACT)}"
                     )
@@ -291,6 +297,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input:
             self._data.update(user_input)
+
             try:
                 status, device = await get_2fa_device(
                     self._client,
@@ -298,7 +305,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
                 if status == AUTHN_SUCCESS:
                     self._data.pop(CONF_VERIFICATION_CODE, None)
-                    self._data.update({CONF_COOKIES: self._client.cookies})
+                    self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
                     _LOGGER.debug(
                         f"[async_step_reauth_verify_2fa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
                     )
