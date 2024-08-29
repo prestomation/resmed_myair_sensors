@@ -41,6 +41,7 @@
         "abort": {
             "already_configured": "Device is already configured",
             "incomplete_account": "ResMed myAir Account Setup is Incomplete. Login to the myAir website and ensure that CPAP data is showing. Also, ensure that the Time Zone is set under My Account.",
+            "incomplete_account_verify_email": "ResMed myAir Account Setup is Incomplete. Email address has not been verfified.",
             "reauth_successful": "ResMed myAir Reauthentication Successful"
         }
     }

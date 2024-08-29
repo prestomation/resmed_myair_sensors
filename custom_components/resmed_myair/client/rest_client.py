@@ -74,6 +74,7 @@ OAUTH_URLS = {
     # The endpoint that the 'code' is sent to get an authorization token
     "token_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/token",
     "introspect_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/introspect",
+    "userinfo_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/userinfo",
 }
 
 class RESTClient(MyAirClient):
@@ -223,7 +224,41 @@ class RESTClient(MyAirClient):
             return True
         return False
 
+    async def is_email_verified(self):
+        userinfo_url = OAUTH_URLS["userinfo_url"].format(
+            okta_url=self._region_config["okta_url"],
+            auth_server_id=self._region_config["auth_server_id"],
+        )
 
+        headers = {
+            "Authorization": f"Bearer {self._access_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",            
+        }
+
+        _LOGGER.debug(f"[is_email_verified] authorize_url: {userinfo_url}")
+        _LOGGER.debug(
+            f"[is_email_verified] headers: {async_redact_data(headers, KEYS_TO_REDACT)}"
+        )
+
+        async with self._session.get(
+            userinfo_url,
+            headers=headers,
+            allow_redirects=False,
+        ) as userinfo_res:
+            _LOGGER.debug(f"[is_email_verified] userinfo_res: {userinfo_res}")
+            userinfo_dict = await userinfo_res.json()
+            _LOGGER.debug(
+                f"[is_email_verified] introspect_dict: {async_redact_data(userinfo_dict, KEYS_TO_REDACT)}"
+            )
+            await self._resmed_response_error_check(
+                "userinfo_query", userinfo_res, userinfo_dict
+            )
+
+        if userinfo_dict.get("email_verified", None) is True:
+            return True
+        return False
+        
     async def verify_mfa_and_get_access_token(self, verification_code) -> str:
         status = await self._verify_mfa(verification_code)
         if status == AUTHN_SUCCESS:
