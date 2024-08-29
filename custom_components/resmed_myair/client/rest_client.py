@@ -79,8 +79,7 @@ OAUTH_URLS = {
 
 class RESTClient(MyAirClient):
     """
-    This client is currently used in the EU.
-    In the EU, myAir uses oauth on Okta and AWS AppSync GraphQL
+    myAir uses oauth on Okta and AWS AppSync GraphQL
     """
 
     def __init__(self, config: MyAirConfig, session: ClientSession):
@@ -125,35 +124,14 @@ class RESTClient(MyAirClient):
         # _LOGGER.debug(f"[cookies] returning cookies: {cookies}")
         return cookies
 
-    async def _load_cookies(self, cookies):
-        # _LOGGER.debug(f"[load_cookies] cookies to load: {cookies}")
-        if cookies.get("DT", None) and cookies.get("DT", None) != self._cookie_dt:
-            if self._cookie_dt is not None:
-                _LOGGER.warning(f"Changing Device Token from: {self._cookie_dt}, to: {cookies.get("DT", None)}")
-            self._cookie_dt = cookies.get("DT", self._cookie_dt)
-        self._cookie_sid = cookies.get("sid", self._cookie_sid)
-        _LOGGER.debug(f"[load_cookies] loaded cookies: {self._cookies}")
-
-    async def _extract_and_load_cookies(self, cookie_headers):
-        cookies = {}
-
-        for header in cookie_headers:
-            cookie = SimpleCookie(header)
-            for key, morsel in cookie.items():
-                if key.lower() in ("dt", "sid"):
-                    cookies[key] = morsel.value
-
-        _LOGGER.debug(f"[extract_and_load_cookies] extracted cookies: {cookies}")
-        await self._load_cookies(cookies)
-
     async def connect(self, initial=False):
         if self._cookie_dt is None:
             await self._get_initial_dt()
         if self._cookie_dt is None and self._uses_mfa:
             _LOGGER.warning("Device Token isn't set. This will require frequent reauthentication.")
         if self._access_token and await self._is_access_token_active():
-            _LOGGER.debug("[connect] access_token already active, proceeding")
             return AUTHN_SUCCESS
+        _LOGGER.info("Starting Authentication")
         status = await self._authn_check()
         if status == AUTH_NEEDS_MFA:
             self._uses_mfa = True
@@ -164,6 +142,68 @@ class RESTClient(MyAirClient):
         else:
             await self._get_access_token()
         return status
+
+    async def verify_mfa_and_get_access_token(self, verification_code) -> str:
+        status = await self._verify_mfa(verification_code)
+        if status == AUTHN_SUCCESS:
+            await self._get_access_token()
+        else:
+            raise AuthenticationError(f"Issue verifying MFA. Status: {status}")
+        return status
+
+    async def is_email_verified(self):
+        userinfo_url = OAUTH_URLS["userinfo_url"].format(
+            okta_url=self._region_config["okta_url"],
+            auth_server_id=self._region_config["auth_server_id"],
+        )
+
+        headers = {
+            "Authorization": f"Bearer {self._access_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",            
+        }
+
+        _LOGGER.debug(f"[is_email_verified] authorize_url: {userinfo_url}")
+        _LOGGER.debug(
+            f"[is_email_verified] headers: {async_redact_data(headers, KEYS_TO_REDACT)}"
+        )
+
+        async with self._session.get(
+            userinfo_url,
+            headers=headers,
+            allow_redirects=False,
+        ) as userinfo_res:
+            _LOGGER.debug(f"[is_email_verified] userinfo_res: {userinfo_res}")
+            userinfo_dict = await userinfo_res.json()
+            _LOGGER.debug(
+                f"[is_email_verified] introspect_dict: {async_redact_data(userinfo_dict, KEYS_TO_REDACT)}"
+            )
+            await self._resmed_response_error_check(
+                "userinfo_query", userinfo_res, userinfo_dict
+            )
+
+        if userinfo_dict.get("email_verified", None) is True:
+            return True
+        return False
+
+    async def _extract_and_update_cookies(self, cookie_headers):
+        cookies = {}
+        for header in cookie_headers:
+            cookie = SimpleCookie(header)
+            for key, morsel in cookie.items():
+                if key.lower() in ("dt", "sid"):
+                    cookies[key] = morsel.value
+        _LOGGER.debug(f"[extract_and_update_cookies] extracted cookies: {cookies}")
+    
+        if cookies.get("DT", None) and cookies.get("DT", None) != self._cookie_dt:
+            if self._cookie_dt is not None:
+                _LOGGER.warning(f"Changing Device Token from: {self._cookie_dt}, to: {cookies.get("DT", None)}")
+            self._cookie_dt = cookies.get("DT", self._cookie_dt)
+        if cookies.get("sid", None) and cookies.get("sid", None) != self._cookie_sid:
+            if self._cookie_sid is not None:
+                _LOGGER.info(f"Updating to new sid cookie")
+            self._cookie_sid = cookies.get("sid", self._cookie_sid)
+        _LOGGER.debug(f"[extract_and_update_cookies] updated cookies: {self._cookies}")
 
     async def _get_initial_dt(self):
         initial_dt_url = OAUTH_URLS["authorize_url"].format(
@@ -183,7 +223,7 @@ class RESTClient(MyAirClient):
         ) as initial_dt_res:
             _LOGGER.debug(f"[get_initial_dt] initial_dt_res: {initial_dt_res}")
 
-        await self._extract_and_load_cookies(initial_dt_res.headers.getall('set-cookie', []))
+        await self._extract_and_update_cookies(initial_dt_res.headers.getall('set-cookie', []))
 
     async def _is_access_token_active(self):
         introspect_url = OAUTH_URLS["introspect_url"].format(
@@ -221,51 +261,9 @@ class RESTClient(MyAirClient):
                 "introspect_query", introspect_res, introspect_dict
             )
         if introspect_dict.get("active", None) is True:
+            _LOGGER.info("Existing Access Token is already active. Reusing")
             return True
         return False
-
-    async def is_email_verified(self):
-        userinfo_url = OAUTH_URLS["userinfo_url"].format(
-            okta_url=self._region_config["okta_url"],
-            auth_server_id=self._region_config["auth_server_id"],
-        )
-
-        headers = {
-            "Authorization": f"Bearer {self._access_token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",            
-        }
-
-        _LOGGER.debug(f"[is_email_verified] authorize_url: {userinfo_url}")
-        _LOGGER.debug(
-            f"[is_email_verified] headers: {async_redact_data(headers, KEYS_TO_REDACT)}"
-        )
-
-        async with self._session.get(
-            userinfo_url,
-            headers=headers,
-            allow_redirects=False,
-        ) as userinfo_res:
-            _LOGGER.debug(f"[is_email_verified] userinfo_res: {userinfo_res}")
-            userinfo_dict = await userinfo_res.json()
-            _LOGGER.debug(
-                f"[is_email_verified] introspect_dict: {async_redact_data(userinfo_dict, KEYS_TO_REDACT)}"
-            )
-            await self._resmed_response_error_check(
-                "userinfo_query", userinfo_res, userinfo_dict
-            )
-
-        if userinfo_dict.get("email_verified", None) is True:
-            return True
-        return False
-        
-    async def verify_mfa_and_get_access_token(self, verification_code) -> str:
-        status = await self._verify_mfa(verification_code)
-        if status == AUTHN_SUCCESS:
-            await self._get_access_token()
-        else:
-            raise AuthenticationError(f"Issue verifying MFA. Status: {status}")
-        return status
 
     async def _resmed_response_error_check(
         self, step: str, response: ClientResponse, resp_dict: dict
@@ -340,10 +338,12 @@ class RESTClient(MyAirClient):
                     email_factor_id=self._email_factor_id,
                 )
             _LOGGER.debug(f"[authn_check] mfa_url: {self._mfa_url}")
+            _LOGGER.info("Initial Auth Completed. Needs MFA")
         elif status == AUTHN_SUCCESS:
             if "sessionToken" not in authn_dict:
                 raise AuthenticationError("Cannot get sessionToken in authn step")
             self._session_token = authn_dict["sessionToken"]
+            _LOGGER.info("Initial Auth Completed. Does not need MFA")
         else:
             raise AuthenticationError(f"Unknown status in authn step: {status}")
         return status
@@ -372,6 +372,7 @@ class RESTClient(MyAirClient):
             await self._resmed_response_error_check(
                 "trigger_mfa", trigger_mfa_res, trigger_mfa_dict
             )
+        _LOGGER.info("Triggered MFA Email")
 
     async def _verify_mfa(self, verification_code: str) -> str:
         _LOGGER.debug(f"[verify_mfa] verification_code: {verification_code}")
@@ -398,15 +399,16 @@ class RESTClient(MyAirClient):
                 "verify_mfa", verify_mfa_res, verify_mfa_dict
             )
         if "status" not in verify_mfa_dict:
-            raise AuthenticationError("Cannot get status in authn step")
+            raise AuthenticationError("Cannot get status in verify_mfa step")
         status = verify_mfa_dict["status"]
         if status == AUTHN_SUCCESS:
             # We've exchanged our user/pass for a session token
             if "sessionToken" not in verify_mfa_dict:
                 raise AuthenticationError("Cannot get sessionToken in verify_mfa step")
+            _LOGGER.info("MFA Verified")
             self._session_token = verify_mfa_dict["sessionToken"]
         else:
-            raise AuthenticationError(f"Unknown status in authn step: {status}")
+            raise AuthenticationError(f"Unknown status in verify_mfa step: {status}")
         return status
 
     async def _get_access_token(self) -> str:
@@ -466,7 +468,7 @@ class RESTClient(MyAirClient):
         code = parse_qs(fragment.fragment)["code"]
         _LOGGER.debug(f"[get_access_token] code: {code}")
 
-        await self._extract_and_load_cookies(code_res.headers.getall('set-cookie', []))
+        await self._extract_and_update_cookies(code_res.headers.getall('set-cookie', []))
 
         # Now we change the code for an access token
         # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
@@ -512,10 +514,11 @@ class RESTClient(MyAirClient):
                 raise ParsingError("access_token not in token_dict")
             if "id_token" not in token_dict:
                 raise ParsingError("id_token not in token_dict")
-            self._access_token = token_dict["access_token"]
             self._id_token = token_dict["id_token"]
-            # _LOGGER.debug(f"[get_access_token] access_token: {self._access_token}")
-            # _LOGGER.debug(f"[get_access_token] id_token: {self._id_token}")
+            if token_dict.get("access_token", None) and self._access_token != token_dict.get("access_token", None):
+                if self._access_token is not None:
+                    _LOGGER.info(f"Obtained new access token")
+                self._access_token = token_dict.get("access_token", self._access_token)
 
     async def _gql_query(self, operation_name: str, query: str) -> Any:
         _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
@@ -637,7 +640,7 @@ class RESTClient(MyAirClient):
             "DATE", today
         )
 
-        _LOGGER.debug(f"[get_sleep_records] Starting Query")
+        _LOGGER.info("Getting Sleep Records")
         records_dict = await self._gql_query("GetPatientSleepRecords", query)
         _LOGGER.debug(
             f"[get_sleep_records] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
@@ -671,7 +674,7 @@ class RESTClient(MyAirClient):
         }
         """
 
-        _LOGGER.debug(f"[get_user_device_data] Starting Query")
+        _LOGGER.info("Getting User Device Data")
         records_dict = await self._gql_query("getPatientWrapper", query)
         _LOGGER.debug(
             f"[get_user_device_data] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"

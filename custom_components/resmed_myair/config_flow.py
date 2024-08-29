@@ -47,10 +47,7 @@ async def get_device(hass, username, password, region):
     status = await client.connect(initial=True)
     device = None
     if status == AUTHN_SUCCESS:
-        _LOGGER.info("MFA Not Needed. Proceeding")
         device = await client.get_user_device_data()
-    else:
-        _LOGGER.info("MFA Needed. Triggered Email")
     return status, device, client
 
 
@@ -94,9 +91,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                             f"Unable to get Serial Number from Device Data"
                         )
                     serial_number = device["serialNumber"]
-                    _LOGGER.info(
-                        f"ResMed myAir: Found device with serial number {serial_number}"
-                    )
+                    _LOGGER.info(f"Found device with serial number {serial_number}")
 
                     await self.async_set_unique_id(serial_number)
                     self._abort_if_unique_id_configured()
@@ -118,7 +113,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 ParsingError,
             ) as e:
                 _LOGGER.error(
-                    f"Connection Error with async_step_user. {e.__class__.__qualname__}: {e}"
+                    f"Connection Error at async_step_user. {e.__class__.__qualname__}: {e}"
                 )
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
@@ -126,7 +121,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     try:
                         if not (await self._client.is_email_verified()):
                             _LOGGER.error(
-                                f"ResMed myAir Account Setup Incomplete with async_step_user. Email Address not verified. {e.__class__.__qualname__}: {e}"
+                                f"Account Setup Incomplete at async_step_user. Email Address not verified. {e.__class__.__qualname__}: {e}"
                             )
                             return self.async_abort(
                                 reason="incomplete_account_verify_email"
@@ -134,7 +129,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     except Exception:
                         pass
                 _LOGGER.error(
-                    f"ResMed myAir Account Setup Incomplete with async_step_user. {e.__class__.__qualname__}: {e}"
+                    f"Account Setup Incomplete at async_step_user. {e.__class__.__qualname__}: {e}"
                 )
                 return self.async_abort(reason="incomplete_account")
 
@@ -187,7 +182,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 ParsingError,
             ) as e:
                 _LOGGER.error(
-                    f"Connection Error with verify_mfa. {e.__class__.__qualname__}: {e}"
+                    f"Connection Error at verify_mfa. {e.__class__.__qualname__}: {e}"
                 )
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
@@ -195,7 +190,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     try:
                         if not (await self._client.is_email_verified()):
                             _LOGGER.error(
-                                f"ResMed myAir Account Setup Incomplete with async_step_user. Email Address not verified. {e.__class__.__qualname__}: {e}"
+                                f"Account Setup Incomplete at verify_mfa. Email Address not verified. {e.__class__.__qualname__}: {e}"
                             )
                             return self.async_abort(
                                 reason="incomplete_account_verify_email"
@@ -203,7 +198,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     except Exception:
                         pass
                 _LOGGER.error(
-                    f"ResMed myAir Account Setup Incomplete with verify_mfa. {e.__class__.__qualname__}: {e}"
+                    f"Account Setup Incomplete at verify_mfa. {e.__class__.__qualname__}: {e}"
                 )
                 return self.async_abort(reason="incomplete_account")
 
@@ -227,7 +222,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         self, entry_data: Mapping[str, Any]
     ) -> ConfigFlowResult:
         """Handle configuration by re-auth."""
-        _LOGGER.info("Starting ResMed myAir Reauthorization")
+        _LOGGER.info("Starting Reauthorization")
         if entry := self.hass.config_entries.async_get_entry(self.context["entry_id"]):
             self._entry = entry
         _LOGGER.debug(
@@ -263,9 +258,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                             f"Unable to get Serial Number from Device Data"
                         )
                     serial_number = device["serialNumber"]
-                    _LOGGER.info(
-                        f"ResMed myAir: Found device with serial number {serial_number}"
-                    )
+                    _LOGGER.info(f"Found device with serial number {serial_number}")
                     # await self.async_set_unique_id(serial_number)
                     # self._abort_if_unique_id_configured()
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
@@ -287,7 +280,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 ParsingError,
             ) as e:
                 _LOGGER.error(
-                    f"Connection Error with reauth_confirm. {e.__class__.__qualname__}: {e}"
+                    f"Connection Error at reauth_confirm. {e.__class__.__qualname__}: {e}"
                 )
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
@@ -295,7 +288,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     try:
                         if not (await self._client.is_email_verified()):
                             _LOGGER.error(
-                                f"ResMed myAir Account Setup Incomplete with async_step_user. Email Address not verified. {e.__class__.__qualname__}: {e}"
+                                f"Account Setup Incomplete at reauth_confirm. Email Address not verified. {e.__class__.__qualname__}: {e}"
                             )
                             return self.async_abort(
                                 reason="incomplete_account_verify_email"
@@ -303,7 +296,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     except Exception:
                         pass
                 _LOGGER.error(
-                    f"ResMed myAir Account Setup Incomplete with reauth_confirm. {e.__class__.__qualname__}: {e}"
+                    f"Account Setup Incomplete at reauth_confirm. {e.__class__.__qualname__}: {e}"
                 )
                 return self.async_abort(reason="incomplete_account")
 
@@ -357,7 +350,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 ParsingError,
             ) as e:
                 _LOGGER.error(
-                    f"Connection Error with reauth_verify_mfa. {e.__class__.__qualname__}: {e}"
+                    f"Connection Error at reauth_verify_mfa. {e.__class__.__qualname__}: {e}"
                 )
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
@@ -365,7 +358,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     try:
                         if not (await self._client.is_email_verified()):
                             _LOGGER.error(
-                                f"ResMed myAir Account Setup Incomplete with async_step_user. Email Address not verified. {e.__class__.__qualname__}: {e}"
+                                f"Account Setup Incomplete at reauth_verify_mfa. Email Address not verified. {e.__class__.__qualname__}: {e}"
                             )
                             return self.async_abort(
                                 reason="incomplete_account_verify_email"
@@ -373,7 +366,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     except Exception:
                         pass
                 _LOGGER.error(
-                    f"ResMed myAir Account Setup Incomplete with reauth_verify_mfa. {e.__class__.__qualname__}: {e}"
+                    f"Account Setup Incomplete at reauth_verify_mfa. {e.__class__.__qualname__}: {e}"
                 )
                 return self.async_abort(reason="incomplete_account")
 

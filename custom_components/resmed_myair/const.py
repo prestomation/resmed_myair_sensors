@@ -28,6 +28,8 @@ KEYS_TO_REDACT = [
     "password",
     "Password",
     "preferred_username",
+    "sub",
+    "token",
     "username",
     "Username",
 ]
