@@ -19,8 +19,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.redact import async_redact_data
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .client import get_client
-from .client.myair_client import MyAirClient, MyAirConfig
+from .client.myair_client import MyAirConfig
+from .client.rest_client import RESTClient
 from .const import (
     CONF_DEVICE_TOKEN,
     CONF_PASSWORD,
@@ -31,7 +31,7 @@ from .const import (
 )
 from .coordinator import MyAirDataUpdateCoordinator
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
@@ -53,12 +53,12 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self.sensor_key = sensor_desc.key
         self.coordinator = coordinator
-        serial_number = self.coordinator.device["serialNumber"]
+        serial_number: str = self.coordinator.device["serialNumber"]
         self.entity_description = sensor_desc
 
-        self._attr_name = friendly_name
-        self._attr_unique_id = f"{DOMAIN}_{serial_number}_{self.sensor_key}"
-        self._attr_device_info = DeviceInfo(
+        self._attr_name: str = friendly_name
+        self._attr_unique_id: str = f"{DOMAIN}_{serial_number}_{self.sensor_key}"
+        self._attr_device_info: DeviceInfo = DeviceInfo(
             identifiers={(DOMAIN, serial_number)},
             manufacturer=self.coordinator.device["fgDeviceManufacturerName"],
             model=self.coordinator.device["deviceType"],
@@ -199,20 +199,20 @@ async def async_setup_entry(
         f"[sensor async_setup_entry] config_entry.data: {async_redact_data(config_entry.data, KEYS_TO_REDACT)}"
     )
 
-    client_config = MyAirConfig(
+    client_config: MyAirConfig = MyAirConfig(
         username=config_entry.data.get(CONF_USER_NAME),
         password=config_entry.data.get(CONF_PASSWORD),
         region=config_entry.data.get(CONF_REGION),
         device_token=config_entry.data.get(CONF_DEVICE_TOKEN, None),
     )
-    client: MyAirClient = get_client(
+    client: RESTClient = RESTClient(
         client_config,
         async_create_clientsession(
             hass, cookie_jar=DummyCookieJar(), raise_for_status=True
         ),
     )
 
-    coordinator = MyAirDataUpdateCoordinator(hass, client)
+    coordinator: MyAirDataUpdateCoordinator = MyAirDataUpdateCoordinator(hass, client)
 
     hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = coordinator
 
@@ -234,11 +234,11 @@ async def async_setup_entry(
 
     async_add_entities(sensors, False)
 
-    sanitized_username = (
+    sanitized_username: str = (
         config_entry.data.get(CONF_USER_NAME).replace("@", "_").replace(".", "_")
     )
 
-    async def refresh(data):
+    async def refresh(data) -> None:
         await coordinator.async_refresh()
 
     hass.services.async_register(DOMAIN, f"force_poll_{sanitized_username}", refresh)

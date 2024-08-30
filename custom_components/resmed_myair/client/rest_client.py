@@ -30,9 +30,9 @@ from .myair_client import (
     SleepRecord,
 )
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
-EU_CONFIG = {
+EU_CONFIG: dict[str, Any] = {
     # The name used in various queries
     "product": "myAir EU",
     # The regionalized URL for Okta authentication queries
@@ -51,7 +51,7 @@ EU_CONFIG = {
     "oauth_redirect_url": "https://myair.resmed.eu",
 }
 
-NA_CONFIG = {
+NA_CONFIG: dict[str, Any] = {
     # The name used in various queries
     "product": "myAir",
     # The regionalized URL for Okta authentication queries
@@ -70,7 +70,7 @@ NA_CONFIG = {
     "oauth_redirect_url": "https://myair.resmed.com",
 }
 
-OAUTH_URLS = {
+OAUTH_URLS: dict[str, Any] = {
     # The Initial Auth Okta Endpoint where the username/password goes. 
     # If MFA not needed, will give sessionToken. If MFA, will give stateToken
     "authn_url": "https://{okta_url}/api/v1/authn",
@@ -134,7 +134,7 @@ class RESTClient(MyAirClient):
         # _LOGGER.debug(f"[cookies] returning cookies: {cookies}")
         return cookies
 
-    async def connect(self, initial=False):
+    async def connect(self, initial: bool | None = False):
         if self._cookie_dt is None:
             await self._get_initial_dt()
         if self._cookie_dt is None and self._uses_mfa:
@@ -153,7 +153,7 @@ class RESTClient(MyAirClient):
             await self._get_access_token()
         return status
 
-    async def verify_mfa_and_get_access_token(self, verification_code) -> str:
+    async def verify_mfa_and_get_access_token(self, verification_code: str) -> str:
         status = await self._verify_mfa(verification_code)
         if status == AUTHN_SUCCESS:
             await self._get_access_token()
@@ -276,12 +276,14 @@ class RESTClient(MyAirClient):
         return False
 
     async def _resmed_response_error_check(
-        self, step: str, response: ClientResponse, resp_dict: dict
+        self, step: str, response: ClientResponse, resp_dict: dict, initial: bool | None = False
     ):
         if "errors" in resp_dict:
             try:
                 error_message = f"{resp_dict['errors'][0]['errorInfo']['errorType']}: {resp_dict['errors'][0]['errorInfo']['errorCode']}"
                 if resp_dict["errors"][0]["errorInfo"]["errorType"] == "unauthorized":
+                    if step == "ggl_query" and not initial:
+                        raise ParsingError(f"Getting unauthorized error on {step} step. {error_message}")
                     raise AuthenticationError(
                         f"Getting unauthorized error on {step} step. {error_message}"
                     )
@@ -297,7 +299,7 @@ class RESTClient(MyAirClient):
             raise HttpProcessingError(
                 code=response.status,
                 message=f"{step} step: {error_message}. {resp_dict})",
-                headers=response.headers,
+                headers=response.headers, # type: ignore
             )
 
     async def _authn_check(self) -> str:
@@ -421,7 +423,7 @@ class RESTClient(MyAirClient):
             raise AuthenticationError(f"Unknown status in verify_mfa step: {status}")
         return status
 
-    async def _get_access_token(self) -> str:
+    async def _get_access_token(self) -> None:
 
         # myAir uses Authorization Code with PKCE, so we generate our verifier here
         code_verifier = base64.urlsafe_b64encode(os.urandom(40)).decode("utf-8")
@@ -530,7 +532,7 @@ class RESTClient(MyAirClient):
                     _LOGGER.info(f"Obtained new access token")
                 self._access_token = token_dict.get("access_token", self._access_token)
 
-    async def _gql_query(self, operation_name: str, query: str) -> Any:
+    async def _gql_query(self, operation_name: str, query: str, initial: bool | None = False) -> Any:
         _LOGGER.debug(f"[gql_query] operation_name: {operation_name}, query: {query}")
         authz_header = f"Bearer {self._access_token}"
         # _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
@@ -552,7 +554,7 @@ class RESTClient(MyAirClient):
             )
 
             # The graphql API only works properly if we provide the expected country code
-            # The rest of the paramters are required, but don't seem to be further validated
+            # The rest of the parameters are required, but don't seem to be further validated
             if "myAirCountryId" not in jwt_data:
                 _LOGGER.error(f"myAirCountryId not found in jwt_data")
                 raise ParsingError("myAirCountryId not found in jwt_data")
@@ -607,12 +609,12 @@ class RESTClient(MyAirClient):
                 f"[gql_query] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
             )
             await self._resmed_response_error_check(
-                "gql_query", records_res, records_dict
+                "gql_query", records_res, records_dict, initial
             )
 
         return records_dict
 
-    async def get_sleep_records(self) -> List[SleepRecord]:
+    async def get_sleep_records(self, initial: bool | None = False) -> List[SleepRecord]:
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         one_month_ago = (
             datetime.datetime.now() - datetime.timedelta(days=30)
@@ -651,7 +653,7 @@ class RESTClient(MyAirClient):
         )
 
         _LOGGER.info("Getting Sleep Records")
-        records_dict = await self._gql_query("GetPatientSleepRecords", query)
+        records_dict = await self._gql_query("GetPatientSleepRecords", query, initial)
         _LOGGER.debug(
             f"[get_sleep_records] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
         )
@@ -667,7 +669,7 @@ class RESTClient(MyAirClient):
         )
         return records
 
-    async def get_user_device_data(self) -> MyAirDevice:
+    async def get_user_device_data(self, initial: bool | None = False) -> MyAirDevice:
         query = """
         query getPatientWrapper {
             getPatientWrapper {
@@ -685,7 +687,7 @@ class RESTClient(MyAirClient):
         """
 
         _LOGGER.info("Getting User Device Data")
-        records_dict = await self._gql_query("getPatientWrapper", query)
+        records_dict = await self._gql_query("getPatientWrapper", query, initial)
         _LOGGER.debug(
             f"[get_user_device_data] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
         )

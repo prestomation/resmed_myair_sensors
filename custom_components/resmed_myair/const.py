@@ -16,7 +16,7 @@ CONF_VERIFICATION_CODE = "verification_code"
 REGION_NA = "NA"
 REGION_EU = "EU"
 
-KEYS_TO_REDACT = [
+KEYS_TO_REDACT: list[str] = [
     "access_token",
     "Authorization",
     "email",

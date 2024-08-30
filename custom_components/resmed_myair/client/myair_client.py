@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import List, Literal, NamedTuple, NotRequired, TypedDict
+from typing import List, NamedTuple, NotRequired, TypedDict
 
 
 class AuthenticationError(Exception):
@@ -29,8 +29,8 @@ class MyAirConfig(NamedTuple):
 
     username: str
     password: str
-    region: Literal["NA", "EU"]
-    device_token: str = None
+    region: str
+    device_token: str | None = None
 
 
 class SleepRecord(TypedDict):

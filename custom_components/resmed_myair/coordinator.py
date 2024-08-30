@@ -15,7 +15,7 @@ from .client.myair_client import (
 )
 from .const import DEFAULT_UPDATE_RATE_MIN, KEYS_TO_REDACT
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
