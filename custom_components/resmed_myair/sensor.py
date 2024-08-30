@@ -36,7 +36,8 @@ _LOGGER = logging.getLogger(__name__)
 
 class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
     """The base sensor for ResMed myAir. It knows the Friendly Name and key from the API response
-    for any particular sensor, and keeps track of the coordinator. All it really does is return that key from the newest
+    for any particular sensor and keeps track of the coordinator.
+    All it really does is return that key from the newest
     response that the coordinator has stored."""
 
     coordinator: MyAirDataUpdateCoordinator

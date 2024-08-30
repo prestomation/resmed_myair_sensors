@@ -19,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
-    """DataUpdateCoordinator for MyAir."""
+    """DataUpdateCoordinator for myAir."""
 
     myair_client: MyAirClient
     device: MyAirDevice

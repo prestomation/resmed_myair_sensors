@@ -9,13 +9,14 @@ import logging
 from typing import List
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.redact import async_redact_data
 
 from .const import CONF_REGION, DOMAIN, KEYS_TO_REDACT, REGION_NA, VERSION
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS: List[str] = ["sensor"]
+PLATFORMS: List[str] = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:

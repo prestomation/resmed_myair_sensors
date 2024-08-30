@@ -3,7 +3,9 @@ from typing import List, Literal, NamedTuple, NotRequired, TypedDict
 
 
 class AuthenticationError(Exception):
-    """This error is thrown when Authentication fails, which can mean the username/password or domain is incorrect"""
+    """This error is thrown when Authentication fails.
+    This could mean the username/password or domain is incorrect or the MFA was incorrect.
+    """
 
     pass
 
@@ -23,10 +25,6 @@ class ParsingError(Exception):
 class MyAirConfig(NamedTuple):
     """
     This is our config for logging into MyAir
-    If you are in North America, you only need to set the username/password
-    If you are in a different region, you will likely need to override these values.
-    To do so, you will need to examine the network traffic during login to find the right values
-
     """
 
     username: str

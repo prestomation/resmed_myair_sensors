@@ -324,7 +324,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
 
             try:
-                status, device = await get_mfa_device(
+                status, _ = await get_mfa_device(
                     self._client,
                     self._data.get(CONF_VERIFICATION_CODE, ""),
                 )

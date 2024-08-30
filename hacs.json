@@ -1,3 +1,6 @@
 {
-    "name": "ResMed myAir CPAP Sensors (Snuffy2 EU 2FA Dev)"
+    "name": "ResMed myAir CPAP Sensors",
+    "zip_release": true,
+    "filename": "resmed_myair.zip",
+    "homeassistant": "2024.1.0b0"
 }

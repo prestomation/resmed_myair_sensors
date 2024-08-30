@@ -33,47 +33,57 @@ from .myair_client import (
 _LOGGER = logging.getLogger(__name__)
 
 EU_CONFIG = {
+    # The name used in various queries
     "product": "myAir EU",
+    # The regionalized URL for Okta authentication queries
     "okta_url": "id.resmed.eu",
-    # This is the clientId that appears in Okta URLs
+    # This is the ID that refers to the Email MFA Factor
     "email_factor_id": "emfg9cmjqxEPr52cT417",
+    # This is the server ID that is designated by Okta for myAir used in authentication urls
     "auth_server_id": "aus2uznux2sYKTsEg417",
-    # This is the clientId that appears in request bodies during login
+    # This is the ID that is designated by Okta for myAir that appears in request bodies during login
     "authorize_client_id": "0oa2uz04d2Pks2NgR417",
     # Used as the x-api-key header for the AppSync GraphQL API
     "myair_api_key": "da2-o66oo6xdnfh5hlfuw5yw5g2dtm",
-    # The AppSync URL that accepts your token + the API key to return Sleep Records
+    # The AppSync URL that accepts the access token to return Sleep Records
     "graphql_url": "https://graphql.hyperdrive.resmed.eu/graphql",
-    # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
+    # Redirect url for browser to go to once authentication is complete. Must be the same as what is defined by Okta
     "oauth_redirect_url": "https://myair.resmed.eu",
 }
 
 NA_CONFIG = {
+    # The name used in various queries
     "product": "myAir",
+    # The regionalized URL for Okta authentication queries
     "okta_url": "resmed-ext-1.okta.com",
-    # This is the clientId that appears in Okta URLs
+    # This is the ID that refers to the Email MFA Factor. Not currently setup/used in NA
     "email_factor_id": "xxx",
+    # This is the server ID that is designated by Okta for myAir used in authentication urls
     "auth_server_id": "aus4ccsxvnidQgLmA297",
-    # This is the clientId that appears in request bodies during login
+    # This is the ID that is designated by Okta for myAir that appears in request bodies during login
     "authorize_client_id": "0oa4ccq1v413ypROi297",
     # Used as the x-api-key header for the AppSync GraphQL API
     "myair_api_key": "da2-cenztfjrezhwphdqtwtbpqvzui",
-    # The AppSync URL that accepts your token + the API key to return Sleep Records
+    # The AppSync URL that accepts the access token to return Sleep Records
     "graphql_url": "https://graphql.myair-prd.dht.live/graphql",
-    # Unsure if this needs to be regionalized, it is almost certainly something that is configured inside of an Okta allowlist
+    # Redirect url for browser to go to once authentication is complete. Must be the same as what is defined by Okta
     "oauth_redirect_url": "https://myair.resmed.com",
 }
 
 OAUTH_URLS = {
-    # The Okta Endpoint where the creds go
+    # The Initial Auth Okta Endpoint where the username/password goes. 
+    # If MFA not needed, will give sessionToken. If MFA, will give stateToken
     "authn_url": "https://{okta_url}/api/v1/authn",
+    # The url to trigger and verify the Email MFA passcode. Uses stateToken from authn.
+    # Gives sessionToken once verified
     "mfa_url": "https://{okta_url}/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
-    # When specifying token_url and authorize_url, add {email_factor_id} and your email_factor_id will be substituted in
-    # Or you can put the entire URL here if you want, but your email_factor_id will be ignored
+    # Authorization endpoint to send sessionToken to in order to get 'code'.
     "authorize_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/authorize",
-    # The endpoint that the 'code' is sent to get an authorization token
+    # The endpoint that the 'code' is sent to get an access token
     "token_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/token",
+    # Checks the access token to see if it is still active or not
     "introspect_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/introspect",
+    # Uses the access token to return ResMed user info
     "userinfo_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/userinfo",
 }
 
