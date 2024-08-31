@@ -282,7 +282,7 @@ class RESTClient(MyAirClient):
             try:
                 error_message: str = f"{resp_dict['errors'][0]['errorInfo']['errorType']}: {resp_dict['errors'][0]['errorInfo']['errorCode']}"
                 if resp_dict["errors"][0]["errorInfo"]["errorType"] == "unauthorized":
-                    if step == "ggl_query" and not initial:
+                    if step == "gql_query" and not initial:
                         raise ParsingError(f"Getting unauthorized error on {step} step. {error_message}")
                     raise AuthenticationError(
                         f"Getting unauthorized error on {step} step. {error_message}"
