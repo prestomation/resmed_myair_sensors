@@ -5,7 +5,7 @@ from http.cookies import SimpleCookie
 import logging
 import os
 import re
-from typing import Any, List
+from typing import Any
 from urllib.parse import DefragResult, parse_qs, urldefrag
 
 from aiohttp import ClientResponse, ClientSession
@@ -477,7 +477,7 @@ class RESTClient(MyAirClient):
         fragment: DefragResult = urldefrag(location)
         _LOGGER.debug(f"[get_access_token code] fragment: {fragment}")
         # Pull the code out of the location header fragment
-        code: List[str] = parse_qs(fragment.fragment)["code"]
+        code: list[str] = parse_qs(fragment.fragment)["code"]
         _LOGGER.debug(f"[get_access_token] code: {code}")
 
         await self._extract_and_update_cookies(code_res.headers.getall('set-cookie', []))
@@ -614,7 +614,7 @@ class RESTClient(MyAirClient):
 
         return records_dict
 
-    async def get_sleep_records(self, initial: bool | None = False) -> List[SleepRecord]:
+    async def get_sleep_records(self, initial: bool | None = False) -> list[SleepRecord]:
         today: str = datetime.datetime.now().strftime("%Y-%m-%d")
         one_month_ago: str = (
             datetime.datetime.now() - datetime.timedelta(days=30)
@@ -658,7 +658,7 @@ class RESTClient(MyAirClient):
             f"[get_sleep_records] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
         )
         try:
-            records: List[SleepRecord] = records_dict["data"]["getPatientWrapper"]["sleepRecords"]["items"]
+            records: list[SleepRecord] = records_dict["data"]["getPatientWrapper"]["sleepRecords"]["items"]
         except Exception as e:
             _LOGGER.error(
                 f"Error getting Patient Sleep Records. {e.__class__.__qualname__}: {e}"

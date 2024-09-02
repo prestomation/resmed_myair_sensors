@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import List, NamedTuple, NotRequired, TypedDict
+from typing import NamedTuple, NotRequired, TypedDict
 
 
 class AuthenticationError(Exception):
@@ -72,5 +72,5 @@ class MyAirClient(ABC):
     async def get_user_device_data(self) -> MyAirDevice:
         raise NotImplementedError()
 
-    async def get_sleep_records(self) -> List[SleepRecord]:
+    async def get_sleep_records(self) -> list[SleepRecord]:
         raise NotImplementedError()

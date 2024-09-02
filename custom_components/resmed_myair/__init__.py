@@ -6,7 +6,7 @@ myair_client is a reverse engineering and can break at anytime.
 """
 
 import logging
-from typing import Any, List
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -16,7 +16,7 @@ from homeassistant.helpers.redact import async_redact_data
 from .const import CONF_REGION, DOMAIN, KEYS_TO_REDACT, REGION_NA, VERSION
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-PLATFORMS: List[str] = [Platform.SENSOR]
+PLATFORMS: list[str] = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:

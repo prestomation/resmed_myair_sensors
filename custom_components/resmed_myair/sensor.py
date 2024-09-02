@@ -1,6 +1,6 @@
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 import logging
-from typing import Dict, List
 
 from aiohttp import DummyCookieJar
 from dateutil import parser
@@ -154,7 +154,7 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
 
 # Our sensor class will prepend the serial number to the key
 # These sensors pass data directly from my air
-SLEEP_RECORD_SENSOR_DESCRIPTIONS: Dict[str, SensorEntityDescription] = {
+SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP AHI Events Per Hour": SensorEntityDescription(
         key="ahi",
         state_class=SensorStateClass.MEASUREMENT,
@@ -182,7 +182,7 @@ SLEEP_RECORD_SENSOR_DESCRIPTIONS: Dict[str, SensorEntityDescription] = {
     ),
 }
 
-DEVICE_SENSOR_DESCRIPTIONS: Dict[str, SensorEntityDescription] = {
+DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP Sleep Data Last Collected": SensorEntityDescription(
         key="lastSleepDataReportTime", device_class=SensorDeviceClass.DATE
     )
@@ -216,7 +216,7 @@ async def async_setup_entry(
 
     hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = coordinator
 
-    sensors: List[MyAirBaseSensor] = []
+    sensors: list[MyAirBaseSensor] = []
     await coordinator.async_config_entry_first_refresh()
 
     # Some sensors come from sleep data, which is a list with an entry for each of the last 30 days

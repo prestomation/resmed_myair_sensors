@@ -1,6 +1,5 @@
 from datetime import timedelta
 import logging
-from typing import List
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -23,7 +22,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
 
     myair_client: MyAirClient
     device: MyAirDevice
-    sleep_records: List[SleepRecord]
+    sleep_records: list[SleepRecord]
 
     def __init__(
         self,
