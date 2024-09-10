@@ -1,9 +1,7 @@
 from collections.abc import Mapping
-from datetime import datetime, timedelta
 import logging
 
 from aiohttp import DummyCookieJar
-from dateutil import parser
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -18,6 +16,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.redact import async_redact_data
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .client.myair_client import MyAirConfig
 from .client.rest_client import RESTClient
@@ -86,9 +85,8 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         # The API always returns the previous month of data, so the client stores this
         # We assume this is ordered temporally and grab the last one: the latest one
         value = self.coordinator.sleep_records[-1].get(self.sensor_key, 0)
-        if self.sensor_key.endswith("Date"):
-            # A bit of a hack to interpret date's as datetimes.
-            value = datetime.strptime(value, "%Y-%m-%d").date()
+        if self.entity_description.device_class == SensorDeviceClass.DATE:
+            value = dt_util.parse_date(value)
         return value
 
 
@@ -105,9 +103,8 @@ class MyAirDeviceSensor(MyAirBaseSensor):
     def native_value(self):
 
         value = self.coordinator.device[self.sensor_key]
-        if self.sensor_key.endswith("Time"):
-            # A bit of a hack to interpret this time as a time
-            value = parser.parse(value)
+        if self.entity_description.device_class == SensorDeviceClass.TIMESTAMP:
+            value = dt_util.parse_datetime(value)
         return value
 
 
@@ -124,8 +121,7 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
     def native_value(self):
 
         usage_minutes = self.coordinator.sleep_records[-1]["totalUsage"]
-        # The split stuff is to cut off the seconds, so "07:30:00" becomes "07:30"
-        return str(timedelta(minutes=float(usage_minutes)))[::-1].split(":", 1)[1][::-1]
+        return f"{usage_minutes // 60}:{(usage_minutes % 60):02}"
 
 
 class MyAirMostRecentSleepDate(MyAirBaseSensor):
@@ -149,7 +145,7 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
             )
         )
         date_string = sleep_days_with_data[-1]["startDate"]
-        return datetime.strptime(date_string, "%Y-%m-%d").date()
+        return dt_util.parse_date(date_string)
 
 
 # Our sensor class will prepend the serial number to the key
@@ -184,7 +180,7 @@ SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
 
 DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP Sleep Data Last Collected": SensorEntityDescription(
-        key="lastSleepDataReportTime", device_class=SensorDeviceClass.DATE
+        key="lastSleepDataReportTime", device_class=SensorDeviceClass.TIMESTAMP
     )
 }
 
