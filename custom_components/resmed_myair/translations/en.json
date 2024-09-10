@@ -10,15 +10,39 @@
                     "Region": "myAir Region"
                 },
                 "description": "Please enter the username/password used in the myAir app or website."
+            },
+            "verify_mfa": {
+                "title": "Verify MFA",
+                "data": {
+                    "verification_code": "One-time verification code"
+                },
+                "description": "Enter the One-time verification code you received from ResMed to {username}."
+            },
+            "reauth_confirm": {
+                "title": "ResMed myAir Reauthentication",
+                "description": "The ResMed myAir integration needs to reauthenticate your account",
+                "data": {
+                    "Username": "Username",
+                    "Password": "Password"                
+                }
+            },
+            "reauth_verify_mfa": {
+                "title": "Verify MFA",
+                "data": {
+                    "verification_code": "One-time verification code"
+                },
+                "description": "Enter the One-time verification code you received from ResMed to {username}."
             }
         },
         "error": {
-            "already_configured": "Device is already configured",
-            "authentication_error": "Invalid username or password. Please verify with myair2.resmed.com",
-            "two_factor_not_supported": "2-factor auth is enabled on your account. This is not supported by this integration. Tracking at https://github.com/prestomation/resmed_myair_sensors/issues/16"
+            "authentication_error": "Invalid username or password. Please verify at myair.resmed.com",
+            "mfa_error": "Unable to verify MFA. Ensure code is correct."
         },
         "abort": {
-            "already_configured": "Device is already configured"
+            "already_configured": "Device is already configured",
+            "incomplete_account": "ResMed myAir Account Setup is Incomplete. Login to the myAir website and ensure that CPAP data is showing. Also, ensure that the Time Zone is set under My Account.",
+            "incomplete_account_verify_email": "ResMed myAir Account Setup is Incomplete. Email address has not been verified.",
+            "reauth_successful": "ResMed myAir Reauthentication Successful"
         }
     }
 }

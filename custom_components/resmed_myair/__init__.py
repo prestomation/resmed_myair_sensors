@@ -6,63 +6,42 @@ myair_client is a reverse engineering and can break at anytime.
 """
 
 import logging
-from typing import List
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.redact import async_redact_data
 
-from .common import CONF_REGION, DOMAIN
+from .const import CONF_REGION, DOMAIN, KEYS_TO_REDACT, REGION_NA, VERSION
 
-_LOGGER = logging.getLogger(__name__)
-PLATFORMS: List[str] = ["sensor"]
+_LOGGER: logging.Logger = logging.getLogger(__name__)
+PLATFORMS: list[str] = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up from a config entry."""
-
-    _LOGGER.debug(f"[init async_setup_entry] entry: {config_entry.data}")
+    _LOGGER.info(f"Starting ResMed myAir Integration Version: {VERSION}")
+    _LOGGER.debug(
+        f"[init async_setup_entry] config_entry.data: {async_redact_data(config_entry.data, KEYS_TO_REDACT)}"
+    )
     hass.data.setdefault(DOMAIN, {})
-    hass_data = dict(config_entry.data)
+    hass_data: dict[str, Any] = dict(config_entry.data)
     hass.data[DOMAIN][config_entry.entry_id] = hass_data
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
     return True
 
 
-# @service
-# def poll_resmed_myair(action=None, id=None):
-#     """yaml
-# name: Poll CPAP data from Resmed myAir
-# description: Create sensor data for all your CPAP data from myAir
-# """
-
-#     log.info(f"resmed poll service invoked")
-#     emit_myair_sensors()
-
-
-# # We run every 30 min. This really only needs to run once a day
-# # @time_trigger('*/30 * * * *')
-# async def emit_myair_sensors(config):
-#     config = get_config()
-
-#     client_config = MyAirConfig(username=config['username'], password=config['password'])
-#     client = MyAirClient(client_config)
-#     await client.connect()
-#     records = await client.get_sleep_records()
-#     # We are assuming that these are sorted by time, so we just take the last records
-#     # This API always gives us the trailing month
-#     records[0][]
-
-
-async def async_migrate_entry(hass, config_entry: ConfigEntry):
+async def async_migrate_entry(hass, config_entry: ConfigEntry) -> bool:
     """Migrate old entry."""
     _LOGGER.debug("Migrating from version %s", config_entry.version)
 
     if config_entry.version == 1:
 
-        new = {**config_entry.data}
+        new: dict[str, Any] = {**config_entry.data}
         # v1 only supported NA by its implicit nature, so lets set it here
-        new[CONF_REGION] = "NA"
+        new[CONF_REGION] = REGION_NA
 
         config_entry.version = 2
         hass.config_entries.async_update_entry(config_entry, data=new)
@@ -74,9 +53,9 @@ async def async_migrate_entry(hass, config_entry: ConfigEntry):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.info(f"Unloading: {entry.data}")
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    _LOGGER.info(f"Unloading: {async_redact_data(entry.data, KEYS_TO_REDACT)}")
+    unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok

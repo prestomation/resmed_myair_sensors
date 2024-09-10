@@ -1,15 +1,23 @@
-from typing import NamedTuple, TypedDict, List, Literal
 from abc import ABC
+from typing import NamedTuple, NotRequired, TypedDict
 
 
 class AuthenticationError(Exception):
-    """This error is thrown when Authentication fails, which can mean the username/password or domain is incorrect"""
+    """This error is thrown when Authentication fails.
+    This could mean the username/password or domain is incorrect or the MFA was incorrect.
+    """
 
     pass
 
 
-class TwoFactorNotSupportedError(Exception):
-    """This error is thrown when 2-factor/OTP is enabled, this is not yet supported"""
+class IncompleteAccountError(Exception):
+    """This error is thrown when ResMed reports that the account is not fully setup"""
+
+    pass
+
+
+class ParsingError(Exception):
+    """This error is thrown when the expected data is not found in the result"""
 
     pass
 
@@ -17,15 +25,12 @@ class TwoFactorNotSupportedError(Exception):
 class MyAirConfig(NamedTuple):
     """
     This is our config for logging into MyAir
-    If you are in North America, you only need to set the username/password
-    If you are in a different region, you will likely need to override these values.
-    To do so, you will need to examine the network traffic during login to find the right values
-
     """
 
     username: str
     password: str
-    region: Literal["NA", "EU"]
+    region: str
+    device_token: str | None = None
 
 
 class SleepRecord(TypedDict):
@@ -57,7 +62,7 @@ class MyAirDevice(TypedDict):
     fgDevicePatientId: str
 
     # URI on the domain: https://static.myair-prd.dht.live/
-    imagePath: str
+    imagePath: NotRequired[str]
 
 
 class MyAirClient(ABC):
@@ -67,5 +72,5 @@ class MyAirClient(ABC):
     async def get_user_device_data(self) -> MyAirDevice:
         raise NotImplementedError()
 
-    async def get_sleep_records(self) -> List[SleepRecord]:
+    async def get_sleep_records(self) -> list[SleepRecord]:
         raise NotImplementedError()
