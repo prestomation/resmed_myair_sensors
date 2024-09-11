@@ -11,9 +11,9 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.redact import async_redact_data
 
-from .const import CONF_REGION, DOMAIN, KEYS_TO_REDACT, REGION_NA, VERSION
+from .const import CONF_REGION, DOMAIN, REGION_NA, VERSION
+from .helpers import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 PLATFORMS: list[str] = [Platform.SENSOR]
@@ -23,7 +23,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     """Set up from a config entry."""
     _LOGGER.info(f"Starting ResMed myAir Integration Version: {VERSION}")
     _LOGGER.debug(
-        f"[init async_setup_entry] config_entry.data: {async_redact_data(config_entry.data, KEYS_TO_REDACT)}"
+        f"[init async_setup_entry] config_entry.data: {redact_dict(config_entry.data)}"
     )
     hass.data.setdefault(DOMAIN, {})
     hass_data: dict[str, Any] = dict(config_entry.data)
@@ -53,7 +53,7 @@ async def async_migrate_entry(hass, config_entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.info(f"Unloading: {async_redact_data(entry.data, KEYS_TO_REDACT)}")
+    _LOGGER.info(f"Unloading: {redact_dict(entry.data)}")
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)

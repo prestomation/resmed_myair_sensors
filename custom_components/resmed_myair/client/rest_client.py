@@ -10,15 +10,14 @@ from urllib.parse import DefragResult, parse_qs, urldefrag
 
 from aiohttp import ClientResponse, ClientSession
 from aiohttp.http_exceptions import HttpProcessingError
-from homeassistant.helpers.redact import async_redact_data
 import jwt
 
 from custom_components.resmed_myair.const import (
     AUTH_NEEDS_MFA,
     AUTHN_SUCCESS,
-    KEYS_TO_REDACT,
     REGION_NA,
 )
+from custom_components.resmed_myair.helpers import redact_dict
 
 from .myair_client import (
     AuthenticationError,
@@ -94,7 +93,7 @@ class RESTClient(MyAirClient):
 
     def __init__(self, config: MyAirConfig, session: ClientSession) -> None:
         _LOGGER.debug(
-            f"[RESTClient init] config: {async_redact_data(config._asdict(), KEYS_TO_REDACT)}"
+            f"[RESTClient init] config: {redact_dict(config._asdict())}"
         )
         self._config: MyAirConfig = config
         self._session: ClientSession = session
@@ -175,7 +174,7 @@ class RESTClient(MyAirClient):
 
         _LOGGER.debug(f"[is_email_verified] authorize_url: {userinfo_url}")
         _LOGGER.debug(
-            f"[is_email_verified] headers: {async_redact_data(headers, KEYS_TO_REDACT)}"
+            f"[is_email_verified] headers: {redact_dict(headers)}"
         )
 
         async with self._session.get(
@@ -186,7 +185,7 @@ class RESTClient(MyAirClient):
             _LOGGER.debug(f"[is_email_verified] userinfo_res: {userinfo_res}")
             userinfo_dict: dict[str, Any] = await userinfo_res.json()
             _LOGGER.debug(
-                f"[is_email_verified] introspect_dict: {async_redact_data(userinfo_dict, KEYS_TO_REDACT)}"
+                f"[is_email_verified] introspect_dict: {redact_dict(userinfo_dict)}"
             )
             await self._resmed_response_error_check(
                 "userinfo_query", userinfo_res, userinfo_dict
@@ -222,7 +221,7 @@ class RESTClient(MyAirClient):
         )
         _LOGGER.debug(f"[get_initial_dt] initial_dt_url: {initial_dt_url}")
         _LOGGER.debug(
-            f"[get_initial_dt] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
+            f"[get_initial_dt] headers: {redact_dict(self._json_headers)}"
         )
 
         async with self._session.get(
@@ -253,10 +252,10 @@ class RESTClient(MyAirClient):
         }
         _LOGGER.debug(f"[is_access_token_active] introspect_url: {introspect_url}")
         _LOGGER.debug(
-            f"[is_access_token_active] headers: {async_redact_data(headers, KEYS_TO_REDACT)}"
+            f"[is_access_token_active] headers: {redact_dict(headers)}"
         )
         _LOGGER.debug(
-            f"[is_access_token_active] introspect_query: {async_redact_data(introspect_query, KEYS_TO_REDACT)}"
+            f"[is_access_token_active] introspect_query: {redact_dict(introspect_query)}"
         )
 
         async with self._session.post(
@@ -265,7 +264,7 @@ class RESTClient(MyAirClient):
             _LOGGER.debug(f"[is_access_token_active] introspect_res: {introspect_res}")
             introspect_dict: dict[str, Any] = await introspect_res.json()
             _LOGGER.debug(
-                f"[is_access_token_active] introspect_dict: {async_redact_data(introspect_dict, KEYS_TO_REDACT)}"
+                f"[is_access_token_active] introspect_dict: {redact_dict(introspect_dict)}"
             )
             await self._resmed_response_error_check(
                 "introspect_query", introspect_res, introspect_dict
@@ -312,10 +311,10 @@ class RESTClient(MyAirClient):
         }
         _LOGGER.debug(f"[authn_check] authn_url: {authn_url}")
         _LOGGER.debug(
-            f"[authn_check] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
+            f"[authn_check] headers: {redact_dict(self._json_headers)}"
         )
         _LOGGER.debug(
-            f"[authn_check] json_query: {async_redact_data(json_query, KEYS_TO_REDACT)}"
+            f"[authn_check] json_query: {redact_dict(json_query)}"
         )
 
         async with self._session.post(
@@ -327,7 +326,7 @@ class RESTClient(MyAirClient):
             _LOGGER.debug(f"[authn_check] authn_res: {authn_res}")
             authn_dict: dict[str, Any] = await authn_res.json()
             _LOGGER.debug(
-                f"[authn_check] authn_dict: {async_redact_data(authn_dict, KEYS_TO_REDACT)}"
+                f"[authn_check] authn_dict: {redact_dict(authn_dict)}"
             )
             await self._resmed_response_error_check("authn", authn_res, authn_dict)
         if "status" not in authn_dict:
@@ -364,10 +363,10 @@ class RESTClient(MyAirClient):
         json_query: dict[str, Any] = {"passCode": "", "stateToken": self._state_token}
         _LOGGER.debug(f"[trigger_mfa] mfa_url: {self._mfa_url}")
         _LOGGER.debug(
-            f"[trigger_mfa] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
+            f"[trigger_mfa] headers: {redact_dict(self._json_headers)}"
         )
         _LOGGER.debug(
-            f"[trigger_mfa] json_query: {async_redact_data(json_query, KEYS_TO_REDACT)}"
+            f"[trigger_mfa] json_query: {redact_dict(json_query)}"
         )
 
         async with self._session.post(
@@ -379,7 +378,7 @@ class RESTClient(MyAirClient):
             _LOGGER.debug(f"[trigger_mfa] trigger_mfa_res: {trigger_mfa_res}")
             trigger_mfa_dict: dict[str, Any] = await trigger_mfa_res.json()
             _LOGGER.debug(
-                f"[trigger_mfa] trigger_mfa_dict: {async_redact_data(trigger_mfa_dict, KEYS_TO_REDACT)}"
+                f"[trigger_mfa] trigger_mfa_dict: {redact_dict(trigger_mfa_dict)}"
             )
             await self._resmed_response_error_check(
                 "trigger_mfa", trigger_mfa_res, trigger_mfa_dict
@@ -392,7 +391,7 @@ class RESTClient(MyAirClient):
         json_query: dict[str, Any] = {"passCode": verification_code, "stateToken": self._state_token}
         _LOGGER.debug(f"[verify_mfa] mfa_url: {self._mfa_url}")
         _LOGGER.debug(
-            f"[verify_mfa] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
+            f"[verify_mfa] headers: {redact_dict(self._json_headers)}"
         )
         _LOGGER.debug(f"[verify_mfa] json_query: {json_query}")
 
@@ -405,7 +404,7 @@ class RESTClient(MyAirClient):
             _LOGGER.debug(f"[verify_mfa] verify_mfa_res: {verify_mfa_res}")
             verify_mfa_dict: dict[str, Any] = await verify_mfa_res.json()
             _LOGGER.debug(
-                f"[verify_mfa] verify_mfa_dict: {async_redact_data(verify_mfa_dict, KEYS_TO_REDACT)}"
+                f"[verify_mfa] verify_mfa_dict: {redact_dict(verify_mfa_dict)}"
             )
             await self._resmed_response_error_check(
                 "verify_mfa", verify_mfa_res, verify_mfa_dict
@@ -455,10 +454,10 @@ class RESTClient(MyAirClient):
         }
         _LOGGER.debug(f"[get_access_token code] authorize_url: {authorize_url}")
         _LOGGER.debug(
-            f"[get_access_token code] headers: {async_redact_data(self._json_headers, KEYS_TO_REDACT)}"
+            f"[get_access_token code] headers: {redact_dict(self._json_headers)}"
         )
         _LOGGER.debug(
-            f"[get_access_token code] params_query: {async_redact_data(params_query, KEYS_TO_REDACT)}"
+            f"[get_access_token code] params_query: {redact_dict(params_query)}"
         )
 
         async with self._session.get(
@@ -501,10 +500,10 @@ class RESTClient(MyAirClient):
         )
         _LOGGER.debug(f"[get_access_token token] token_url: {token_url}")
         _LOGGER.debug(
-            f"[get_access_token token] headers: {async_redact_data(headers, KEYS_TO_REDACT)}"
+            f"[get_access_token token] headers: {redact_dict(headers)}"
         )
         _LOGGER.debug(
-            f"[get_access_token token] token_query: {async_redact_data(token_query, KEYS_TO_REDACT)}"
+            f"[get_access_token token] token_query: {redact_dict(token_query)}"
         )
 
         async with self._session.post(
@@ -517,7 +516,7 @@ class RESTClient(MyAirClient):
             _LOGGER.debug(f"[get_access_token] token_res: {token_res}")
             token_dict: dict[str, Any] = await token_res.json()
             _LOGGER.debug(
-                f"[get_access_token] token_dict: {async_redact_data(token_dict, KEYS_TO_REDACT)}"
+                f"[get_access_token] token_dict: {redact_dict(token_dict)}"
             )
             await self._resmed_response_error_check(
                 "get_access_token", token_res, token_dict
@@ -550,7 +549,7 @@ class RESTClient(MyAirClient):
                 )
                 raise ParsingError("Unable to decode id_token into jwt_data") from e
             _LOGGER.debug(
-                f"[gql_query] jwt_data: {async_redact_data(jwt_data, KEYS_TO_REDACT)}"
+                f"[gql_query] jwt_data: {redact_dict(jwt_data)}"
             )
 
             # The graphql API only works properly if we provide the expected country code
@@ -592,10 +591,10 @@ class RESTClient(MyAirClient):
         }
         _LOGGER.debug(f"[gql_query] graphql_url: {graphql_url}")
         _LOGGER.debug(
-            f"[gql_query] headers: {async_redact_data(headers, KEYS_TO_REDACT)}"
+            f"[gql_query] headers: {redact_dict(headers)}"
         )
         _LOGGER.debug(
-            f"[gql_query] json_query: {async_redact_data(json_query, KEYS_TO_REDACT)}"
+            f"[gql_query] json_query: {redact_dict(json_query)}"
         )
 
         async with self._session.post(
@@ -606,7 +605,7 @@ class RESTClient(MyAirClient):
             _LOGGER.debug(f"[gql_query] records_res: {records_res}")
             records_dict: dict[str, Any] = await records_res.json()
             _LOGGER.debug(
-                f"[gql_query] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
+                f"[gql_query] records_dict: {redact_dict(records_dict)}"
             )
             await self._resmed_response_error_check(
                 "gql_query", records_res, records_dict, initial
@@ -655,7 +654,7 @@ class RESTClient(MyAirClient):
         _LOGGER.info("Getting Sleep Records")
         records_dict: dict[str, Any] = await self._gql_query("GetPatientSleepRecords", query, initial)
         _LOGGER.debug(
-            f"[get_sleep_records] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
+            f"[get_sleep_records] records_dict: {redact_dict(records_dict)}"
         )
         try:
             records: list[SleepRecord] = records_dict["data"]["getPatientWrapper"]["sleepRecords"]["items"]
@@ -665,7 +664,7 @@ class RESTClient(MyAirClient):
             )
             raise ParsingError("Error getting Patient Sleep Records") from e
         _LOGGER.debug(
-            f"[get_sleep_records] records: {async_redact_data(records, KEYS_TO_REDACT)}"
+            f"[get_sleep_records] records: {redact_dict(records)}"
         )
         return records
 
@@ -689,7 +688,7 @@ class RESTClient(MyAirClient):
         _LOGGER.info("Getting User Device Data")
         records_dict: dict[str, Any] = await self._gql_query("getPatientWrapper", query, initial)
         _LOGGER.debug(
-            f"[get_user_device_data] records_dict: {async_redact_data(records_dict, KEYS_TO_REDACT)}"
+            f"[get_user_device_data] records_dict: {redact_dict(records_dict)}"
         )
         try:
             device: MyAirDevice = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
@@ -699,6 +698,6 @@ class RESTClient(MyAirClient):
             )
             raise ParsingError("Error getting User Device Data") from e
         _LOGGER.debug(
-            f"[get_user_device_data] device: {async_redact_data(device, KEYS_TO_REDACT)}"
+            f"[get_user_device_data] device: {redact_dict(device)}"
         )
         return device

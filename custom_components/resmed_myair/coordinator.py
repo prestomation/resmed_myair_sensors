@@ -3,7 +3,6 @@ import logging
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.redact import async_redact_data
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .client.myair_client import (
@@ -12,7 +11,8 @@ from .client.myair_client import (
     MyAirDevice,
     SleepRecord,
 )
-from .const import DEFAULT_UPDATE_RATE_MIN, KEYS_TO_REDACT
+from .const import DEFAULT_UPDATE_RATE_MIN
+from .helpers import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -45,12 +45,10 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             await self.myair_client.connect()
             self.device = await self.myair_client.get_user_device_data()
-            _LOGGER.debug(
-                f"[async_update_data] device: {async_redact_data(self.device, KEYS_TO_REDACT)}"
-            )
+            _LOGGER.debug(f"[async_update_data] device: {redact_dict(self.device)}")
             self.sleep_records = await self.myair_client.get_sleep_records()
             _LOGGER.debug(
-                f"[async_update_data] sleep_records: {async_redact_data(self.sleep_records, KEYS_TO_REDACT)}"
+                f"[async_update_data] sleep_records: {redact_dict(self.sleep_records)}"
             )
         except AuthenticationError as e:
             _LOGGER.error(

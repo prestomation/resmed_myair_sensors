@@ -16,20 +16,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.redact import async_redact_data
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .client.myair_client import MyAirConfig
 from .client.rest_client import RESTClient
-from .const import (
-    CONF_DEVICE_TOKEN,
-    CONF_PASSWORD,
-    CONF_REGION,
-    CONF_USER_NAME,
-    DOMAIN,
-    KEYS_TO_REDACT,
-)
+from .const import CONF_DEVICE_TOKEN, CONF_PASSWORD, CONF_REGION, CONF_USER_NAME, DOMAIN
 from .coordinator import MyAirDataUpdateCoordinator
+from .helpers import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -196,7 +189,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up myAir sensors."""
     _LOGGER.debug(
-        f"[sensor async_setup_entry] config_entry.data: {async_redact_data(config_entry.data, KEYS_TO_REDACT)}"
+        f"[sensor async_setup_entry] config_entry.data: {redact_dict(config_entry.data)}"
     )
 
     client_config: MyAirConfig = MyAirConfig(
