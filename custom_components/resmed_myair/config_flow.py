@@ -9,18 +9,16 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.helpers.redact import async_redact_data
 import voluptuous as vol
-
-from custom_components.resmed_myair.client.myair_client import MyAirDevice
-from custom_components.resmed_myair.client.rest_client import RESTClient
 
 from .client.myair_client import (
     AuthenticationError,
     IncompleteAccountError,
     MyAirConfig,
+    MyAirDevice,
     ParsingError,
 )
+from .client.rest_client import RESTClient
 from .const import (
     AUTHN_SUCCESS,
     CONF_DEVICE_TOKEN,
@@ -29,11 +27,11 @@ from .const import (
     CONF_USER_NAME,
     CONF_VERIFICATION_CODE,
     DOMAIN,
-    KEYS_TO_REDACT,
     REGION_EU,
     REGION_NA,
     VERSION,
 )
+from .helpers import redact_dict
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,9 +94,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                     self._data[CONF_REGION],
                 )
                 if status == AUTHN_SUCCESS:
-                    _LOGGER.debug(
-                        f"[async_step_user] device: {async_redact_data(device, KEYS_TO_REDACT)}"
-                    )
+                    _LOGGER.debug(f"[async_step_user] device: {redact_dict(device)}")
                     if "serialNumber" not in device:  # type: ignore
                         raise ParsingError(
                             f"Unable to get Serial Number from Device Data"
@@ -109,9 +105,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                     await self.async_set_unique_id(serial_number)
                     self._abort_if_unique_id_configured()
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
-                    _LOGGER.debug(
-                        f"[async_step_user] data: {async_redact_data(self._data, KEYS_TO_REDACT)}"
-                    )
+                    _LOGGER.debug(f"[async_step_user] data: {redact_dict(self._data)}")
 
                     return self.async_create_entry(
                         title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",  # type: ignore
@@ -181,7 +175,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                     self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})  # type: ignore
                     _LOGGER.debug(
-                        f"[async_step_verify_mfa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+                        f"[async_step_verify_mfa] user_input: {redact_dict(self._data)}"
                     )
                     return self.async_create_entry(
                         title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
@@ -240,12 +234,8 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
         _LOGGER.info("Starting Reauthorization")
         if entry := self.hass.config_entries.async_get_entry(self.context["entry_id"]):
             self._entry = entry
-        _LOGGER.debug(
-            f"[async_step_reauth] entry: {async_redact_data(self._entry, KEYS_TO_REDACT)}"
-        )
-        _LOGGER.debug(
-            f"[async_step_reauth] entry_data: {async_redact_data(entry_data, KEYS_TO_REDACT)}"
-        )
+        _LOGGER.debug(f"[async_step_reauth] entry: {redact_dict(self._entry)}")
+        _LOGGER.debug(f"[async_step_reauth] entry_data: {redact_dict(entry_data)}")
         self._data.update(entry_data)
         return await self.async_step_reauth_confirm()
 
@@ -267,7 +257,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                 )
                 if status == AUTHN_SUCCESS:
                     _LOGGER.debug(
-                        f"[async_step_reauth_confirm] device: {async_redact_data(device, KEYS_TO_REDACT)}"
+                        f"[async_step_reauth_confirm] device: {redact_dict(device)}"
                     )
                     if "serialNumber" not in device:  # type: ignore
                         raise ParsingError(
@@ -279,7 +269,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                     # self._abort_if_unique_id_configured()
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
                     _LOGGER.debug(
-                        f"[async_step_reauth_confirm] data: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+                        f"[async_step_reauth_confirm] data: {redact_dict(self._data)}"
                     )
 
                     self.hass.config_entries.async_update_entry(
@@ -317,7 +307,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                 return self.async_abort(reason="incomplete_account")
 
         _LOGGER.debug(
-            f"[async_step_reauth_confirm] initial data: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+            f"[async_step_reauth_confirm] initial data: {redact_dict(self._data)}"
         )
         _LOGGER.info("Showing Reauth Confirm Form")
         return self.async_show_form(
@@ -355,7 +345,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                     self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})  # type: ignore
                     _LOGGER.debug(
-                        f"[async_step_reauth_verify_mfa] user_input: {async_redact_data(self._data, KEYS_TO_REDACT)}"
+                        f"[async_step_reauth_verify_mfa] user_input: {redact_dict(self._data)}"
                     )
 
                     self.hass.config_entries.async_update_entry(
