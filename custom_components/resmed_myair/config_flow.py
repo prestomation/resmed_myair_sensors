@@ -1,7 +1,8 @@
-from collections.abc import Mapping
 import logging
+from collections.abc import Mapping
 from typing import Any
 
+import voluptuous as vol
 from aiohttp import DummyCookieJar
 from aiohttp.client_exceptions import ClientResponseError
 from aiohttp.http_exceptions import HttpProcessingError
@@ -9,7 +10,6 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-import voluptuous as vol
 
 from .client.myair_client import (
     AuthenticationError,
@@ -97,7 +97,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                     _LOGGER.debug(f"[async_step_user] device: {redact_dict(device)}")
                     if "serialNumber" not in device:  # type: ignore
                         raise ParsingError(
-                            f"Unable to get Serial Number from Device Data"
+                            "Unable to get Serial Number from Device Data"
                         )
                     serial_number: str = device["serialNumber"]  # type: ignore
                     _LOGGER.info(f"Found device with serial number {serial_number}")
@@ -152,7 +152,10 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                         selector.TextSelectorConfig(type="password")
                     ),
                     vol.Required(CONF_REGION, default=REGION_NA): vol.In(
-                        {REGION_NA: "North America", REGION_EU: "EU (Email MFA)"}
+                        {
+                            REGION_NA: "North America and Australia",
+                            REGION_EU: "Europe (Email MFA)",
+                        }
                     ),
                 }
             ),
@@ -261,7 +264,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
                     )
                     if "serialNumber" not in device:  # type: ignore
                         raise ParsingError(
-                            f"Unable to get Serial Number from Device Data"
+                            "Unable to get Serial Number from Device Data"
                         )
                     serial_number: str = device["serialNumber"]  # type: ignore
                     _LOGGER.info(f"Found device with serial number {serial_number}")
