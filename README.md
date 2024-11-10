@@ -57,7 +57,7 @@ The following sensors are supported in all regions:
 1. CPAP Mask Leak %
 1. CPAP Total myAir Score
 1. CPAP Sleep Data Last Collected
-    1. This is the datetime the CPAP uploaded the most recent data. This is only supported in the Americas
+    1. This is the datetime the CPAP uploaded the most recent data
 1. Most Recent Sleep Date
     1. This is the most recent date for which data is available. This will match Current Data Date if you use your CPAP every day. An automation that triggers when these two sensors are different will signal that you have missed a night
 
@@ -69,7 +69,7 @@ Each config entry for this integration will create a service called `resmed_myai
 
 This integration was reversed engineered from the myAir website. There are no guarantees that this will continue to work, as this is up to the whims of ResMed. Please DO NOT rely on this for any health-related matters.
 
-This integration currently only connects to the Americas and Europe. If you are in Asia, please open an issue and offer yourself as a test subject.
+This integration currently only connects to accounts from North America, Europe, and Australia. If you are in Asia, please open an issue and offer yourself as a test subject.
 
 ## Contributions are welcome!
 
