@@ -69,7 +69,7 @@ Each config entry for this integration will create a service called `resmed_myai
 
 This integration was reversed engineered from the myAir website. There are no guarantees that this will continue to work, as this is up to the whims of ResMed. Please DO NOT rely on this for any health-related matters.
 
-This integration currently only connects to accounts from North America, Europe, and Australia. If you are in Asia, please open an issue and offer yourself as a test subject.
+This integration currently only connects to accounts from North America, Europe, and Australia. If you are in Asia and have access to the ResMed myAir website in your country (https://myair.resmed.com), please open an issue and offer yourself as a test subject.
 
 ## Contributions are welcome!
 
