@@ -1,4 +1,0 @@
-homeassistant
-black
-beautifulsoup4
-PyJWT==2.6.0
