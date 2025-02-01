@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 import logging
-
+from datetime import date
 from aiohttp import DummyCookieJar
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -77,9 +77,11 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
 
         # The API always returns the previous month of data, so the client stores this
         # We assume this is ordered temporally and grab the last one: the latest one
-        value = self.coordinator.sleep_records[-1].get(self.sensor_key, 0)
-        if self.entity_description.device_class == SensorDeviceClass.DATE:
-            value = dt_util.parse_date(value)
+        value: str | float | int | date | None = None
+        if self.coordinator.sleep_records:
+            value = self.coordinator.sleep_records[-1].get(self.sensor_key, 0)
+            if isinstance(value, str) and self.entity_description.device_class == SensorDeviceClass.DATE:
+                value = dt_util.parse_date(value)
         return value
 
 
@@ -112,9 +114,11 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
 
     @property
     def native_value(self):
-
-        usage_minutes = self.coordinator.sleep_records[-1]["totalUsage"]
-        return f"{usage_minutes // 60}:{(usage_minutes % 60):02}"
+        value: str | None = None
+        if self.coordinator.sleep_records:
+            usage_minutes: int = self.coordinator.sleep_records[-1]["totalUsage"]
+            value = f"{usage_minutes // 60}:{(usage_minutes % 60):02}"
+        return value
 
 
 class MyAirMostRecentSleepDate(MyAirBaseSensor):
@@ -131,14 +135,19 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
     @property
     def native_value(self):
 
-        # Filter out all 0-usage days
-        sleep_days_with_data = list(
-            filter(
-                lambda record: record["totalUsage"] > 0, self.coordinator.sleep_records
+        value: date | None = None
+        if self.coordinator.sleep_records:
+            # Filter out all 0-usage days
+            sleep_days_with_data: list[SleepRecord] = list(
+                filter(
+                    lambda record: record["totalUsage"] > 0, self.coordinator.sleep_records
+                )
             )
-        )
-        date_string = sleep_days_with_data[-1]["startDate"]
-        return dt_util.parse_date(date_string)
+
+            if sleep_days_with_data:
+                date_string: str = sleep_days_with_data[-1]["startDate"]
+                value = dt_util.parse_date(date_string)
+        return value
 
 
 # Our sensor class will prepend the serial number to the key
