@@ -1,3 +1,5 @@
+"""Device coordinator for resmed_myair."""
+
 from datetime import timedelta
 import logging
 
@@ -5,12 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .client.myair_client import (
-    AuthenticationError,
-    MyAirClient,
-    MyAirDevice,
-    SleepRecord,
-)
+from .client.myair_client import AuthenticationError, MyAirClient, MyAirDevice, SleepRecord
 from .const import DEFAULT_UPDATE_RATE_MIN
 from .helpers import redact_dict
 
@@ -45,21 +42,18 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             await self.myair_client.connect()
             self.device = await self.myair_client.get_user_device_data()
-            _LOGGER.debug(f"[async_update_data] device: {redact_dict(self.device)}")
+            _LOGGER.debug("[async_update_data] device: %s", redact_dict(self.device))
             self.sleep_records = await self.myair_client.get_sleep_records()
-            _LOGGER.debug(
-                f"[async_update_data] sleep_records: {redact_dict(self.sleep_records)}"
-            )
+            _LOGGER.debug("[async_update_data] sleep_records: %s", redact_dict(self.sleep_records))
         except AuthenticationError as e:
             _LOGGER.error(
-                f"Authentication Error while updating. {e.__class__.__qualname__}: {e}"
+                "Authentication Error while updating. %s: %s", e.__class__.__qualname__, e
             )
             raise ConfigEntryAuthFailed(
-                f"Authentication Error while updating. {e.__class__.__qualname__}: {e}"
+                "Authentication Error while updating. %s: %s", e.__class__.__qualname__, e
             ) from e
         except Exception as e:
-            _LOGGER.error(f"Error while updating data. {e.__class__.__qualname__}: {e}")
+            _LOGGER.error("Error while updating data. %s: %s", e.__class__.__qualname__, e)
             raise UpdateFailed(
-                f"Error while updating data. {e.__class__.__qualname__}: {e}"
+                "Error while updating data. %s: %s", e.__class__.__qualname__, e
             ) from e
-        return

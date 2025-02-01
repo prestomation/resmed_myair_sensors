@@ -23,7 +23,7 @@
                 "description": "The ResMed myAir integration needs to reauthenticate your account",
                 "data": {
                     "Username": "Username",
-                    "Password": "Password"                
+                    "Password": "Password"
                 }
             },
             "reauth_verify_mfa": {
