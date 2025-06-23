@@ -32,7 +32,7 @@ jobs:
           cd ${{ github.workspace }}/custom_components/resmed_myair
           zip resmed_myair.zip -r ./
       - name: Upload zip to release
-        uses: svenstaro/upload-release-action@2.9.0
+        uses: svenstaro/upload-release-action@2.10.0
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ${{ github.workspace }}/custom_components/resmed_myair/resmed_myair.zip
