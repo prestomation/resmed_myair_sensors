@@ -1,7 +1,7 @@
 """REST Client for ResMed myAir Client."""
 
 import base64
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 import datetime
 import hashlib
 from http.cookies import SimpleCookie
@@ -23,14 +23,12 @@ from .myair_client import (
     IncompleteAccountError,
     MyAirClient,
     MyAirConfig,
-    MyAirDevice,
     ParsingError,
-    SleepRecord,
 )
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
-EU_CONFIG: MutableMapping[str, Any] = {
+EU_CONFIG: Mapping[str, Any] = {
     # The name used in various queries
     "product": "myAir EU",
     # The regionalized URL for Okta authentication queries
@@ -49,7 +47,7 @@ EU_CONFIG: MutableMapping[str, Any] = {
     "oauth_redirect_url": "https://myair.resmed.eu",
 }
 
-NA_CONFIG: MutableMapping[str, Any] = {
+NA_CONFIG: Mapping[str, Any] = {
     # The name used in various queries
     "product": "myAir",
     # The regionalized URL for Okta authentication queries
@@ -68,7 +66,7 @@ NA_CONFIG: MutableMapping[str, Any] = {
     "oauth_redirect_url": "https://myair.resmed.com",
 }
 
-OAUTH_URLS: MutableMapping[str, Any] = {
+OAUTH_URLS: Mapping[str, Any] = {
     # The Initial Auth Okta Endpoint where the username/password goes.
     # If MFA not needed, will give sessionToken. If MFA, will give stateToken
     "authn_url": "https://{okta_url}/api/v1/authn",
@@ -107,7 +105,7 @@ class RESTClient(MyAirClient):
         self._cookie_sid: str | None = None
         self._uses_mfa: bool = False
         if self._config.region == REGION_NA:
-            self._region_config: MutableMapping[str, Any] = NA_CONFIG
+            self._region_config: Mapping[str, Any] = NA_CONFIG
         else:
             self._region_config = EU_CONFIG
         self._email_factor_id: str = self._region_config["email_factor_id"]
@@ -578,7 +576,7 @@ class RESTClient(MyAirClient):
 
         return records_dict
 
-    async def get_sleep_records(self, initial: bool | None = False) -> list[SleepRecord]:
+    async def get_sleep_records(self, initial: bool | None = False) -> list[Mapping[str, Any]]:
         """Get sleep records from ResMed servers."""
         today: str = datetime.datetime.now().strftime("%Y-%m-%d")
         one_month_ago: str = (datetime.datetime.now() - datetime.timedelta(days=30)).strftime(
@@ -619,16 +617,16 @@ class RESTClient(MyAirClient):
         )
         _LOGGER.debug("[get_sleep_records] records_dict: %s", redact_dict(records_dict))
         try:
-            records: list[SleepRecord] = records_dict["data"]["getPatientWrapper"]["sleepRecords"][
-                "items"
-            ]
+            records: list[Mapping[str, Any]] = records_dict["data"]["getPatientWrapper"][
+                "sleepRecords"
+            ]["items"]
         except Exception as e:
             _LOGGER.error("Error getting Patient Sleep Records. %s: %s", type(e).__name__, e)
             raise ParsingError("Error getting Patient Sleep Records") from e
         _LOGGER.debug("[get_sleep_records] records: %s", redact_dict(records))
         return records
 
-    async def get_user_device_data(self, initial: bool | None = False) -> MyAirDevice:
+    async def get_user_device_data(self, initial: bool | None = False) -> Mapping[str, Any]:
         """Get user device data from ResMed servers."""
         query: str = """
         query getPatientWrapper {
@@ -652,7 +650,7 @@ class RESTClient(MyAirClient):
         )
         _LOGGER.debug("[get_user_device_data] records_dict: %s", redact_dict(records_dict))
         try:
-            device: MyAirDevice = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
+            device: Mapping[str, Any] = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
         except Exception as e:
             _LOGGER.error("Error getting User Device Data. %s: %s", type(e).__name__, e)
             raise ParsingError("Error getting User Device Data") from e

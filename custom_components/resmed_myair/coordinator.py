@@ -1,5 +1,6 @@
 """Device coordinator for resmed_myair."""
 
+from collections.abc import Mapping
 from datetime import timedelta
 import logging
 from typing import Any
@@ -8,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .client.myair_client import AuthenticationError, MyAirClient, MyAirDevice, SleepRecord
+from .client.myair_client import AuthenticationError, MyAirClient
 from .const import DEFAULT_UPDATE_RATE_MIN
 from .helpers import redact_dict
 
@@ -19,8 +20,8 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
     """DataUpdateCoordinator for myAir."""
 
     myair_client: MyAirClient
-    device: MyAirDevice
-    sleep_records: list[SleepRecord]
+    device: Mapping[str, Any]
+    sleep_records: list[Mapping[str, Any]]
 
     def __init__(
         self,

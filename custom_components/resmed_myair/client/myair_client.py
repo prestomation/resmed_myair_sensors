@@ -1,7 +1,8 @@
 """Base classes for myAir Client."""
 
 from abc import ABC
-from typing import NamedTuple, NotRequired, TypedDict
+from collections.abc import Mapping
+from typing import Any, NamedTuple
 
 
 class AuthenticationError(Exception):
@@ -28,37 +29,6 @@ class MyAirConfig(NamedTuple):
     device_token: str | None = None
 
 
-class SleepRecord(TypedDict):
-    """Components of what is returned by the API and shown on the myAir dashboard. No processing is performed."""
-
-    # myAir returns this in the format %Y-%m-%d, at daily precision
-    startDate: str
-    totalUsage: int
-    sleepScore: int
-    usageScore: int
-    ahiScore: int
-    maskScore: int
-    leakScore: int
-    ahi: float
-    maskPairCount: int
-    leakPercentile: float
-    sleepRecordPatientId: str
-
-
-class MyAirDevice(TypedDict):
-    """Components of myAir Device."""
-
-    serialNumber: str
-    deviceType: str
-    lastSleepDataReportTime: str
-    localizedName: str
-    fgDeviceManufacturerName: str
-    fgDevicePatientId: str
-
-    # URI on the domain: https://static.myair-prd.dht.live/
-    imagePath: NotRequired[str]
-
-
 class MyAirClient(ABC):
     """Basic myAir Client Class."""
 
@@ -66,10 +36,10 @@ class MyAirClient(ABC):
         """Connect to ResMed myAir."""
         raise NotImplementedError
 
-    async def get_user_device_data(self) -> MyAirDevice:
+    async def get_user_device_data(self) -> Mapping[str, Any]:
         """Get user device data from ResMed servers."""
         raise NotImplementedError
 
-    async def get_sleep_records(self) -> list[SleepRecord]:
+    async def get_sleep_records(self) -> list[Mapping[str, Any]]:
         """Get sleep records from ResMed servers."""
         raise NotImplementedError

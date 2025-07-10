@@ -1,6 +1,6 @@
 """Config flow for resmed_myair."""
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 import logging
 from typing import Any
 
@@ -18,7 +18,6 @@ from .client.myair_client import (
     AuthenticationError,
     IncompleteAccountError,
     MyAirConfig,
-    MyAirDevice,
     ParsingError,
 )
 from .client.rest_client import RESTClient
@@ -45,7 +44,7 @@ async def get_device(
     password: str,
     region: str,
     device_token: str | None = None,
-) -> tuple[str, MyAirDevice | None, RESTClient]:
+) -> tuple[str, Mapping[str, Any] | None, RESTClient]:
     """Login and get user device data from ResMed servers."""
     _LOGGER.debug("[get_device] Starting")
     config = MyAirConfig(
@@ -57,16 +56,18 @@ async def get_device(
     )
     status: str = await client.connect(initial=True)
     if status == AUTHN_SUCCESS:
-        device: MyAirDevice = await client.get_user_device_data(initial=True)
+        device: Mapping[str, Any] = await client.get_user_device_data(initial=True)
         return status, device, client
     return status, None, client
 
 
-async def get_mfa_device(client: RESTClient, verification_code: str) -> tuple[str, MyAirDevice]:
+async def get_mfa_device(
+    client: RESTClient, verification_code: str
+) -> tuple[str, Mapping[str, Any]]:
     """Get access token and user device data."""
     _LOGGER.debug("[get_mfa_device] Starting")
     status: str = await client.verify_mfa_and_get_access_token(verification_code)
-    device: MyAirDevice = await client.get_user_device_data(initial=True)
+    device: Mapping[str, Any] = await client.get_user_device_data(initial=True)
     return status, device
 
 
