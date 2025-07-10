@@ -24,12 +24,13 @@ jobs:
       - name: Update Version in Manifest
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
-          sed -i 's/\"version\"\s*\:\s*\".*\"/\"version\"\:\"${{ github.event.release.tag_name }}\"/g' ./custom_components/resmed_myair/manifest.json
+          jq '.version = "${{ github.event.release.tag_name }}"' ./custom_components/resmed_myair/manifest.json > tmp.json && mv tmp.json ./custom_components/resmed_myair/manifest.json
 
       - name: Update Version in const.py
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
-          sed -i 's/^VERSION \= \".*\"/VERSION \= \"${{ github.event.release.tag_name }}\"/' ./custom_components/resmed_myair/const.py
+          VERSION_LINE="VERSION = \"${{ github.event.release.tag_name }}\""
+          sed -i "s/^VERSION *= *.*/$VERSION_LINE/" ./custom_components/resmed_myair/const.py
 
       - name: Commit & Push Version Changes
         if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
@@ -37,7 +38,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.event.release.target_commitish }}
-          message: 'Updating to version ${{ github.event.release.tag_name }}'
+          message: 'Updating to version ${{ github.event.release.tag_name }} [skip ci]'
 
       - name: Update Release with Version Changes Commit
         if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
@@ -48,7 +49,7 @@ jobs:
       - name: Create Zip
         run: |
           cd ${{ github.workspace }}/custom_components/resmed_myair
-          zip resmed_myair.zip -r ./
+          zip -r resmed_myair.zip ./ -x "__pycache__/*" "*.pyc" "resmed_myair.zip"
 
       - name: Upload Zip to Release
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}

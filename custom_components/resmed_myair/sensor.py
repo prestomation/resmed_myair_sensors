@@ -1,6 +1,6 @@
 """Sensor entities for resmed_myair."""
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping
 import logging
 from typing import Any, Final
 
@@ -151,16 +151,16 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
     def native_value(self) -> Any | None:
         """Return the native value (aka. state)."""
         # Filter out all 0-usage days
-        sleep_days_with_data = list(
-            filter(lambda record: record["totalUsage"] > 0, self.coordinator.sleep_records)
-        )
+        sleep_days_with_data = [
+            record for record in self.coordinator.sleep_records if record["totalUsage"] > 0
+        ]
         date_string = sleep_days_with_data[-1]["startDate"]
         return dt_util.parse_date(date_string)
 
 
 # Our sensor class will prepend the serial number to the key
 # These sensors pass data directly from my air
-SLEEP_RECORD_SENSOR_DESCRIPTIONS: MutableMapping[str, SensorEntityDescription] = {
+SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP AHI Events Per Hour": SensorEntityDescription(
         key="ahi",
         state_class=SensorStateClass.MEASUREMENT,
@@ -188,7 +188,7 @@ SLEEP_RECORD_SENSOR_DESCRIPTIONS: MutableMapping[str, SensorEntityDescription] =
     ),
 }
 
-DEVICE_SENSOR_DESCRIPTIONS: MutableMapping[str, SensorEntityDescription] = {
+DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP Sleep Data Last Collected": SensorEntityDescription(
         key="lastSleepDataReportTime", device_class=SensorDeviceClass.TIMESTAMP
     )

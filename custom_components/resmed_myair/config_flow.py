@@ -185,7 +185,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._client,
                     self._data.get(CONF_VERIFICATION_CODE, ""),
                 )
-                if isinstance(self._client, RESTClient) and status == AUTHN_SUCCESS:
+                if status == AUTHN_SUCCESS:
                     self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
                     _LOGGER.debug("[async_step_verify_mfa] user_input: %s", redact_dict(self._data))
@@ -354,7 +354,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._client,
                     self._data.get(CONF_VERIFICATION_CODE, ""),
                 )
-                if isinstance(self._client, RESTClient) and status == AUTHN_SUCCESS:
+                if status == AUTHN_SUCCESS:
                     self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
                     _LOGGER.debug(

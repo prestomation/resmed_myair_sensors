@@ -12,7 +12,7 @@ KEYS_TO_REDACT: list[str] = [
     "email",
     "family_name",
     "firstName",
-    "given_name,",
+    "given_name",
     "id_token",
     "lastName",
     "login",
