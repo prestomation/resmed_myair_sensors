@@ -1,6 +1,6 @@
 """Helper functions for ResMed myAir Client."""
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from typing import Any
 
 from .const import KEYS_TO_REDACT
@@ -10,7 +10,7 @@ REDACTED = "**REDACTED**"
 
 def redact_dict(data: Any | None) -> Any | None:
     """Redact sensitive data in a dict."""
-    if not isinstance(data, MutableMapping | list):
+    if not isinstance(data, Mapping | list):
         return data
 
     if isinstance(data, list):
