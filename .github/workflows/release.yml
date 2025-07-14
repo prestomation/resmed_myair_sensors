@@ -1,41 +1,67 @@
-name: Release
-
+name: Update Version and Create Zip on Release
 on:
+  workflow_dispatch:
   release:
-    types: [published]
+    types: [published, edited]
 
 jobs:
-  release_zip_file:
-    name: Prepare release asset
+  update_version_and_create_zip:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
 
       - name: Debug Variables
         run: |
-          echo "github.event_name: ${{ github.event_name }}"
-          echo "github.ref_name: ${{ github.ref_name }}"
-          echo "github.workspace: ${{ github.workspace }}"          
-          echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
-          echo "github.event.release.target_commitish: ${{ github.event.release.target_commitish }}"
-          echo "github.event.release.prerelease: ${{ github.event.release.prerelease }}"
-          echo "github.event.release.draft: ${{ github.event.release.draft }}"
+            echo "github.event_name: ${{ github.event_name }}"
+            echo "github.ref_name: ${{ github.ref_name }}"
+            echo "github.event.release.tag_name: ${{ github.event.release.tag_name }}"
+            echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
+            echo "github.event.release.target_commitish: ${{ github.event.release.target_commitish }}"
+            echo "github.event.release.prerelease: ${{ github.event.release.prerelease }}"
+            echo "github.event.release.draft: ${{ github.event.release.draft }}"
 
-      - name: "Set version number"
+      - name: Update Version in Manifest
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
-            sed -i 's/\"version\"\s*\:\s*\".*\"/\"version\"\:\"${{ github.ref_name }}\"/g' ${{ github.workspace }}/custom_components/resmed_myair/manifest.json
-            sed -i 's/VERSION\s*\=\s*\".*\"/VERSION \= \"${{ github.ref_name }}\"/' ${{ github.workspace }}/custom_components/resmed_myair/const.py          
-      # Pack the resmed_myair dir as a zip and upload to the release
-      - name: ZIP Component Dir
+          jq '.version = "${{ github.event.release.tag_name }}"' ./custom_components/resmed_myair/manifest.json > tmp.json && mv tmp.json ./custom_components/resmed_myair/manifest.json
+
+      - name: Update Version in const.py
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+        run: |
+          VERSION_LINE="VERSION = \"${{ github.event.release.tag_name }}\""
+          sed -i "s/^VERSION *= *.*/$VERSION_LINE/" ./custom_components/resmed_myair/const.py
+
+      - name: Commit & Push Version Changes
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
+        uses: actions-js/push@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.event.release.target_commitish }}
+          message: 'Updating to version ${{ github.event.release.tag_name }} [skip ci]'
+
+      - name: Update Release with Version Changes Commit
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
+        run: |
+          git tag -f ${{ github.event.release.tag_name }}
+          git push -f origin ${{ github.event.release.tag_name }}
+
+      - name: Create Zip
         run: |
           cd ${{ github.workspace }}/custom_components/resmed_myair
-          zip resmed_myair.zip -r ./
-      - name: Upload zip to release
-        uses: svenstaro/upload-release-action@2.9.0
+          zip -r resmed_myair.zip ./ -x "__pycache__/*" "*.pyc" "resmed_myair.zip"
+
+      - name: Upload Zip to Release
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+        uses: softprops/action-gh-release@v2.3.2
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/custom_components/resmed_myair/resmed_myair.zip
-          asset_name: resmed_myair.zip
-          tag: ${{ github.ref }}
-          overwrite: true
+          files: ./custom_components/resmed_myair/resmed_myair.zip
+          tag_name: ${{ github.event.release.tag_name }}
+
+      - name: Add Zip to Action
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: resmed_myair
+          path: ./custom_components/resmed_myair/resmed_myair.zip
+          if-no-files-found: error
