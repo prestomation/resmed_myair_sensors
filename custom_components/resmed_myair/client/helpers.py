@@ -1,4 +1,4 @@
-"""Helper functions for Home Assistant resmed_myair."""
+"""Helper functions for ResMed myAir Client."""
 
 from collections.abc import Mapping, MutableMapping
 from typing import Any

@@ -1,66 +1,26 @@
-name: Validation Actions
+name: HA and HACS Validate
 
 on:
   pull_request:
-  push:
-    branches:
-      - master
-      - main
-      - dev
   workflow_dispatch:
 
 jobs:
-  validate:
-    runs-on: "ubuntu-latest"
-    name: Validate
+  ha_validation:
+    name: Hassfest Validation
+    runs-on: ubuntu-latest
     steps:
-      - uses: "actions/checkout@v4"
-
-      - name: Debug Variables
-        run: |
-          echo "github.event_name: ${{ github.event_name }}"
-          echo "github.ref_name: ${{ github.ref_name }}"
-          echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
-
-      - name: HACS validation
-        uses: "hacs/action@main"
-        with:
-          category: "integration"
-
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
       - name: Hassfest validation
-        uses: "home-assistant/actions/hassfest@master"
-
-  style:
-    runs-on: "ubuntu-latest"
-    name: Check style formatting
+        uses: home-assistant/actions/hassfest@master
+  hacs_validation:
+    name: HACS Validation
+    runs-on: ubuntu-latest
     steps:
-      - uses: "actions/checkout@v4"
-      - uses: "actions/setup-python@v5"
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+      - name: HACS validation
+        uses: hacs/action@main
         with:
-          python-version: "3.x"
-      - run: python3 -m pip install black
-      - run: black .
-
-  # tests:
-  #   runs-on: "ubuntu-latest"
-  #   name: Run tests
-  #   steps:
-  #     - name: Check out code from GitHub
-  #       uses: "actions/checkout@v4"
-  #     - name: Setup Python
-  #       uses: "actions/setup-python@v5"
-  #       with:
-  #         python-version: "3.12"
-  #     - name: Install requirements
-  #       run: python3 -m pip install -r requirements_test.txt
-  #     - name: Run tests
-  #       run: |
-  #         pytest \
-  #           -qq \
-  #           --timeout=9 \
-  #           --durations=10 \
-  #           -n auto \
-  #           --cov custom_components.resmed_myair \
-  #           -o console_output_style=count \
-  #           -p no:sugar \
-  #           tests
+          category: integration
+          # ignore: brands
