@@ -5,8 +5,6 @@ from datetime import date
 import logging
 from typing import Any, Final
 
-from aiohttp import DummyCookieJar
-
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -17,14 +15,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .client.myair_client import MyAirConfig
-from .client.rest_client import RESTClient
-from .const import CONF_DEVICE_TOKEN, CONF_PASSWORD, CONF_REGION, CONF_USER_NAME, DOMAIN
+from .const import CONF_USER_NAME, DOMAIN
 from .coordinator import MyAirDataUpdateCoordinator
 from .helpers import redact_dict
 
@@ -96,6 +93,46 @@ async def async_setup_entry(
 
     sensors: list[MyAirBaseSensor] = []
     await coordinator.async_config_entry_first_refresh()
+
+    # Some sensors come from sleep data, which is a list with an entry for each of the last 30 days
+    for key, desc in SLEEP_RECORD_SENSOR_DESCRIPTIONS.items():
+        sensors.append(MyAirSleepRecordSensor(key, desc, coordinator))
+
+    # Some sensors come from the device. Specifically, the last time the device reported new data
+    for key, desc in DEVICE_SENSOR_DESCRIPTIONS.items():
+        sensors.append(MyAirDeviceSensor(key, desc, coordinator))
+
+    # We have some synthesized sensors, lets add those too
+    sensors.extend(
+        [
+            MyAirFriendlyUsageTime(coordinator=coordinator),
+            MyAirMostRecentSleepDate(coordinator=coordinator),
+        ]
+    )
+
+    async_add_entities(sensors, False)
+
+    sanitized_username: str = config_entry.data[CONF_USER_NAME].replace("@", "_").replace(".", "_")
+
+    async def refresh(_: Any) -> None:
+        await coordinator.async_refresh()
+
+    hass.services.async_register(DOMAIN, f"force_poll_{sanitized_username}", refresh)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up myAir sensors."""
+    _LOGGER.debug(
+        "[sensor async_setup_entry] config_entry.data: %s", redact_dict(config_entry.data)
+    )
+
+    coordinator: MyAirDataUpdateCoordinator = config_entry.runtime_data
+
+    sensors: list[MyAirBaseSensor] = []
 
     # Some sensors come from sleep data, which is a list with an entry for each of the last 30 days
     for key, desc in SLEEP_RECORD_SENSOR_DESCRIPTIONS.items():
