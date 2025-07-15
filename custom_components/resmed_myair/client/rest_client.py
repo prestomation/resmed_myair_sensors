@@ -623,6 +623,11 @@ class RESTClient(MyAirClient):
         except Exception as e:
             _LOGGER.error("Error getting Patient Sleep Records. %s: %s", type(e).__name__, e)
             raise ParsingError("Error getting Patient Sleep Records") from e
+        if not isinstance(records, list):
+            _LOGGER.error("Error getting Patient Sleep Records. Returned records is not a list")
+            raise ParsingError(
+                "Error getting Patient Sleep Records. Returned records is not a list"
+            )
         _LOGGER.debug("[get_sleep_records] records: %s", redact_dict(records))
         return records
 
@@ -654,5 +659,8 @@ class RESTClient(MyAirClient):
         except Exception as e:
             _LOGGER.error("Error getting User Device Data. %s: %s", type(e).__name__, e)
             raise ParsingError("Error getting User Device Data") from e
+        if not isinstance(device, dict):
+            _LOGGER.error("Error getting User Device Data. Returned data is not a dict")
+            raise ParsingError("Error getting User Device Data. Returned data is not a dict")
         _LOGGER.debug("[get_user_device_data] device: %s", redact_dict(device))
         return device

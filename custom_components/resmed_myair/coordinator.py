@@ -7,9 +7,9 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .client.myair_client import AuthenticationError, MyAirClient
+from .client.myair_client import AuthenticationError, MyAirClient, ParsingError
 from .const import DEFAULT_UPDATE_RATE_MIN
 from .helpers import redact_dict
 
@@ -32,8 +32,8 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.info("Initializing DataUpdateCoordinator for ResMed myAir")
         self.myair_client = myair_client
         super().__init__(
-            hass,
-            _LOGGER,
+            hass=hass,
+            logger=_LOGGER,
             name="myAir update",
             update_interval=timedelta(minutes=DEFAULT_UPDATE_RATE_MIN),
         )
@@ -41,19 +41,26 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from from the myAir client and store it in the coordinator."""
         _LOGGER.info("Updating from myAir")
+
         try:
             await self.myair_client.connect()
-            self.device = await self.myair_client.get_user_device_data()
-            _LOGGER.debug("[async_update_data] device: %s", redact_dict(self.device))
-            self.sleep_records = await self.myair_client.get_sleep_records()
-            _LOGGER.debug("[async_update_data] sleep_records: %s", redact_dict(self.sleep_records))
         except AuthenticationError as e:
             _LOGGER.error("Authentication Error while updating. %s: %s", type(e).__name__, e)
             raise ConfigEntryAuthFailed(
                 "Authentication Error while updating. %s: %s", type(e).__name__, e
             ) from e
-        except Exception as e:
-            _LOGGER.error("Error while updating data. %s: %s", type(e).__name__, e)
-            raise UpdateFailed("Error while updating data. %s: %s", type(e).__name__, e) from e
-        else:
-            return {}
+
+        data: dict[str, Any] = {}
+        try:
+            data["device"] = await self.myair_client.get_user_device_data()
+        except ParsingError:
+            data["device"] = {}
+        _LOGGER.debug("[async_update_data] device: %s", redact_dict(data["device"]))
+
+        try:
+            data["sleep_records"] = await self.myair_client.get_sleep_records()
+        except ParsingError:
+            data["sleep_records"] = []
+        _LOGGER.debug("[async_update_data] sleep_records: %s", redact_dict(data["sleep_records"]))
+
+        return data
