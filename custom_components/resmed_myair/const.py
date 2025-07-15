@@ -1,8 +1,11 @@
 """Constants for Home Assistant ResMed myAir Integration."""
 
+from homeassistant.const import Platform
+
 VERSION = "0.0.0-dev"  # Version updated by release workflow
 
 DOMAIN = "resmed_myair"
+PLATFORMS: list[Platform] = [Platform.SENSOR]
 DEFAULT_UPDATE_RATE_MIN = 30
 
 AUTHN_SUCCESS = "SUCCESS"

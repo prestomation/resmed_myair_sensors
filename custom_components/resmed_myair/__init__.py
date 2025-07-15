@@ -8,26 +8,54 @@ from collections.abc import MutableMapping
 import logging
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from aiohttp import DummyCookieJar
 
-from .const import CONF_REGION, DOMAIN, REGION_NA, VERSION
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
+
+from .client.myair_client import MyAirConfig
+from .client.rest_client import RESTClient
+from .const import (
+    CONF_DEVICE_TOKEN,
+    CONF_PASSWORD,
+    CONF_REGION,
+    CONF_USER_NAME,
+    PLATFORMS,
+    REGION_NA,
+    VERSION,
+)
+from .coordinator import MyAirDataUpdateCoordinator
 from .helpers import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-PLATFORMS: list[str] = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up from a config entry."""
     _LOGGER.info("Starting ResMed myAir Integration Version: %s", VERSION)
     _LOGGER.debug("[init async_setup_entry] config_entry.data: %s", redact_dict(config_entry.data))
-    hass.data.setdefault(DOMAIN, {})
-    hass_data: MutableMapping[str, Any] = dict(config_entry.data)
-    hass.data[DOMAIN][config_entry.entry_id] = hass_data
-    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
+    client_config: MyAirConfig = MyAirConfig(
+        username=config_entry.data[CONF_USER_NAME],
+        password=config_entry.data[CONF_PASSWORD],
+        region=config_entry.data[CONF_REGION],
+        device_token=config_entry.data.get(CONF_DEVICE_TOKEN, None),
+    )
+    client: RESTClient = RESTClient(
+        client_config,
+        async_create_clientsession(hass=hass, cookie_jar=DummyCookieJar(), raise_for_status=True),
+    )
+
+    coordinator: MyAirDataUpdateCoordinator = MyAirDataUpdateCoordinator(
+        hass=hass, myair_client=client
+    )
+
+    config_entry.runtime_data = coordinator
+
+    await coordinator.async_config_entry_first_refresh()
+
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
     return True
 
 
@@ -52,7 +80,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading: %s", redact_dict(entry.data))
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok
