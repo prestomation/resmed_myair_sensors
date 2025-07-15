@@ -106,6 +106,11 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
         """Return if sensor is available."""
         return self.coordinator.data.get("sleep_records") is not None
 
+    async def async_added_to_hass(self) -> None:
+        """Run once integration has been added to HA."""
+        await super().async_added_to_hass()
+        self._handle_coordinator_update()
+
 
 class MyAirSleepRecordSensor(MyAirBaseSensor):
     """myAir Sleep Record sensor class."""
