@@ -1,6 +1,7 @@
 """Sensor entities for resmed_myair."""
 
 from collections.abc import Mapping
+from datetime import date
 import logging
 from typing import Any, Final
 
@@ -56,9 +57,9 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id: str = f"{DOMAIN}_{serial_number}_{self.sensor_key}"
         self._attr_device_info: DeviceInfo = DeviceInfo(
             identifiers={(DOMAIN, serial_number)},
-            manufacturer=self.coordinator.device["fgDeviceManufacturerName"],
-            model=self.coordinator.device["deviceType"],
-            name=self.coordinator.device["localizedName"],
+            manufacturer=self.coordinator.device.get("fgDeviceManufacturerName"),
+            model=self.coordinator.device.get("deviceType"),
+            name=self.coordinator.device.get("localizedName"),
             suggested_area="Bedroom",
         )
 
@@ -85,11 +86,17 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         """Return the native value (aka. state)."""
         # The API always returns the previous month of data, so the client stores this
         # We assume this is ordered temporally and grab the last one: the latest one
-        value = self.coordinator.sleep_records[-1].get(self.sensor_key, 0)
-        if self.entity_description.device_class == SensorDeviceClass.DATE and isinstance(
-            value, str
-        ):
-            value = dt_util.parse_date(value)
+        value: Any | None = None
+        if self.coordinator.sleep_records:
+            try:
+                value = self.coordinator.sleep_records[-1][self.sensor_key]
+            except KeyError as e:
+                _LOGGER.error("Unable to parse Sleep Record. %s: %s", type(e).__name__, e)
+            if (
+                isinstance(value, str)
+                and self.entity_description.device_class == SensorDeviceClass.DATE
+            ):
+                value = dt_util.parse_date(value)
         return value
 
 
@@ -108,9 +115,17 @@ class MyAirDeviceSensor(MyAirBaseSensor):
     @property
     def native_value(self) -> Any | None:
         """Return the native value (aka. state)."""
-        value = self.coordinator.device[self.sensor_key]
-        if self.entity_description.device_class == SensorDeviceClass.TIMESTAMP:
-            value = dt_util.parse_datetime(value)
+        value: Any | None = None
+        if self.coordinator.device:
+            try:
+                value = self.coordinator.device[self.sensor_key]
+            except KeyError as e:
+                _LOGGER.error("Unable to parse Device. %s: %s", type(e).__name__, e)
+            if (
+                isinstance(value, str)
+                and self.entity_description.device_class == SensorDeviceClass.TIMESTAMP
+            ):
+                value = dt_util.parse_datetime(value)
         return value
 
 
@@ -129,8 +144,15 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
     @property
     def native_value(self) -> Any | None:
         """Return the native value (aka. state)."""
-        usage_minutes = self.coordinator.sleep_records[-1]["totalUsage"]
-        return f"{usage_minutes // 60}:{(usage_minutes % 60):02}"
+        value: str | None = None
+        if self.coordinator.sleep_records:
+            try:
+                usage_minutes: int = self.coordinator.sleep_records[-1]["totalUsage"]
+            except KeyError as e:
+                _LOGGER.error("Unable to parse Usage Time. %s: %s", type(e).__name__, e)
+            else:
+                value = f"{usage_minutes // 60}:{(usage_minutes % 60):02}"
+        return value
 
 
 class MyAirMostRecentSleepDate(MyAirBaseSensor):
@@ -150,12 +172,24 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
     @property
     def native_value(self) -> Any | None:
         """Return the native value (aka. state)."""
-        # Filter out all 0-usage days
-        sleep_days_with_data = [
-            record for record in self.coordinator.sleep_records if record["totalUsage"] > 0
-        ]
-        date_string = sleep_days_with_data[-1]["startDate"]
-        return dt_util.parse_date(date_string)
+
+        value: date | None = None
+        if self.coordinator.sleep_records:
+            # Filter out all 0-usage days
+            sleep_days_with_data: list[Mapping[str, Any]] = [
+                record for record in self.coordinator.sleep_records if record["totalUsage"] > 0
+            ]
+
+            if sleep_days_with_data:
+                try:
+                    date_string: str = sleep_days_with_data[-1]["startDate"]
+                except KeyError as e:
+                    _LOGGER.error(
+                        "Unable to parse Most Recent Sleep Date. %s: %s", type(e).__name__, e
+                    )
+                else:
+                    value = dt_util.parse_date(date_string)
+        return value
 
 
 # Our sensor class will prepend the serial number to the key
@@ -213,10 +247,12 @@ async def async_setup_entry(
     )
     client: RESTClient = RESTClient(
         client_config,
-        async_create_clientsession(hass, cookie_jar=DummyCookieJar(), raise_for_status=True),
+        async_create_clientsession(hass=hass, cookie_jar=DummyCookieJar(), raise_for_status=True),
     )
 
-    coordinator: MyAirDataUpdateCoordinator = MyAirDataUpdateCoordinator(hass, client)
+    coordinator: MyAirDataUpdateCoordinator = MyAirDataUpdateCoordinator(
+        hass=hass, myair_client=client
+    )
 
     hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = coordinator
 
@@ -232,7 +268,12 @@ async def async_setup_entry(
         sensors.append(MyAirDeviceSensor(key, desc, coordinator))
 
     # We have some synthesized sensors, lets add those too
-    sensors.extend([MyAirFriendlyUsageTime(coordinator), MyAirMostRecentSleepDate(coordinator)])
+    sensors.extend(
+        [
+            MyAirFriendlyUsageTime(coordinator=coordinator),
+            MyAirMostRecentSleepDate(coordinator=coordinator),
+        ]
+    )
 
     async_add_entities(sensors, False)
 
