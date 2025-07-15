@@ -1,6 +1,13 @@
 """Constants for Home Assistant ResMed myAir Integration."""
 
-from homeassistant.const import Platform
+from collections.abc import Mapping
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import PERCENTAGE, Platform, UnitOfTime
 
 VERSION = "0.0.0-dev"  # Version updated by release workflow
 
@@ -40,3 +47,39 @@ KEYS_TO_REDACT: list[str] = [
     "username",
     "Username",
 ]
+
+# Our sensor class will prepend the serial number to the key
+# These sensors pass data directly from my air
+SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
+    "CPAP AHI Events Per Hour": SensorEntityDescription(
+        key="ahi",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "CPAP Usage Minutes": SensorEntityDescription(
+        key="totalUsage",
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+    ),
+    "CPAP Mask On/Off": SensorEntityDescription(
+        key="maskPairCount",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "CPAP Current Data Date": SensorEntityDescription(
+        key="startDate", device_class=SensorDeviceClass.DATE
+    ),
+    "CPAP Mask Leak %": SensorEntityDescription(
+        key="leakPercentile",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+    ),
+    "CPAP Total myAir Score": SensorEntityDescription(
+        key="sleepScore", state_class=SensorStateClass.MEASUREMENT
+    ),
+}
+
+DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
+    "CPAP Sleep Data Last Collected": SensorEntityDescription(
+        key="lastSleepDataReportTime", device_class=SensorDeviceClass.TIMESTAMP
+    )
+}

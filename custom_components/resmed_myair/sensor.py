@@ -5,61 +5,24 @@ from datetime import date
 import logging
 from typing import Any, Final
 
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorEntityDescription,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_USER_NAME, DOMAIN
+from .const import (
+    CONF_USER_NAME,
+    DEVICE_SENSOR_DESCRIPTIONS,
+    DOMAIN,
+    SLEEP_RECORD_SENSOR_DESCRIPTIONS,
+)
 from .coordinator import MyAirDataUpdateCoordinator
 from .helpers import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-# Our sensor class will prepend the serial number to the key
-# These sensors pass data directly from my air
-SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
-    "CPAP AHI Events Per Hour": SensorEntityDescription(
-        key="ahi",
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    "CPAP Usage Minutes": SensorEntityDescription(
-        key="totalUsage",
-        state_class=SensorStateClass.MEASUREMENT,
-        device_class=SensorDeviceClass.DURATION,
-        native_unit_of_measurement=UnitOfTime.MINUTES,
-    ),
-    "CPAP Mask On/Off": SensorEntityDescription(
-        key="maskPairCount",
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    "CPAP Current Data Date": SensorEntityDescription(
-        key="startDate", device_class=SensorDeviceClass.DATE
-    ),
-    "CPAP Mask Leak %": SensorEntityDescription(
-        key="leakPercentile",
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=PERCENTAGE,
-    ),
-    "CPAP Total myAir Score": SensorEntityDescription(
-        key="sleepScore", state_class=SensorStateClass.MEASUREMENT
-    ),
-}
-
-DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
-    "CPAP Sleep Data Last Collected": SensorEntityDescription(
-        key="lastSleepDataReportTime", device_class=SensorDeviceClass.TIMESTAMP
-    )
-}
 
 
 async def async_setup_entry(
@@ -77,12 +40,15 @@ async def async_setup_entry(
     sensors: list[MyAirBaseSensor] = []
 
     # Some sensors come from sleep data, which is a list with an entry for each of the last 30 days
-    for key, desc in SLEEP_RECORD_SENSOR_DESCRIPTIONS.items():
-        sensors.append(MyAirSleepRecordSensor(key, desc, coordinator))
-
+    sensors.extend(
+        MyAirSleepRecordSensor(key, desc, coordinator)
+        for key, desc in SLEEP_RECORD_SENSOR_DESCRIPTIONS.items()
+    )
     # Some sensors come from the device. Specifically, the last time the device reported new data
-    for key, desc in DEVICE_SENSOR_DESCRIPTIONS.items():
-        sensors.append(MyAirDeviceSensor(key, desc, coordinator))
+    sensors.extend(
+        MyAirDeviceSensor(key, desc, coordinator)
+        for key, desc in DEVICE_SENSOR_DESCRIPTIONS.items()
+    )
 
     # We have some synthesized sensors, lets add those too
     sensors.extend(
