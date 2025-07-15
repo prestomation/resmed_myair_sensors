@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTime
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -24,6 +24,42 @@ from .coordinator import MyAirDataUpdateCoordinator
 from .helpers import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+# Our sensor class will prepend the serial number to the key
+# These sensors pass data directly from my air
+SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
+    "CPAP AHI Events Per Hour": SensorEntityDescription(
+        key="ahi",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "CPAP Usage Minutes": SensorEntityDescription(
+        key="totalUsage",
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+    ),
+    "CPAP Mask On/Off": SensorEntityDescription(
+        key="maskPairCount",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "CPAP Current Data Date": SensorEntityDescription(
+        key="startDate", device_class=SensorDeviceClass.DATE
+    ),
+    "CPAP Mask Leak %": SensorEntityDescription(
+        key="leakPercentile",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+    ),
+    "CPAP Total myAir Score": SensorEntityDescription(
+        key="sleepScore", state_class=SensorStateClass.MEASUREMENT
+    ),
+}
+
+DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
+    "CPAP Sleep Data Last Collected": SensorEntityDescription(
+        key="lastSleepDataReportTime", device_class=SensorDeviceClass.TIMESTAMP
+    )
+}
 
 
 async def async_setup_entry(
@@ -85,23 +121,24 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self.sensor_key: Final[str] = sensor_desc.key
         self.coordinator: MyAirDataUpdateCoordinator = coordinator
-        serial_number: str = self.coordinator.device["serialNumber"]
+        device_data = self.coordinator.data.get("device", {})
+        serial_number: str = device_data.get("serialNumber", "")
         self.entity_description: SensorEntityDescription = sensor_desc
 
         self._attr_name: str = friendly_name
         self._attr_unique_id: str = f"{DOMAIN}_{serial_number}_{self.sensor_key}"
         self._attr_device_info: DeviceInfo = DeviceInfo(
             identifiers={(DOMAIN, serial_number)},
-            manufacturer=self.coordinator.device.get("fgDeviceManufacturerName"),
-            model=self.coordinator.device.get("deviceType"),
-            name=self.coordinator.device.get("localizedName"),
+            manufacturer=device_data.get("fgDeviceManufacturerName"),
+            model=device_data.get("deviceType"),
+            name=device_data.get("localizedName"),
             suggested_area="Bedroom",
         )
 
     @property
     def available(self) -> bool:
         """Return if sensor is available."""
-        return self.coordinator.sleep_records is not None
+        return self.coordinator.data.get("sleep_records") is not None
 
 
 class MyAirSleepRecordSensor(MyAirBaseSensor):
@@ -116,15 +153,15 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         """Initialize myAir Sleep Record sensor."""
         super().__init__(friendly_name, sensor_desc, coordinator)
 
-    @property
-    def native_value(self) -> Any | None:
-        """Return the native value (aka. state)."""
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         # The API always returns the previous month of data, so the client stores this
         # We assume this is ordered temporally and grab the last one: the latest one
         value: Any | None = None
-        if self.coordinator.sleep_records:
+        if self.coordinator.data.get("sleep_records"):
             try:
-                value = self.coordinator.sleep_records[-1][self.sensor_key]
+                value = self.coordinator.data["sleep_records"][-1][self.sensor_key]
             except KeyError as e:
                 _LOGGER.error("Unable to parse Sleep Record. %s: %s", type(e).__name__, e)
             if (
@@ -132,7 +169,9 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
                 and self.entity_description.device_class == SensorDeviceClass.DATE
             ):
                 value = dt_util.parse_date(value)
-        return value
+
+        self._attr_native_value = value
+        self.async_write_ha_state()
 
 
 class MyAirDeviceSensor(MyAirBaseSensor):
@@ -147,13 +186,13 @@ class MyAirDeviceSensor(MyAirBaseSensor):
         """Initialize myAir Device sensor."""
         super().__init__(friendly_name, sensor_desc, coordinator)
 
-    @property
-    def native_value(self) -> Any | None:
-        """Return the native value (aka. state)."""
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         value: Any | None = None
-        if self.coordinator.device:
+        if self.coordinator.data.get("device"):
             try:
-                value = self.coordinator.device[self.sensor_key]
+                value = self.coordinator.data["device"][self.sensor_key]
             except KeyError as e:
                 _LOGGER.error("Unable to parse Device. %s: %s", type(e).__name__, e)
             if (
@@ -161,7 +200,9 @@ class MyAirDeviceSensor(MyAirBaseSensor):
                 and self.entity_description.device_class == SensorDeviceClass.TIMESTAMP
             ):
                 value = dt_util.parse_datetime(value)
-        return value
+
+        self._attr_native_value = value
+        self.async_write_ha_state()
 
 
 class MyAirFriendlyUsageTime(MyAirBaseSensor):
@@ -176,18 +217,20 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
 
         super().__init__("CPAP Usage Time", desc, coordinator)
 
-    @property
-    def native_value(self) -> Any | None:
-        """Return the native value (aka. state)."""
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         value: str | None = None
-        if self.coordinator.sleep_records:
+        if self.coordinator.data.get("sleep_records"):
             try:
-                usage_minutes: int = self.coordinator.sleep_records[-1]["totalUsage"]
+                usage_minutes: int = self.coordinator.data["sleep_records"][-1]["totalUsage"]
             except KeyError as e:
                 _LOGGER.error("Unable to parse Usage Time. %s: %s", type(e).__name__, e)
             else:
                 value = f"{usage_minutes // 60}:{(usage_minutes % 60):02}"
-        return value
+
+        self._attr_native_value = value
+        self.async_write_ha_state()
 
 
 class MyAirMostRecentSleepDate(MyAirBaseSensor):
@@ -204,61 +247,24 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
 
         super().__init__("Most Recent Sleep Date", desc, coordinator)
 
-    @property
-    def native_value(self) -> Any | None:
-        """Return the native value (aka. state)."""
-
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         value: date | None = None
-        if self.coordinator.sleep_records:
-            # Filter out all 0-usage days
-            sleep_days_with_data: list[Mapping[str, Any]] = [
-                record for record in self.coordinator.sleep_records if record["totalUsage"] > 0
-            ]
+        if self.coordinator.data.get("sleep_records"):
+            try:
+                # Filter out all 0-usage days
+                sleep_days_with_data: list[Mapping[str, Any]] = [
+                    record
+                    for record in self.coordinator.data["sleep_records"]
+                    if record["totalUsage"] > 0
+                ]
 
-            if sleep_days_with_data:
-                try:
+                if sleep_days_with_data:
                     date_string: str = sleep_days_with_data[-1]["startDate"]
-                except KeyError as e:
-                    _LOGGER.error(
-                        "Unable to parse Most Recent Sleep Date. %s: %s", type(e).__name__, e
-                    )
-                else:
                     value = dt_util.parse_date(date_string)
-        return value
+            except KeyError as e:
+                _LOGGER.error("Unable to parse Most Recent Sleep Date. %s: %s", type(e).__name__, e)
 
-
-# Our sensor class will prepend the serial number to the key
-# These sensors pass data directly from my air
-SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
-    "CPAP AHI Events Per Hour": SensorEntityDescription(
-        key="ahi",
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    "CPAP Usage Minutes": SensorEntityDescription(
-        key="totalUsage",
-        state_class=SensorStateClass.MEASUREMENT,
-        device_class=SensorDeviceClass.DURATION,
-        native_unit_of_measurement=UnitOfTime.MINUTES,
-    ),
-    "CPAP Mask On/Off": SensorEntityDescription(
-        key="maskPairCount",
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    "CPAP Current Data Date": SensorEntityDescription(
-        key="startDate", device_class=SensorDeviceClass.DATE
-    ),
-    "CPAP Mask Leak %": SensorEntityDescription(
-        key="leakPercentile",
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=PERCENTAGE,
-    ),
-    "CPAP Total myAir Score": SensorEntityDescription(
-        key="sleepScore", state_class=SensorStateClass.MEASUREMENT
-    ),
-}
-
-DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
-    "CPAP Sleep Data Last Collected": SensorEntityDescription(
-        key="lastSleepDataReportTime", device_class=SensorDeviceClass.TIMESTAMP
-    )
-}
+        self._attr_native_value = value
+        self.async_write_ha_state()
