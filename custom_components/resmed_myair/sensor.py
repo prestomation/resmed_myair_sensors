@@ -18,6 +18,7 @@ from .const import (
     DEVICE_SENSOR_DESCRIPTIONS,
     DOMAIN,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
+    VERSION,
 )
 from .coordinator import MyAirDataUpdateCoordinator
 from .helpers import redact_dict
@@ -93,18 +94,20 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
 
         self._attr_name: str = friendly_name
         self._attr_unique_id: str = f"{DOMAIN}_{serial_number}_{self.sensor_key}"
+        self._available: bool = False
         self._attr_device_info: DeviceInfo = DeviceInfo(
             identifiers={(DOMAIN, serial_number)},
             manufacturer=device_data.get("fgDeviceManufacturerName"),
             model=device_data.get("deviceType"),
             name=device_data.get("localizedName"),
             suggested_area="Bedroom",
+            sw_version=VERSION,
         )
 
     @property
     def available(self) -> bool:
-        """Return if sensor is available."""
-        return self.coordinator.data.get("sleep_records") is not None
+        """Return whether entity is available."""
+        return self._available
 
     async def async_added_to_hass(self) -> None:
         """Run once integration has been added to HA."""
@@ -133,13 +136,18 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         if self.coordinator.data.get("sleep_records"):
             try:
                 value = self.coordinator.data["sleep_records"][-1][self.sensor_key]
-            except KeyError as e:
+            except (KeyError, IndexError) as e:
                 _LOGGER.error("Unable to parse Sleep Record. %s: %s", type(e).__name__, e)
+                self._available = False
+            else:
+                self._available = True
             if (
                 isinstance(value, str)
                 and self.entity_description.device_class == SensorDeviceClass.DATE
             ):
                 value = dt_util.parse_date(value)
+        else:
+            self._available = False
 
         self._attr_native_value = value
         self.async_write_ha_state()
@@ -166,11 +174,16 @@ class MyAirDeviceSensor(MyAirBaseSensor):
                 value = self.coordinator.data["device"][self.sensor_key]
             except KeyError as e:
                 _LOGGER.error("Unable to parse Device. %s: %s", type(e).__name__, e)
+                self._available = False
+            else:
+                self._available = True
             if (
                 isinstance(value, str)
                 and self.entity_description.device_class == SensorDeviceClass.TIMESTAMP
             ):
                 value = dt_util.parse_datetime(value)
+        else:
+            self._available = False
 
         self._attr_native_value = value
         self.async_write_ha_state()
@@ -195,10 +208,14 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
         if self.coordinator.data.get("sleep_records"):
             try:
                 usage_minutes: int = self.coordinator.data["sleep_records"][-1]["totalUsage"]
-            except KeyError as e:
+            except (KeyError, IndexError) as e:
                 _LOGGER.error("Unable to parse Usage Time. %s: %s", type(e).__name__, e)
+                self._available = False
             else:
                 value = f"{usage_minutes // 60}:{(usage_minutes % 60):02}"
+                self._available = True
+        else:
+            self._available = False
 
         self._attr_native_value = value
         self.async_write_ha_state()
@@ -234,8 +251,14 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
                 if sleep_days_with_data:
                     date_string: str = sleep_days_with_data[-1]["startDate"]
                     value = dt_util.parse_date(date_string)
-            except KeyError as e:
+                    self._available = True
+                else:
+                    self._available = False
+            except (KeyError, IndexError) as e:
                 _LOGGER.error("Unable to parse Most Recent Sleep Date. %s: %s", type(e).__name__, e)
+                self._available = False
+        else:
+            self._available = False
 
         self._attr_native_value = value
         self.async_write_ha_state()
