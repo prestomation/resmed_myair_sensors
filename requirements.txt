@@ -1,8 +1,16 @@
-aiohttp_cors
+aiohttp
 beautifulsoup4
+coverage
+homeassistant
 homeassistant-stubs
 mypy
 PyJWT
+pytest
+pytest-asyncio
+pytest-cov
+pytest-homeassistant-custom-component
+pytest-timeout
+pytest-xdist
 ruff
 types-cffi
 types-PyMySQL

@@ -12,6 +12,7 @@ __pycache__
 $RECYCLE.BIN/
 pythonenv*
 Thumbs.db
+pytest.xml
 
 # Environments
 .coverage

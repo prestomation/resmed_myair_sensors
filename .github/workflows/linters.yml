@@ -12,22 +12,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
       - name: Setup python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.6.0
         with:
           python-version: 3.x
+
       - name: Cache pip dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v4.2.3
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
+
       - name: Install requirements
         run: pip install -r requirements.txt
+
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
+
       - name: Run pre-commit.ci
         uses: pre-commit-ci/lite-action@v1.1.0
         if: always()
+
       - name: Run mypy
         run: mypy "./custom_components/resmed_myair/" --install-types --non-interactive --config-file pyproject.toml
