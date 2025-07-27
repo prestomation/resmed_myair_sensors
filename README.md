@@ -14,28 +14,19 @@ This integration creates sensors from your myAir CPAP data like AHI Events/hr, U
 
 By the nature of CPAP data, sensors will only update once per day (assuming your CPAP is used every day). For this reason, the integration only polls every 30 minutes. A service exists for each config that will force update if you want to automate the sync after you wake up.
 
-## Installation
+## Installation via HACS
 
-### Installation via HACS
+* Ensure that [HACS](https://hacs.xyz/) is installed
 
-1. Ensure that [HACS](https://hacs.xyz/) is installed
-1. Navigate to HACS -> Integrations
-1. Open the three-dot menu and select `Custom Repositories`
-1. Put `https://github.com/prestomation/resmed_myair_sensors` into the `Repository` textbox.
-1. Select `Integration` as the category
-1. Press `Add`
-1. Find the ResMed integration in the HACS integration list and install it
-1. Restart Home Assistant
-1. Add a configuration for the integration in the standard integration UI in Home Assistant
+* <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=prestomation&repository=resmed_myair_sensors" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open your Home Assistant instance to download the ResMed integration." /></a>
 
-<details>
-<summary><h3>Manual Installation</h3></summary>
+  * Find the ResMed integration in the HACS integration list and Download it
 
-You probably do not want to do this! Use the HACS method above unless you have a very good reason why you are installing manually
+* Restart Home Assistant
 
-If you do need to install manually, you will know how this is done. You can install from source or use the latest release.
+* <a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=resmed_myair" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/config_flow_start.svg" alt="Open your Home Assistant instance to setup the ResMed integration." /></a>
 
-</details>
+  * Add the ResMed integration using the standard integration UI in Home Assistant
 
 ## Sensors
 
