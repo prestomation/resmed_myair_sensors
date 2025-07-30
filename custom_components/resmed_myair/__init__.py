@@ -48,7 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     )
 
     coordinator: MyAirDataUpdateCoordinator = MyAirDataUpdateCoordinator(
-        hass=hass, myair_client=client
+        hass=hass, config_entry=config_entry, myair_client=client
     )
 
     config_entry.runtime_data = coordinator

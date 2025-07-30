@@ -5,6 +5,7 @@ from datetime import timedelta
 import logging
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -26,6 +27,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
+        config_entry: ConfigEntry,
         myair_client: MyAirClient,
     ) -> None:
         """Initialize DataUpdateCoordinator for ResMed myAir."""
@@ -33,6 +35,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
         self.myair_client = myair_client
         super().__init__(
             hass=hass,
+            config_entry=config_entry,
             logger=_LOGGER,
             name="myAir update",
             update_interval=timedelta(minutes=DEFAULT_UPDATE_RATE_MIN),
