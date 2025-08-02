@@ -1,10 +1,11 @@
 # resmed_myair
 
 [![GitHub Downloads][downloads-shield]][releases]
+[![GitHub Latest Downloads][downloads-latest-shield]][releases]
 [![GitHub Release][releases-shield]][releases]
+[![GitHub Release Date][release-date-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
 [![License][license-shield]](LICENSE)
-
 [![hacs][hacsbadge]][hacs]
 ![Project Maintenance][maintenance-shield]
 
@@ -58,12 +59,14 @@ If you want to contribute to this please read the [Contribution guidelines](CONT
 
 If you want to support the development of this component, please don't donate to me but instead donate to the Home Assistant development team.
 
-[commits-shield]: https://img.shields.io/github/commit-activity/y/prestomation/resmed_myair_sensors.svg?style=for-the-badge
+[commits-shield]: https://img.shields.io/github/last-commit/prestomation/resmed_myair_sensors?style=for-the-badge
 [commits]: https://github.com/prestomation/resmed_myair_sensors/commits/main
 [hacs]: https://github.com/custom-components/hacs
-[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
+[hacsbadge]: https://img.shields.io/badge/HACS-Default-blue.svg?style=for-the-badge
 [license-shield]: https://img.shields.io/github/license/prestomation/resmed_myair_sensors.svg?style=for-the-badge
 [maintenance-shield]: https://img.shields.io/badge/Maintainers-%40prestomation%20%40Snuffy2-blue.svg?style=for-the-badge
 [downloads-shield]: https://img.shields.io/github/downloads/prestomation/resmed_myair_sensors/total.svg?style=for-the-badge
+[downloads-latest-shield]: https://img.shields.io/github/downloads-pre/prestomation/resmed_myair_sensors/latest/total?style=for-the-badge
 [releases-shield]: https://img.shields.io/github/release/prestomation/resmed_myair_sensors.svg?style=for-the-badge
+[release-date-shield]: https://img.shields.io/github/release-date/prestomation/resmed_myair_sensors?style=for-the-badge
 [releases]: https://github.com/prestomation/resmed_myair_sensors/releases
