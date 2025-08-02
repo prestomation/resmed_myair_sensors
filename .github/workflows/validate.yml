@@ -1,11 +1,12 @@
 name: HA and HACS Validate
 
 on:
+  pull_request:
+  workflow_dispatch:
   push:
     branches:
       - main
-  pull_request:
-  workflow_dispatch:
+      - master
 
 jobs:
   ha_validation:
