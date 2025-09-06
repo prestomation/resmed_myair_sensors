@@ -38,7 +38,7 @@ jobs:
         uses: pre-commit/action@v3.0.1
 
       - name: Run mypy
-        run: mypy "./custom_components/opnsense/" --install-types --non-interactive --config-file pyproject.toml
+        run: mypy "./custom_components/resmed_myair/" --install-types --non-interactive --config-file pyproject.toml
 
       - uses: pre-commit-ci/lite-action@v1.1.0
         if: always()

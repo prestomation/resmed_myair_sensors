@@ -68,10 +68,9 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         # v1 only supported NA by its implicit nature, so lets set it here
         new[CONF_REGION] = REGION_NA
 
-        config_entry.version = 2
-        hass.config_entries.async_update_entry(config_entry, data=new)
+        hass.config_entries.async_update_entry(config_entry, data=new, version=2)
 
-    _LOGGER.info("Migration to version %s successful", config_entry.version)
+        _LOGGER.info("Migration to version 2 successful")
 
     return True
 

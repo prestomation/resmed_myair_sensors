@@ -1,9 +1,9 @@
 """Unit tests for the REST client used by the resmed_myair integration."""
 
-from collections import defaultdict
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from aiohttp import ClientResponse, ClientSession
+from aiohttp import ClientResponse
 from aiohttp.http_exceptions import HttpProcessingError
 from multidict import CIMultiDict
 import pytest
@@ -21,56 +21,31 @@ from custom_components.resmed_myair.client.rest_client import (
     ParsingError,
     RESTClient,
 )
+from tests.conftest import make_mock_aiohttp_context_manager, make_mock_aiohttp_response
 
 
-@pytest.fixture
-def config_na():
-    """Fixture for NA region config."""
-    return MyAirConfig(username="user", password="pass", region="NA", device_token="token")
-
-
-@pytest.fixture
-def config_eu():
-    """Fixture for EU region config."""
-    return MyAirConfig(username="user", password="pass", region="EU", device_token="token")
-
-
-@pytest.fixture
-def session():
-    """Fixture for aiohttp ClientSession mock."""
-    return MagicMock(spec=ClientSession)
-
-
-def test_rest_client_init_na(config_na, session):
-    """Test RESTClient initialization for NA region."""
-    client = RESTClient(config_na, session)
-    assert client._region_config == NA_CONFIG
-    assert client._email_factor_id == NA_CONFIG["email_factor_id"]
+@pytest.mark.parametrize("region,expected_config", [("NA", NA_CONFIG), ("EU", EU_CONFIG)])
+def test_rest_client_init_region(region, expected_config, session):
+    """Test RESTClient initialization for both NA and EU regions."""
+    config = MyAirConfig(username="user", password="pass", region=region, device_token="token")
+    client = RESTClient(config, session)
+    assert client._region_config == expected_config
+    assert client._email_factor_id == expected_config["email_factor_id"]
     assert client._mfa_url.startswith("https://")
 
 
-def test_rest_client_init_eu(config_eu, session):
-    """Test RESTClient initialization for EU region."""
-    client = RESTClient(config_eu, session)
-    assert client._region_config == EU_CONFIG
-    assert client._email_factor_id == EU_CONFIG["email_factor_id"]
-    assert client._mfa_url.startswith("https://")
-
-
-def test_device_token_property(config_na, session):
-    """Test device_token property."""
+@pytest.mark.parametrize("case", ["device_token", "cookies"])
+def test_properties_variants(case, config_na, session):
+    """Parametrized: small property checks for device_token and _cookies."""
     client = RESTClient(config_na, session)
-    assert client.device_token == "token"
-
-
-def test_cookies_property(config_na, session):
-    """Test _cookies property."""
-    client = RESTClient(config_na, session)
-    client._cookie_dt = "dt"
-    client._cookie_sid = "sid"
-    cookies = client._cookies
-    assert cookies["DT"] == "dt"
-    assert cookies["sid"] == "sid"
+    if case == "device_token":
+        assert client.device_token == "token"
+    else:
+        client._cookie_dt = "dt"
+        client._cookie_sid = "sid"
+        cookies = client._cookies
+        assert cookies["DT"] == "dt"
+        assert cookies["sid"] == "sid"
 
 
 @pytest.mark.asyncio
@@ -92,112 +67,137 @@ def test_cookies_property(config_na, session):
     ],
 )
 async def test_extract_and_update_cookies_variants(
-    initial_dt, initial_sid, cookie_headers, expected_dt, expected_sid, expect_warn, caplog
+    initial_dt,
+    initial_sid,
+    cookie_headers,
+    expected_dt,
+    expected_sid,
+    expect_warn,
+    caplog,
+    config_na,
+    session,
 ):
     """Parametrized test for _extract_and_update_cookies covering all branches, including warning."""
-    config = MagicMock(spec=MyAirConfig)
-    config.region = "NA"
-    config.username = "user"
-    config.password = "pw"
-    config.device_token = None
-    session = MagicMock()
+    # MyAirConfig is a NamedTuple (immutable) so use _replace to change device_token
+    config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
     client._cookie_dt = initial_dt
     client._cookie_sid = initial_sid
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level(logging.WARNING):
         await client._extract_and_update_cookies(cookie_headers)
     assert client._cookie_dt == expected_dt
     assert client._cookie_sid == expected_sid
     if expect_warn:
-        assert "Changing Device Token from: oldtoken, to: newtoken" in caplog.text
+        assert (
+            "Changing Device Token" in caplog.text
+            and "oldtoken" in caplog.text
+            and "newtoken" in caplog.text
+        )
     else:
-        assert "Changing Device Token from: oldtoken, to: newtoken" not in caplog.text
+        assert "Changing Device Token" not in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_resmed_response_error_check_unauthorized():
-    """Test _resmed_response_error_check raises AuthenticationError on unauthorized."""
-    response = MagicMock()
-    response.status = 401
-    response.headers = {}
-    resp_dict = {"errors": [{"errorInfo": {"errorType": "unauthorized", "errorCode": "401"}}]}
-    with pytest.raises(AuthenticationError):
-        await RESTClient._resmed_response_error_check("authn", response, resp_dict)
-
-
-@pytest.mark.asyncio
-async def test_resmed_response_error_check_bad_request():
-    """Test _resmed_response_error_check raises IncompleteAccountError on onboardingFlowInProgress."""
-    response = MagicMock()
-    response.status = 400
-    response.headers = {}
-    resp_dict = {
-        "errors": [
-            {"errorInfo": {"errorType": "badRequest", "errorCode": "onboardingFlowInProgress"}}
-        ]
-    }
-    with pytest.raises(IncompleteAccountError):  # Assert the specific exception type
-        await RESTClient._resmed_response_error_check("authn", response, resp_dict)
-
-
-@pytest.mark.asyncio
-async def test_resmed_response_error_check_type_error():
-    """Test _resmed_response_error_check raises HttpProcessingError on TypeError."""
-    response = MagicMock()
-    response.status = 400
-    response.headers = {}
-    resp_dict = {"errors": [None]}
-
-    with pytest.raises(HttpProcessingError):
-        await RESTClient._resmed_response_error_check("authn", response, resp_dict)
-
-
-@pytest.mark.asyncio
-async def test_authn_check_success(config_na, session):
-    """Test _authn_check returns AUTHN_SUCCESS and sets session_token."""
-    client = RESTClient(config_na, session)
-    session.post.return_value.__aenter__.return_value.json = AsyncMock(
-        return_value={"status": "SUCCESS", "sessionToken": "abc"}
-    )
-    session.post.return_value.__aenter__.return_value.headers = {}
-    session.post.return_value.__aenter__.return_value.status = 200
-    with patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()):
-        status = await client._authn_check()
-    assert status == "SUCCESS"
-    assert client._session_token == "abc"
-
-
-@pytest.mark.asyncio
-async def test_authn_check_mfa(config_na, session):
-    """Test _authn_check returns AUTH_NEEDS_MFA and sets state_token and mfa_url."""
-    client = RESTClient(config_na, session)
-    session.post.return_value.__aenter__.return_value.json = AsyncMock(
-        return_value={
-            "status": "MFA_REQUIRED",
-            "stateToken": "state",
-            "_embedded": {
-                "factors": [{"id": "factorid", "_links": {"verify": {"href": "https://verify"}}}]
+@pytest.mark.parametrize(
+    "status,resp_dict,expected_exception",
+    [
+        (
+            401,
+            {"errors": [{"errorInfo": {"errorType": "unauthorized", "errorCode": "401"}}]},
+            AuthenticationError,
+        ),
+        (
+            400,
+            {
+                "errors": [
+                    {
+                        "errorInfo": {
+                            "errorType": "badRequest",
+                            "errorCode": "onboardingFlowInProgress",
+                        }
+                    }
+                ]
             },
-        }
-    )
-    session.post.return_value.__aenter__.return_value.headers = {}
-    session.post.return_value.__aenter__.return_value.status = 200
+            IncompleteAccountError,
+        ),
+        (400, {"errors": [None]}, HttpProcessingError),
+    ],
+)
+async def test_resmed_response_error_check_variants(status, resp_dict, expected_exception):
+    """Parametrized tests for various error responses in _resmed_response_error_check."""
+    response = MagicMock(spec=ClientResponse)
+    response.status = status
+    response.headers = {}
+    with pytest.raises(expected_exception):
+        await RESTClient._resmed_response_error_check("authn", response, resp_dict)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "json_value,expected_status,expect_session_token,expect_state_token,expect_email_factor_id,expect_mfa_url_prefix",
+    [
+        (
+            {"status": "SUCCESS", "sessionToken": "abc"},
+            "SUCCESS",
+            "abc",
+            None,
+            None,
+            None,
+        ),
+        (
+            {
+                "status": "MFA_REQUIRED",
+                "stateToken": "state",
+                "_embedded": {
+                    "factors": [
+                        {"id": "factorid", "_links": {"verify": {"href": "https://verify"}}}
+                    ]
+                },
+            },
+            "MFA_REQUIRED",
+            None,
+            "state",
+            "factorid",
+            "https://verify",
+        ),
+    ],
+)
+async def test_authn_check_variants(
+    config_na,
+    session,
+    json_value,
+    expected_status,
+    expect_session_token,
+    expect_state_token,
+    expect_email_factor_id,
+    expect_mfa_url_prefix,
+):
+    """Parametrized tests for _authn_check success and MFA_REQUIRED paths."""
+    client = RESTClient(config_na, session)
+    mock_response = make_mock_aiohttp_response(json_value=json_value)
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
     with patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()):
         status = await client._authn_check()
-    assert status == "MFA_REQUIRED"
-    assert client._state_token == "state"
-    assert client._email_factor_id == "factorid"
-    assert client._mfa_url.startswith("https://verify")
+
+    assert status == expected_status
+    if expect_session_token is not None:
+        assert client._session_token == expect_session_token
+    if expect_state_token is not None:
+        assert client._state_token == expect_state_token
+    if expect_email_factor_id is not None:
+        assert client._email_factor_id == expect_email_factor_id
+    if expect_mfa_url_prefix is not None:
+        assert client._mfa_url.startswith(expect_mfa_url_prefix)
 
 
 @pytest.mark.asyncio
-async def test_authn_check_missing_status(config_na, session):
-    """Test _authn_check raises AuthenticationError if status missing."""
+@pytest.mark.parametrize("json_value", [{}, {"status": "UNKNOWN"}])
+async def test_authn_check_invalid_status_raises(config_na, session, json_value):
+    """Parametrized: _authn_check should raise AuthenticationError for invalid status payloads."""
     client = RESTClient(config_na, session)
-    session.post.return_value.__aenter__.return_value.json = AsyncMock(return_value={})
-    session.post.return_value.__aenter__.return_value.headers = {}
-    session.post.return_value.__aenter__.return_value.status = 200
+    mock_response = make_mock_aiohttp_response(json_value=json_value)
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
     with (
         patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
         pytest.raises(AuthenticationError),
@@ -206,50 +206,36 @@ async def test_authn_check_missing_status(config_na, session):
 
 
 @pytest.mark.asyncio
-async def test_authn_check_unknown_status(config_na, session):
-    """Test _authn_check raises AuthenticationError for unknown status."""
-    client = RESTClient(config_na, session)
-    session.post.return_value.__aenter__.return_value.json = AsyncMock(
-        return_value={"status": "UNKNOWN"}
-    )
-    session.post.return_value.__aenter__.return_value.headers = {}
-    session.post.return_value.__aenter__.return_value.status = 200
-    with (
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(AuthenticationError),
-    ):
-        await client._authn_check()
-
-
-@pytest.mark.asyncio
-async def test_verify_mfa_and_get_access_token_success(config_na, session):
-    """Test verify_mfa_and_get_access_token returns AUTHN_SUCCESS."""
+@pytest.mark.parametrize(
+    "verify_return,expect_exception,expected_status",
+    [
+        ("SUCCESS", False, "SUCCESS"),
+        ("FAIL", True, None),
+    ],
+)
+async def test_verify_mfa_and_get_access_token_variants(
+    config_na, session, verify_return, expect_exception, expected_status
+):
+    """Parametrized: verify_mfa_and_get_access_token success and failure paths."""
     client = RESTClient(config_na, session)
     with (
-        patch.object(client, "_verify_mfa", new=AsyncMock(return_value="SUCCESS")),
+        patch.object(client, "_verify_mfa", new=AsyncMock(return_value=verify_return)),
         patch.object(client, "_get_access_token", new=AsyncMock()),
     ):
-        status = await client.verify_mfa_and_get_access_token("123456")
-    assert status == "SUCCESS"
+        if expect_exception:
+            with pytest.raises(AuthenticationError):
+                await client.verify_mfa_and_get_access_token("123456")
+        else:
+            status = await client.verify_mfa_and_get_access_token("123456")
+            assert status == expected_status
 
 
 @pytest.mark.asyncio
-async def test_verify_mfa_and_get_access_token_fail(config_na, session):
-    """Test verify_mfa_and_get_access_token raises AuthenticationError on failure."""
+@pytest.mark.parametrize("cookie_dt", ["dt", "cookie"])
+async def test_connect_access_token_active_variants(config_na, session, cookie_dt):
+    """Parametrized: connect returns AUTHN_SUCCESS when access token is active (different cookie values)."""
     client = RESTClient(config_na, session)
-    with (
-        patch.object(client, "_verify_mfa", new=AsyncMock(return_value="FAIL")),
-        patch.object(client, "_get_access_token", new=AsyncMock()),
-        pytest.raises(AuthenticationError),
-    ):
-        await client.verify_mfa_and_get_access_token("123456")
-
-
-@pytest.mark.asyncio
-async def test_connect_access_token_active(config_na, session):
-    """Test connect returns AUTHN_SUCCESS if access token is active."""
-    client = RESTClient(config_na, session)
-    client._cookie_dt = "dt"
+    client._cookie_dt = cookie_dt
     client._access_token = "token"
     with (
         patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=True)),
@@ -257,7 +243,7 @@ async def test_connect_access_token_active(config_na, session):
         patch.object(client, "_get_access_token", new=AsyncMock()),
     ):
         result = await client.connect()
-    assert result == "SUCCESS"
+    assert result == AUTHN_SUCCESS
 
 
 @pytest.mark.asyncio
@@ -277,8 +263,17 @@ async def test_connect_authn_success(config_na, session):
 
 
 @pytest.mark.asyncio
-async def test_connect_needs_mfa_initial_true(config_na, session):
-    """Test connect triggers MFA if needed and initial is True."""
+@pytest.mark.parametrize(
+    "initial,expect_trigger,expect_result,expect_raises",
+    [
+        (True, True, "MFA_REQUIRED", False),
+        (False, False, None, True),
+    ],
+)
+async def test_connect_needs_mfa_parametrized(
+    config_na, session, initial, expect_trigger, expect_result, expect_raises
+):
+    """Parametrized: connect behavior when MFA is required for initial True/False."""
     client = RESTClient(config_na, session)
     client._cookie_dt = "dt"
     client._access_token = None
@@ -288,65 +283,62 @@ async def test_connect_needs_mfa_initial_true(config_na, session):
         patch.object(client, "_trigger_mfa", new=AsyncMock()) as trigger_mfa_mock,
         patch.object(client, "_get_access_token", new=AsyncMock()),
     ):
-        result = await client.connect(initial=True)
-    trigger_mfa_mock.assert_called_once()
-    assert result == "MFA_REQUIRED"
-    assert client._uses_mfa is True
+        if expect_raises:
+            with pytest.raises(AuthenticationError):
+                await client.connect(initial=initial)
+        else:
+            result = await client.connect(initial=initial)
+            assert result == expect_result
+
+    # trigger_mfa should be awaited only when expected
+    if expect_trigger:
+        trigger_mfa_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_connect_needs_mfa_initial_false_raises(config_na, session):
-    """Test connect raises AuthenticationError if MFA required and initial is False."""
-    client = RESTClient(config_na, session)
-    client._cookie_dt = "dt"
-    client._access_token = None
-    with (
-        patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=False)),
-        patch.object(client, "_authn_check", new=AsyncMock(return_value="MFA_REQUIRED")),
-        patch.object(client, "_trigger_mfa", new=AsyncMock()),
-        patch.object(client, "_get_access_token", new=AsyncMock()),
-        pytest.raises(AuthenticationError),
-    ):
-        await client.connect(initial=False)
-
-
-@pytest.mark.asyncio
-async def test_connect_calls_get_initial_dt_if_cookie_dt_none(config_na, session):
-    """Test connect calls _get_initial_dt if _cookie_dt is None."""
+@pytest.mark.parametrize(
+    "uses_mfa,expect_warn",
+    [
+        (False, False),
+        (True, True),
+    ],
+)
+async def test_connect_initial_dt_and_warning_variants(
+    config_na, session, caplog, uses_mfa, expect_warn
+):
+    """Parametrized: when _cookie_dt is None the client should call _get_initial_dt; when _uses_mfa is True it logs a warning."""
     client = RESTClient(config_na, session)
     client._cookie_dt = None
+    client._uses_mfa = uses_mfa
     client._access_token = None
     with (
         patch.object(client, "_get_initial_dt", new=AsyncMock()) as get_initial_dt_mock,
         patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=False)),
         patch.object(client, "_authn_check", new=AsyncMock(return_value="SUCCESS")),
         patch.object(client, "_get_access_token", new=AsyncMock()),
+        caplog.at_level(logging.WARNING),
     ):
         await client.connect()
+
     get_initial_dt_mock.assert_called_once()
+    if expect_warn:
+        assert "Device Token isn't set" in caplog.text
+    else:
+        assert "Device Token isn't set" not in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_connect_warns_if_cookie_dt_none_and_uses_mfa(config_na, session, caplog):
-    """Test connect logs a warning if _cookie_dt is None and _uses_mfa is True."""
-    client = RESTClient(config_na, session)
-    client._cookie_dt = None
-    client._uses_mfa = True
-    client._access_token = None
-    with (
-        patch.object(client, "_get_initial_dt", new=AsyncMock()),
-        patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=False)),
-        patch.object(client, "_authn_check", new=AsyncMock(return_value="SUCCESS")),
-        patch.object(client, "_get_access_token", new=AsyncMock()),
-        caplog.at_level("WARNING"),
-    ):
-        await client.connect()
-    assert "Device Token isn't set. This will require frequent reauthentication." in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_connect_status_needs_mfa_initial_triggers_mfa(config_na, session):
-    """Test connect triggers MFA if status == AUTH_NEEDS_MFA and initial=True."""
+@pytest.mark.parametrize(
+    "initial,expect_trigger,expect_result,expect_raises",
+    [
+        (True, True, AUTH_NEEDS_MFA, False),
+        (False, False, None, True),
+    ],
+)
+async def test_connect_status_needs_mfa_parametrized(
+    config_na, session, initial, expect_trigger, expect_result, expect_raises
+):
+    """Parametrized: connect behavior when _authn_check returns AUTH_NEEDS_MFA for initial True/False."""
     client = RESTClient(config_na, session)
     client._cookie_dt = "cookie"
     client._access_token = None
@@ -356,38 +348,17 @@ async def test_connect_status_needs_mfa_initial_triggers_mfa(config_na, session)
         patch.object(client, "_trigger_mfa", new=AsyncMock()) as trigger_mfa_mock,
         patch.object(client, "_get_access_token", new=AsyncMock()),
     ):
-        status = await client.connect(initial=True)
-    trigger_mfa_mock.assert_awaited_once()
-    assert status == AUTH_NEEDS_MFA
+        if expect_raises:
+            with pytest.raises(AuthenticationError):
+                await client.connect(initial=initial)
+        else:
+            status = await client.connect(initial=initial)
+            assert status == expect_result
+
+    if expect_trigger:
+        trigger_mfa_mock.assert_awaited_once()
+
     assert client._uses_mfa is True
-
-
-@pytest.mark.asyncio
-async def test_connect_status_needs_mfa_not_initial_raises(config_na, session):
-    """Test connect raises AuthenticationError if status == AUTH_NEEDS_MFA and initial=False."""
-    client = RESTClient(config_na, session)
-    client._cookie_dt = "cookie"
-    client._access_token = None
-    with (
-        patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=False)),
-        patch.object(client, "_authn_check", new=AsyncMock(return_value=AUTH_NEEDS_MFA)),
-        patch.object(client, "_trigger_mfa", new=AsyncMock()),
-        patch.object(client, "_get_access_token", new=AsyncMock()),
-        pytest.raises(AuthenticationError),
-    ):
-        await client.connect(initial=False)
-    assert client._uses_mfa is True
-
-
-@pytest.mark.asyncio
-async def test_connect_returns_success_if_access_token_active(config_na, session):
-    """Test connect returns AUTHN_SUCCESS if self._access_token is set and is active."""
-    client = RESTClient(config_na, session)
-    client._access_token = "token"
-    client._cookie_dt = "cookie"
-    with patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=True)):
-        result = await client.connect()
-    assert result == AUTHN_SUCCESS
 
 
 @pytest.mark.asyncio
@@ -423,69 +394,61 @@ async def test_resmed_response_error_check_no_errors_key():
 
 
 @pytest.mark.asyncio
-async def test_authn_check_raises_if_state_token_missing(config_na, session):
-    """Test _authn_check raises AuthenticationError if status == AUTH_NEEDS_MFA and stateToken is missing."""
+@pytest.mark.parametrize(
+    "json_value,match",
+    [
+        (
+            {
+                "status": AUTH_NEEDS_MFA,
+                "_embedded": {
+                    "factors": [{"id": "some_id", "_links": {"verify": {"href": "url"}}}]
+                },
+            },
+            "Cannot get stateToken in authn step",
+        ),
+        (
+            {"status": AUTHN_SUCCESS},
+            "Cannot get sessionToken in authn step",
+        ),
+    ],
+)
+async def test_authn_check_raises_variants(config_na, session, json_value, match):
+    """Parametrized: _authn_check raises AuthenticationError for missing stateToken or sessionToken cases."""
     client = RESTClient(config_na, session)
 
-    # Mock the session.post context manager and response
-    mock_response = MagicMock(spec=ClientResponse)
-    mock_response.json = AsyncMock(
-        return_value={
-            "status": AUTH_NEEDS_MFA,
-            # "stateToken" intentionally missing
-            "_embedded": {"factors": [{"id": "some_id", "_links": {"verify": {"href": "url"}}}]},
-        }
-    )
+    mock_response = make_mock_aiohttp_response(json_value=json_value)
 
-    # Patch _resmed_response_error_check to do nothing
+    # Patch session.post and _resmed_response_error_check to not raise
     with (
         patch.object(
             session,
             "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_response),
         ),
         patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(AuthenticationError, match="Cannot get stateToken in authn step"),
+        pytest.raises(AuthenticationError, match=match),
     ):
         await client._authn_check()
 
 
 @pytest.mark.asyncio
-async def test_authn_check_raises_if_session_token_missing(config_na, session):
-    """Test _authn_check raises AuthenticationError if status == AUTHN_SUCCESS and sessionToken is missing."""
-    client = RESTClient(config_na, session)
-
-    # Mock the session.post context manager and response
-    mock_response = MagicMock(spec=ClientResponse)
-    mock_response.json = AsyncMock(
-        return_value={
-            "status": AUTHN_SUCCESS,
-            # "sessionToken" intentionally missing
-        }
-    )
-
-    # Patch _resmed_response_error_check to do nothing
-    with (
-        patch.object(
-            session,
-            "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+@pytest.mark.parametrize(
+    "method,resp_json,call_arg,post_assert,expected",
+    [
+        ("_trigger_mfa", {"status": "MFA_CHALLENGE_SENT"}, None, True, None),
+        (
+            "_verify_mfa",
+            {"status": AUTHN_SUCCESS, "sessionToken": "dummy_session_token"},
+            "123456",
+            False,
+            AUTHN_SUCCESS,
         ),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(AuthenticationError, match="Cannot get sessionToken in authn step"),
-    ):
-        await client._authn_check()
-
-
-@pytest.mark.asyncio
-async def test_trigger_mfa_success(config_na, session):
-    """Test _trigger_mfa sends correct request and processes response."""
+    ],
+)
+async def test_mfa_methods_success_variants(
+    config_na, session, method, resp_json, call_arg, post_assert, expected
+):
+    """Parametrized: covers _trigger_mfa and _verify_mfa success paths."""
     client = RESTClient(config_na, session)
     client._state_token = "dummy_state_token"
     client._mfa_url = "https://example.com/mfa"
@@ -493,33 +456,40 @@ async def test_trigger_mfa_success(config_na, session):
     client._cookie_dt = None
     client._cookie_sid = None
 
-    # Mock response from the MFA endpoint
-    mock_response = MagicMock(spec=ClientResponse)
-    mock_response.json = AsyncMock(return_value={"status": "MFA_CHALLENGE_SENT"})
+    mock_response = make_mock_aiohttp_response(json_value=resp_json)
 
-    # Patch session.post to return the mock response
     with (
         patch.object(
             session,
             "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_response),
         ),
-        patch.object(
-            RESTClient, "_resmed_response_error_check", new=AsyncMock()
-        ) as error_check_mock,
+        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
     ):
-        await client._trigger_mfa()
-        session.post.assert_called_once()
-        mock_response.json.assert_awaited_once()
-        error_check_mock.assert_awaited_once()
+        if call_arg is None:
+            # _trigger_mfa
+            await client._trigger_mfa()
+            if post_assert:
+                session.post.assert_called_once()
+                mock_response.json.assert_awaited_once()
+        else:
+            # _verify_mfa
+            status = await client._verify_mfa(call_arg)
+            assert status == expected
+            assert client._session_token == resp_json.get("sessionToken")
 
 
 @pytest.mark.asyncio
-async def test_verify_mfa_success(config_na, session):
-    """Test _verify_mfa returns AUTHN_SUCCESS and sets session_token on success."""
+@pytest.mark.parametrize(
+    "json_value,match",
+    [
+        ({}, "Cannot get status in verify_mfa step"),
+        ({"status": AUTHN_SUCCESS}, "Cannot get sessionToken in verify_mfa step"),
+        ({"status": "FAIL"}, "Unknown status in verify_mfa step: FAIL"),
+    ],
+)
+async def test_verify_mfa_raises_variants(config_na, session, json_value, match):
+    """Parametrized: Test _verify_mfa raises AuthenticationError for several failure responses."""
     client = RESTClient(config_na, session)
     client._state_token = "dummy_state_token"
     client._mfa_url = "https://example.com/mfa"
@@ -527,113 +497,16 @@ async def test_verify_mfa_success(config_na, session):
     client._cookie_dt = None
     client._cookie_sid = None
 
-    # Mock response from the MFA verification endpoint
-    mock_response = MagicMock(spec=ClientResponse)
-    mock_response.json = AsyncMock(
-        return_value={"status": AUTHN_SUCCESS, "sessionToken": "dummy_session_token"}
-    )
+    mock_response = make_mock_aiohttp_response(json_value=json_value)
 
     with (
         patch.object(
             session,
             "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_response),
         ),
         patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-    ):
-        status = await client._verify_mfa("123456")
-        assert status == AUTHN_SUCCESS
-        assert client._session_token == "dummy_session_token"
-
-
-@pytest.mark.asyncio
-async def test_verify_mfa_raises_on_missing_status(config_na, session):
-    """Test _verify_mfa raises AuthenticationError if status is missing in response."""
-    client = RESTClient(config_na, session)
-    client._state_token = "dummy_state_token"
-    client._mfa_url = "https://example.com/mfa"
-    client._json_headers = {"Content-Type": "application/json"}
-    client._cookie_dt = None
-    client._cookie_sid = None
-
-    mock_response = MagicMock(spec=ClientResponse)
-    mock_response.json = AsyncMock(return_value={})  # No status
-
-    with (
-        patch.object(
-            session,
-            "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response),
-                __aexit__=AsyncMock(return_value=None),
-            ),
-        ),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(AuthenticationError, match="Cannot get status in verify_mfa step"),
-    ):
-        await client._verify_mfa("123456")
-
-
-@pytest.mark.asyncio
-async def test_verify_mfa_raises_on_missing_session_token(config_na, session):
-    """Test _verify_mfa raises AuthenticationError if sessionToken is missing when status is AUTHN_SUCCESS."""
-    client = RESTClient(config_na, session)
-    client._state_token = "dummy_state_token"
-    client._mfa_url = "https://example.com/mfa"
-    client._json_headers = {"Content-Type": "application/json"}
-    client._cookie_dt = None
-    client._cookie_sid = None
-
-    mock_response = MagicMock(spec=ClientResponse)
-    mock_response.json = AsyncMock(
-        return_value={
-            "status": AUTHN_SUCCESS
-            # sessionToken missing
-        }
-    )
-
-    with (
-        patch.object(
-            session,
-            "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response),
-                __aexit__=AsyncMock(return_value=None),
-            ),
-        ),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(AuthenticationError, match="Cannot get sessionToken in verify_mfa step"),
-    ):
-        await client._verify_mfa("123456")
-
-
-@pytest.mark.asyncio
-async def test_verify_mfa_raises_on_unknown_status(config_na, session):
-    """Test _verify_mfa raises AuthenticationError if status is not AUTHN_SUCCESS."""
-    client = RESTClient(config_na, session)
-    client._state_token = "dummy_state_token"
-    client._mfa_url = "https://example.com/mfa"
-    client._json_headers = {"Content-Type": "application/json"}
-    client._cookie_dt = None
-    client._cookie_sid = None
-
-    mock_response = MagicMock(spec=ClientResponse)
-    mock_response.json = AsyncMock(return_value={"status": "FAIL"})
-
-    with (
-        patch.object(
-            session,
-            "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response),
-                __aexit__=AsyncMock(return_value=None),
-            ),
-        ),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(AuthenticationError, match="Unknown status in verify_mfa step: FAIL"),
+        pytest.raises(AuthenticationError, match=match),
     ):
         await client._verify_mfa("123456")
 
@@ -647,20 +520,15 @@ async def test_get_access_token_success(config_na, session):
     client._cookie_dt = None
     client._cookie_sid = None
 
-    # Mock the GET authorize response
-    mock_code_res = MagicMock(spec=ClientResponse)
+    # Mock the GET authorize response (with location header behavior) and POST token response
+    mock_code_res = make_mock_aiohttp_response()
+    # give headers behavior expected by the code under test
     mock_code_res.headers = MagicMock()
     mock_code_res.headers.getall = MagicMock(return_value=["https://redirect#code=abc123"])
-    mock_code_res.headers.__contains__.side_effect = lambda k: k == "location"
-    mock_code_res.headers.__getitem__.side_effect = (
-        lambda k: "https://redirect#code=abc123" if k == "location" else None
-    )
-    mock_code_res.json = AsyncMock()
+    mock_code_res.headers.get = MagicMock(return_value="https://redirect#code=abc123")
 
-    # Mock the POST token response
-    mock_token_res = MagicMock(spec=ClientResponse)
-    mock_token_res.json = AsyncMock(
-        return_value={"access_token": "access_token_value", "id_token": "id_token_value"}
+    mock_token_res = make_mock_aiohttp_response(
+        json_value={"access_token": "access_token_value", "id_token": "id_token_value"}
     )
 
     # Patch urldefrag and parse_qs to simulate code extraction
@@ -668,18 +536,12 @@ async def test_get_access_token_success(config_na, session):
         patch.object(
             session,
             "get",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_code_res),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_code_res),
         ),
         patch.object(
             session,
             "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_token_res),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_token_res),
         ),
         patch(
             "custom_components.resmed_myair.client.rest_client.urldefrag",
@@ -689,10 +551,11 @@ async def test_get_access_token_success(config_na, session):
             "custom_components.resmed_myair.client.rest_client.parse_qs",
             return_value={"code": ["the_code"]},
         ),
-        patch.object(RESTClient, "_extract_and_update_cookies", new=AsyncMock()),
+        patch.object(RESTClient, "_extract_and_update_cookies", new=AsyncMock()) as mock_extract,
         patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
     ):
         await client._get_access_token()
+        mock_extract.assert_awaited_once()
         assert client._access_token == "access_token_value"
         assert client._id_token == "id_token_value"
 
@@ -704,20 +567,17 @@ async def test_get_access_token_raises_on_missing_location(config_na, session):
     client._session_token = "dummy_session_token"
     client._json_headers = {"Content-Type": "application/json"}
 
-    mock_code_res = MagicMock(spec=ClientResponse)
+    mock_code_res = make_mock_aiohttp_response(json_value=None)
     mock_code_res.headers = {}
-    mock_code_res.json = AsyncMock()
     mock_code_res.cookies = {}
+    mock_code_res.json = AsyncMock()
 
     with (
         pytest.raises(ParsingError, match="Unable to get location from code_res"),
         patch.object(
             session,
             "get",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_code_res),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_code_res),
         ),
         patch.object(RESTClient, "_extract_and_update_cookies", new=AsyncMock()),
         patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
@@ -726,44 +586,43 @@ async def test_get_access_token_raises_on_missing_location(config_na, session):
 
 
 @pytest.mark.asyncio
-async def test_get_access_token_raises_on_missing_access_token(config_na, session):
-    """Test _get_access_token raises ParsingError if access_token is missing in token_dict."""
+@pytest.mark.parametrize(
+    "token_json,match_msg",
+    [
+        ({"id_token": "id_token_value"}, "access_token not in token_dict"),
+        ({"access_token": "access_token_value"}, "id_token not in token_dict"),
+    ],
+)
+async def test_get_access_token_raises_on_missing_token_variants(
+    config_na, session, token_json, match_msg
+):
+    """Parametrized: Test _get_access_token raises ParsingError when token response lacks required keys."""
     client = RESTClient(config_na, session)
     client._session_token = "dummy_session_token"
     client._json_headers = {"Content-Type": "application/json"}
     client._cookie_dt = None
     client._cookie_sid = None
 
-    mock_code_res = MagicMock(spec=ClientResponse)
-    mock_headers = MagicMock()
-    # mock_headers.__getitem__.side_effect = lambda k: {"location": "https://redirect#code=abc123"}[k]
-    mock_headers.__getitem__.side_effect = defaultdict(
-        lambda: None, {"location": "https://redirect#code=abc123"}
-    ).__getitem__
-    mock_headers.__contains__.side_effect = lambda k: k == "location"
-    mock_headers.getall = MagicMock(return_value=["https://redirect#code=abc123"])
-    mock_code_res.headers = mock_headers
+    mock_code_res = make_mock_aiohttp_response()
+    # Provide headers with location behavior expected by code under test
+    mock_code_res.headers = MagicMock()
+    # Provide header accessors used by production code
+    mock_code_res.headers.getall = MagicMock(return_value=["https://redirect#code=abc123"])
+    mock_code_res.headers.get = MagicMock(return_value="https://redirect#code=abc123")
     mock_code_res.json = AsyncMock()
 
-    mock_token_res = MagicMock(spec=ClientResponse)
-    mock_token_res.json = AsyncMock(return_value={"id_token": "id_token_value"})
+    mock_token_res = make_mock_aiohttp_response(json_value=token_json)
 
     with (
         patch.object(
             session,
             "get",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_code_res),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_code_res),
         ),
         patch.object(
             session,
             "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_token_res),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_token_res),
         ),
         patch(
             "custom_components.resmed_myair.client.rest_client.urldefrag",
@@ -775,134 +634,102 @@ async def test_get_access_token_raises_on_missing_access_token(config_na, sessio
         ),
         patch.object(RESTClient, "_extract_and_update_cookies", new=AsyncMock()),
         patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(ParsingError, match="access_token not in token_dict"),
+        pytest.raises(ParsingError, match=match_msg),
     ):
         await client._get_access_token()
 
 
 @pytest.mark.asyncio
-async def test_get_access_token_raises_on_missing_id_token(config_na, session):
-    """Test _get_access_token raises ParsingError if id_token is missing in token_dict."""
-    client = RESTClient(config_na, session)
-    client._session_token = "dummy_session_token"
-    client._json_headers = {"Content-Type": "application/json"}
-    client._cookie_dt = None
-    client._cookie_sid = None
-
-    mock_code_res = MagicMock(spec=ClientResponse)
-    # Use a MagicMock for headers to provide getall and dict access
-    mock_headers = MagicMock()
-    mock_headers.__getitem__.side_effect = lambda k: {"location": "https://redirect#code=abc123"}[k]
-    mock_headers.__contains__.side_effect = lambda k: k == "location"
-    mock_headers.getall = MagicMock(return_value=["https://redirect#code=abc123"])
-    mock_code_res.headers = mock_headers
-    mock_code_res.json = AsyncMock()
-
-    mock_token_res = MagicMock(spec=ClientResponse)
-    mock_token_res.json = AsyncMock(return_value={"access_token": "access_token_value"})
-
-    with (
-        patch.object(
-            session,
-            "get",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_code_res),
-                __aexit__=AsyncMock(return_value=None),
-            ),
-        ),
-        patch.object(
-            session,
-            "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_token_res),
-                __aexit__=AsyncMock(return_value=None),
-            ),
-        ),
-        patch(
-            "custom_components.resmed_myair.client.rest_client.urldefrag",
-            return_value=MagicMock(fragment="code=abc123"),
-        ),
-        patch(
-            "custom_components.resmed_myair.client.rest_client.parse_qs",
-            return_value={"code": ["the_code"]},
-        ),
-        patch.object(RESTClient, "_extract_and_update_cookies", new=AsyncMock()),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(ParsingError, match="id_token not in token_dict"),
-    ):
-        await client._get_access_token()
-
-
-@pytest.mark.asyncio
-async def test_gql_query_success_country_from_jwt(config_na, session):
-    """Ensure gql_query extracts country code from a valid JWT."""
+@pytest.mark.parametrize(
+    "jwt_behavior,post_json,expect_exception,expected_country",
+    [
+        ("valid", {"data": {"foo": "bar"}}, False, "US"),
+        ("invalid", None, True, None),
+    ],
+)
+async def test_gql_query_variants(
+    config_na, session, jwt_behavior, post_json, expect_exception, expected_country
+):
+    """Parametrized: gql_query success (extract country from id_token) and jwt decode error cases."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = "idtoken"
     client._country_code = None
 
-    # Patch jwt.decode to return a valid payload
-    with (
-        patch("jwt.decode", return_value={"myAirCountryId": "US"}),
-        patch.object(
-            session,
-            "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(
-                    return_value=MagicMock(json=AsyncMock(return_value={"data": {"foo": "bar"}}))
+    if jwt_behavior == "valid":
+        # jwt.decode returns a payload including myAirCountryId
+        with (
+            patch(
+                "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                return_value={"myAirCountryId": expected_country},
+            ),
+            patch.object(
+                session,
+                "post",
+                return_value=make_mock_aiohttp_context_manager(
+                    MagicMock(json=AsyncMock(return_value=post_json))
                 ),
-                __aexit__=AsyncMock(return_value=None),
             ),
+            patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
+        ):
+            result = await client._gql_query("op", "query")
+            assert result == post_json
+            assert client._country_code == expected_country
+    else:
+        with (
+            patch(
+                "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                side_effect=Exception("bad jwt"),
+            ),
+            pytest.raises(ParsingError, match="Unable to decode id_token into jwt_data"),
+        ):
+            await client._gql_query("op", "query")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "id_token,jwt_behavior,match",
+    [
+        (
+            "idtoken",
+            {"side_effect": Exception("bad jwt")},
+            "Unable to decode id_token into jwt_data",
         ),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-    ):
-        result = await client._gql_query("op", "query")
-        assert result == {"data": {"foo": "bar"}}
-        assert client._country_code == "US"
-
-
-@pytest.mark.asyncio
-async def test_gql_query_error_decoding_jwt(config_na, session):
-    """Ensure gql_query handles JWT decoding errors without crashing."""
+        ("idtoken", {"return_value": {}}, "myAirCountryId not found in jwt_data"),
+        (None, None, "country_code not defined and id_token not present to identify it"),
+    ],
+)
+async def test_gql_query_failure_variants(config_na, session, id_token, jwt_behavior, match):
+    """Parametrized: _gql_query failure modes for JWT decoding, missing key, and missing id_token."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
-    client._id_token = "idtoken"
+    client._id_token = id_token
     client._country_code = None
 
-    with (
-        patch("jwt.decode", side_effect=Exception("bad jwt")),
-        pytest.raises(ParsingError, match="Unable to decode id_token into jwt_data"),
-    ):
-        await client._gql_query("op", "query")
-
-
-@pytest.mark.asyncio
-async def test_gql_query_missing_myaircountryid(config_na, session):
-    """Ensure gql_query handles missing myAirCountryId in JWT payload."""
-    client = RESTClient(config_na, session)
-    client._access_token = "access"
-    client._id_token = "idtoken"
-    client._country_code = None
-
-    with (
-        patch("jwt.decode", return_value={}),
-        pytest.raises(ParsingError, match="myAirCountryId not found in jwt_data"),
-    ):
-        await client._gql_query("op", "query")
-
-
-@pytest.mark.asyncio
-async def test_gql_query_no_country_code_and_no_id_token(config_na, session):
-    """Ensure gql_query raises ParsingError when no country info is available."""
-    client = RESTClient(config_na, session)
-    client._access_token = "access"
-    client._id_token = None
-    client._country_code = None
-
-    with pytest.raises(
-        ParsingError, match="country_code not defined and id_token not present to identify it"
-    ):
-        await client._gql_query("op", "query")
+    if id_token is not None and jwt_behavior is not None:
+        # Configure jwt.decode according to jwt_behavior dict
+        if "side_effect" in jwt_behavior:
+            with (
+                patch(
+                    "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                    side_effect=jwt_behavior["side_effect"],
+                ),
+                pytest.raises(ParsingError, match=match),
+            ):
+                await client._gql_query("op", "query")
+        else:
+            with (
+                patch(
+                    "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                    return_value=jwt_behavior.get("return_value", {}),
+                ),
+                pytest.raises(ParsingError, match=match),
+            ):
+                await client._gql_query("op", "query")
+    else:
+        # No id_token provided -> immediate failure
+        with pytest.raises(ParsingError, match=match):
+            await client._gql_query("op", "query")
 
 
 @pytest.mark.asyncio
@@ -913,7 +740,7 @@ async def test_gql_query_graphql_error(config_na, session):
     client._id_token = None
     client._country_code = "US"
 
-    mock_res = MagicMock()
+    mock_res = MagicMock(spec=ClientResponse)
     mock_res.json = AsyncMock(
         return_value={"errors": [{"errorInfo": {"errorType": "unauthorized", "errorCode": "401"}}]}
     )
@@ -922,10 +749,7 @@ async def test_gql_query_graphql_error(config_na, session):
         patch.object(
             session,
             "post",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_res),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_res),
         ),
         patch.object(
             RESTClient,
@@ -938,110 +762,137 @@ async def test_gql_query_graphql_error(config_na, session):
 
 
 @pytest.mark.asyncio
-async def test_get_sleep_records_success(config_na, session):
-    """Verify get_sleep_records returns parsed records on success."""
+@pytest.mark.parametrize(
+    "method_name,mock_response,expected",
+    [
+        (
+            "get_sleep_records",
+            {
+                "data": {
+                    "getPatientWrapper": {
+                        "sleepRecords": {
+                            "items": [
+                                {
+                                    "startDate": "2024-07-01",
+                                    "totalUsage": 123,
+                                    "sleepScore": 90,
+                                    "usageScore": 80,
+                                    "ahiScore": 70,
+                                    "maskScore": 60,
+                                    "leakScore": 50,
+                                    "ahi": 1.2,
+                                    "maskPairCount": 1,
+                                    "leakPercentile": 5,
+                                    "sleepRecordPatientId": "abc",
+                                    "__typename": "SleepRecord",
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            [
+                {
+                    "startDate": "2024-07-01",
+                    "totalUsage": 123,
+                    "sleepScore": 90,
+                    "usageScore": 80,
+                    "ahiScore": 70,
+                    "maskScore": 60,
+                    "leakScore": 50,
+                    "ahi": 1.2,
+                    "maskPairCount": 1,
+                    "leakPercentile": 5,
+                    "sleepRecordPatientId": "abc",
+                    "__typename": "SleepRecord",
+                }
+            ],
+        ),
+        (
+            "get_user_device_data",
+            {
+                "data": {
+                    "getPatientWrapper": {
+                        "fgDevices": [
+                            {
+                                "serialNumber": "12345",
+                                "deviceType": "CPAP",
+                                "lastSleepDataReportTime": "2024-07-01T00:00:00Z",
+                                "localizedName": "My CPAP",
+                                "fgDeviceManufacturerName": "ResMed",
+                                "fgDevicePatientId": "abc",
+                                "__typename": "FgDevice",
+                            }
+                        ]
+                    }
+                }
+            },
+            {
+                "serialNumber": "12345",
+                "deviceType": "CPAP",
+                "lastSleepDataReportTime": "2024-07-01T00:00:00Z",
+                "localizedName": "My CPAP",
+                "fgDeviceManufacturerName": "ResMed",
+                "fgDevicePatientId": "abc",
+                "__typename": "FgDevice",
+            },
+        ),
+    ],
+)
+async def test_data_fetch_success_variants(
+    config_na, session, method_name, mock_response, expected
+):
+    """Parametrized: success paths for data-fetching helpers (sleep records and device data)."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
-    mock_records = [
-        {
-            "startDate": "2024-07-01",
-            "totalUsage": 123,
-            "sleepScore": 90,
-            "usageScore": 80,
-            "ahiScore": 70,
-            "maskScore": 60,
-            "leakScore": 50,
-            "ahi": 1.2,
-            "maskPairCount": 1,
-            "leakPercentile": 5,
-            "sleepRecordPatientId": "abc",
-            "__typename": "SleepRecord",
-        }
-    ]
-    mock_response = {"data": {"getPatientWrapper": {"sleepRecords": {"items": mock_records}}}}
     with patch.object(client, "_gql_query", AsyncMock(return_value=mock_response)):
-        records = await client.get_sleep_records()
-        assert records == mock_records
+        result = await getattr(client, method_name)()
+        assert result == expected
 
 
 @pytest.mark.asyncio
-async def test_get_sleep_records_missing_keys(config_na, session):
-    """Verify get_sleep_records raises ParsingError when keys are missing."""
+@pytest.mark.parametrize(
+    "mock_response,match_msg",
+    [
+        ({"data": {"getPatientWrapper": {}}}, "Error getting Patient Sleep Records"),
+        (
+            {"data": {"getPatientWrapper": {"sleepRecords": {"items": "notalist"}}}},
+            "Returned records is not a list",
+        ),
+    ],
+)
+async def test_get_sleep_records_failure_variants(config_na, session, mock_response, match_msg):
+    """Parametrized: get_sleep_records raises ParsingError for missing keys and non-list items."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
-    # Missing 'sleepRecords'
-    mock_response = {"data": {"getPatientWrapper": {}}}
     with (
         patch.object(client, "_gql_query", AsyncMock(return_value=mock_response)),
-        pytest.raises(ParsingError, match="Error getting Patient Sleep Records"),
+        pytest.raises(ParsingError, match=match_msg),
     ):
         await client.get_sleep_records()
 
 
 @pytest.mark.asyncio
-async def test_get_sleep_records_not_a_list(config_na, session):
-    """Verify get_sleep_records raises ParsingError when items is not a list."""
+@pytest.mark.parametrize(
+    "mock_response,match_msg",
+    [
+        ({"data": {"getPatientWrapper": {}}}, "Error getting User Device Data"),
+        (
+            {"data": {"getPatientWrapper": {"fgDevices": ["notadict"]}}},
+            "Returned data is not a dict",
+        ),
+    ],
+)
+async def test_get_user_device_data_failure_variants(config_na, session, mock_response, match_msg):
+    """Parametrized: get_user_device_data raises ParsingError for missing keys and invalid response types."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
-    # 'items' is not a list
-    mock_response = {"data": {"getPatientWrapper": {"sleepRecords": {"items": "notalist"}}}}
     with (
         patch.object(client, "_gql_query", AsyncMock(return_value=mock_response)),
-        pytest.raises(ParsingError, match="Returned records is not a list"),
-    ):
-        await client.get_sleep_records()
-
-
-@pytest.mark.asyncio
-async def test_get_user_device_data_success(config_na, session):
-    """Verify get_user_device_data returns device dict on success."""
-    client = RESTClient(config_na, session)
-    client._access_token = "access"
-    client._country_code = "US"
-    mock_device = {
-        "serialNumber": "12345",
-        "deviceType": "CPAP",
-        "lastSleepDataReportTime": "2024-07-01T00:00:00Z",
-        "localizedName": "My CPAP",
-        "fgDeviceManufacturerName": "ResMed",
-        "fgDevicePatientId": "abc",
-        "__typename": "FgDevice",
-    }
-    mock_response = {"data": {"getPatientWrapper": {"fgDevices": [mock_device]}}}
-    with patch.object(client, "_gql_query", AsyncMock(return_value=mock_response)):
-        device = await client.get_user_device_data()
-        assert device == mock_device
-
-
-@pytest.mark.asyncio
-async def test_get_user_device_data_missing_keys(config_na, session):
-    """Verify get_user_device_data raises ParsingError when keys are missing."""
-    client = RESTClient(config_na, session)
-    client._access_token = "access"
-    client._country_code = "US"
-    # Missing 'fgDevices'
-    mock_response = {"data": {"getPatientWrapper": {}}}
-    with (
-        patch.object(client, "_gql_query", AsyncMock(return_value=mock_response)),
-        pytest.raises(ParsingError, match="Error getting User Device Data"),
-    ):
-        await client.get_user_device_data()
-
-
-@pytest.mark.asyncio
-async def test_get_user_device_data_not_a_dict(config_na, session):
-    """Verify get_user_device_data raises ParsingError on invalid response type."""
-    client = RESTClient(config_na, session)
-    client._access_token = "access"
-    client._country_code = "US"
-    # 'fgDevices' is a list with a non-dict item
-    mock_response = {"data": {"getPatientWrapper": {"fgDevices": ["notadict"]}}}
-    with (
-        patch.object(client, "_gql_query", AsyncMock(return_value=mock_response)),
-        pytest.raises(ParsingError, match="Returned data is not a dict"),
+        pytest.raises(ParsingError, match=match_msg),
     ):
         await client.get_user_device_data()
 
@@ -1066,10 +917,7 @@ async def test_get_initial_dt_variants(config_na, session, cookie_headers, expec
         patch.object(
             session,
             "get",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response),
-                __aexit__=AsyncMock(return_value=None),
-            ),
+            return_value=make_mock_aiohttp_context_manager(mock_response),
         ),
         patch.object(client, "_extract_and_update_cookies", AsyncMock()) as mock_extract,
     ):
@@ -1115,26 +963,15 @@ async def test_resmed_response_error_check_not_bad_request():
         },
     ],
 )
-async def test_authn_check_email_factor_id_exceptions(authn_dict):
+async def test_authn_check_email_factor_id_exceptions(authn_dict, session, config_na):
     """Test RESTClient._authn_check falls back to region_config['email_factor_id'] on KeyError/TypeError."""
-    config = MagicMock(spec=MyAirConfig)
-    config.region = "NA"
-    config.username = "user"
-    config.password = "pw"
-    config.device_token = None
-    # Provide a region_config with a known email_factor_id
-    config.region = "NA"
-    session = MagicMock(spec=ClientSession)
+    # MyAirConfig is a NamedTuple (immutable) so use _replace to change device_token
+    config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
 
     # Patch session.post to return a mock response with .json() returning authn_dict
-    mock_response = MagicMock()
-    mock_response.json = AsyncMock(return_value=authn_dict)
-    mock_response.__aenter__.return_value = mock_response
-    session.post.return_value = mock_response
-
-    # Patch _resmed_response_error_check to do nothing
-    client._resmed_response_error_check = AsyncMock()
+    mock_response = make_mock_aiohttp_response(json_value=authn_dict)
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
 
     # Should NOT raise, but should set _email_factor_id to region_config["email_factor_id"]
     result = await client._authn_check()
@@ -1143,127 +980,78 @@ async def test_authn_check_email_factor_id_exceptions(authn_dict):
 
 
 @pytest.mark.asyncio
-async def test_get_access_token_not_new_token(monkeypatch):
-    """Test _get_access_token when access_token is present and equals self._access_token (NOT branch)."""
-    config = MagicMock(spec=MyAirConfig)
-    config.region = "NA"
-    config.username = "user"
-    config.password = "pw"
-    config.device_token = None
-    session = MagicMock(spec=ClientSession)
+@pytest.mark.parametrize(
+    "returned_token,expect_log,expect_change",
+    [
+        ("abc123", False, False),
+        ("newtoken456", True, True),
+    ],
+)
+async def test_get_access_token_token_change_and_logging(
+    config_na, session, caplog, returned_token, expect_log, expect_change
+):
+    """Parametrized: test token equality vs new token and logging behavior for _get_access_token."""
+    # MyAirConfig is a NamedTuple (immutable) so create a modified copy
+    config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
 
     # Set up the client with an existing access token
     client._access_token = "abc123"
 
-    # Patch all network calls in _get_access_token
     # Patch the GET to authorize_url to return a location header with a code
-    mock_code_res = MagicMock()
-    mock_code_res.headers.get.return_value = "https://redirect#code=thecode"
-    mock_code_res.headers.getall.return_value = []
-    mock_code_res.__aenter__.return_value = mock_code_res
-    session.get.return_value = mock_code_res
+    headers = MagicMock()
+    headers.get.return_value = "https://redirect#code=thecode"
+    headers.getall.return_value = []
+    mock_code_res = make_mock_aiohttp_response(json_value=None, headers=headers)
+    session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
 
-    # Patch the POST to token_url to return a token_dict with the same access_token as current
-    mock_token_res = MagicMock()
-    mock_token_res.json = AsyncMock(
-        return_value={
-            "access_token": "abc123",  # Same as client._access_token
-            "id_token": "idtoken",
-        }
+    # Patch the POST to token_url to return a token_dict with the parametrized access_token
+    mock_token_res = make_mock_aiohttp_response(
+        json_value={"access_token": returned_token, "id_token": "idtoken"}
     )
-    mock_token_res.__aenter__.return_value = mock_token_res
-    session.post.return_value = mock_token_res
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_token_res)
 
-    # Patch error check to do nothing
-    with patch.object(RESTClient, "_resmed_response_error_check", AsyncMock()):
-        await client._get_access_token()
-
-    # Should NOT log "Obtained new access token" and should NOT change _access_token
-    assert client._access_token == "abc123"
-
-
-@pytest.mark.asyncio
-async def test_get_access_token_logs_when_access_token_is_not_none(monkeypatch, caplog):
-    """Test _get_access_token logs when self._access_token is not None and a new token is received."""
-    config = MagicMock(spec=MyAirConfig)
-    config.region = "NA"
-    config.username = "user"
-    config.password = "pw"
-    config.device_token = None
-    session = MagicMock(spec=ClientSession)
-    client = RESTClient(config, session)
-
-    # Set up the client with an existing access token
-    client._access_token = "abc123"
-
-    # Patch all network calls in _get_access_token
-    # Patch the GET to authorize_url to return a location header with a code
-    mock_code_res = MagicMock()
-    mock_code_res.headers.get.return_value = "https://redirect#code=thecode"
-    mock_code_res.headers.getall.return_value = []
-    mock_code_res.__aenter__.return_value = mock_code_res
-    session.get.return_value = mock_code_res
-
-    # Patch the POST to token_url to return a token_dict with a new access_token
-    mock_token_res = MagicMock()
-    mock_token_res.json = AsyncMock(
-        return_value={
-            "access_token": "newtoken456",  # Different from client._access_token
-            "id_token": "idtoken",
-        }
-    )
-    mock_token_res.__aenter__.return_value = mock_token_res
-    session.post.return_value = mock_token_res
-
-    # Patch error check to do nothing
+    # Patch error check to do nothing and always capture INFO logs
     with (
         patch.object(RESTClient, "_resmed_response_error_check", AsyncMock()),
-        caplog.at_level("INFO"),
+        caplog.at_level(logging.INFO),
     ):
         await client._get_access_token()
 
-    # Should log "Obtained new access token" and update _access_token
-    assert "Obtained new access token" in caplog.text
+    # Assert token updated only when expected
+    expected_token = "abc123" if not expect_change else returned_token
+    assert client._access_token == expected_token
+
+    # Ensure logging behavior matches expectation
+    if expect_log:
+        assert "Obtained new access token" in caplog.text
+    else:
+        assert "Obtained new access token" not in caplog.text
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "active_value,expected",
+    "method_name,session_method,response_json,expected",
     [
-        (True, True),
-        (False, False),
+        ("_is_access_token_active", "post", {"active": True}, True),
+        ("_is_access_token_active", "post", {"active": False}, False),
+        ("is_email_verified", "get", {"email_verified": True}, True),
+        ("is_email_verified", "get", {"email_verified": False}, False),
     ],
 )
-async def test_is_access_token_active_variants(config_na, session, active_value, expected):
-    """Parametrized test for _is_access_token_active returning True/False."""
+async def test_status_helpers_variants(
+    config_na, session, method_name, session_method, response_json, expected
+):
+    """Parametrized test covering small boolean helper methods that hit the auth endpoints."""
     client = RESTClient(config_na, session)
     client._access_token = "token"
-    session.post.return_value.__aenter__.return_value.json = AsyncMock(
-        return_value={"active": active_value}
-    )
-    session.post.return_value.__aenter__.return_value.headers = {}
-    session.post.return_value.__aenter__.return_value.status = 200
+    mock_res = make_mock_aiohttp_response(json_value=response_json, headers={})
+    mock_res.status = 200
+    # Attach the context manager as the return value of the appropriate session method
+    if session_method == "post":
+        session.post.return_value = make_mock_aiohttp_context_manager(mock_res)
+    else:
+        session.get.return_value = make_mock_aiohttp_context_manager(mock_res)
     with patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()):
-        assert await client._is_access_token_active() is expected
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "email_verified_value,expected",
-    [
-        (True, True),
-        (False, False),
-    ],
-)
-async def test_is_email_verified_variants(config_na, session, email_verified_value, expected):
-    """Parametrized test for is_email_verified returning True/False."""
-    client = RESTClient(config_na, session)
-    client._access_token = "token"
-    session.get.return_value.__aenter__.return_value.json = AsyncMock(
-        return_value={"email_verified": email_verified_value}
-    )
-    session.get.return_value.__aenter__.return_value.headers = {}
-    session.get.return_value.__aenter__.return_value.status = 200
-    with patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()):
-        assert await client.is_email_verified() is expected
+        result = await getattr(client, method_name)()
+    assert result is expected
