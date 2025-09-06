@@ -1,3 +1,5 @@
+"""Unit tests for sensor entities in the resmed_myair integration."""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,10 +18,14 @@ from homeassistant.components.sensor import SensorEntityDescription
 
 
 class DummyCoordinator:
+    """Simple dummy coordinator used for sensor tests."""
+
     def __init__(self, data):
+        """Initialize the dummy coordinator with given data."""
         self.data = data
 
     def async_add_listener(self, *args, **kwargs):
+        """Provide a no-op listener registration used by sensors."""
         return lambda: None
 
 
@@ -33,6 +39,7 @@ class DummyCoordinator:
     ],
 )
 def test_device_sensor_all_branches(data, sensor_key, expected_native, expected_available):
+    """Parametrized tests for MyAirDeviceSensor behavior across branches."""
     desc = SensorEntityDescription(key=sensor_key)
     # Simulate timestamp device_class for the last case
     if "T" in str(data.get("device", {}).get(sensor_key, "")):
@@ -55,6 +62,7 @@ def test_device_sensor_all_branches(data, sensor_key, expected_native, expected_
     ],
 )
 def test_friendly_usage_time_all_branches(data, expected_native, expected_available):
+    """Parametrized tests for MyAirFriendlyUsageTime behavior across branches."""
     coordinator = DummyCoordinator(data)
     sensor = MyAirFriendlyUsageTime(coordinator)
     with patch.object(sensor, "async_write_ha_state", return_value=None):
@@ -88,6 +96,7 @@ def test_friendly_usage_time_all_branches(data, expected_native, expected_availa
     ],
 )
 def test_most_recent_sleep_date_all_branches(data, expected_native, expected_available):
+    """Parametrized tests for MyAirMostRecentSleepDate behavior across branches."""
     coordinator = DummyCoordinator(data)
     sensor = MyAirMostRecentSleepDate(coordinator)
     with patch.object(sensor, "async_write_ha_state", return_value=None):
@@ -112,6 +121,7 @@ def test_most_recent_sleep_date_all_branches(data, expected_native, expected_ava
 def test_sleep_record_sensor_handle_coordinator_update(
     sleep_records, sensor_key, device_class, expected_value, expected_available, monkeypatch
 ):
+    """Parametrized tests for MyAirSleepRecordSensor handling various record formats."""
     # Patch dt_util.parse_date to return a sentinel for test
     if device_class == "date":
         parsed_date = object()
@@ -158,7 +168,8 @@ def test_sleep_record_sensor_handle_coordinator_update(
 def test_myair_device_sensor_parametrized(
     device_data, sensor_key, device_class, expected_native, expected_available, patch_parse_datetime
 ):
-    # Test logic here
+    """Combined parametrized test for MyAirDeviceSensor with optional datetime parsing."""
+
     def test_myair_device_sensor_handle_coordinator_update(
         device_data,
         sensor_key,
@@ -194,6 +205,7 @@ def test_myair_device_sensor_parametrized(
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_adds_entities_and_registers_service(monkeypatch):
+    """Test that async_setup_entry adds sensor entities and registers service."""
     # Prepare mocks
     hass = MagicMock()
     hass.services.async_register = MagicMock()
@@ -242,6 +254,7 @@ async def test_async_setup_entry_adds_entities_and_registers_service(monkeypatch
 
 
 def test_myair_device_sensor_handle_coordinator_update_keyerror(caplog):
+    """Ensure MyAirDeviceSensor handles missing keys and logs an error."""
     coordinator = MagicMock()
     # Device data exists but missing the key 'missing_key'
     coordinator.data = {"device": {"serialNumber": "SN123"}}

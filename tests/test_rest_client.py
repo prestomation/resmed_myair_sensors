@@ -1,3 +1,5 @@
+"""Unit tests for the REST client used by the resmed_myair integration."""
+
 from collections import defaultdict
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -833,6 +835,7 @@ async def test_get_access_token_raises_on_missing_id_token(config_na, session):
 
 @pytest.mark.asyncio
 async def test_gql_query_success_country_from_jwt(config_na, session):
+    """Ensure gql_query extracts country code from a valid JWT."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = "idtoken"
@@ -860,6 +863,7 @@ async def test_gql_query_success_country_from_jwt(config_na, session):
 
 @pytest.mark.asyncio
 async def test_gql_query_error_decoding_jwt(config_na, session):
+    """Ensure gql_query handles JWT decoding errors without crashing."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = "idtoken"
@@ -874,6 +878,7 @@ async def test_gql_query_error_decoding_jwt(config_na, session):
 
 @pytest.mark.asyncio
 async def test_gql_query_missing_myaircountryid(config_na, session):
+    """Ensure gql_query handles missing myAirCountryId in JWT payload."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = "idtoken"
@@ -888,6 +893,7 @@ async def test_gql_query_missing_myaircountryid(config_na, session):
 
 @pytest.mark.asyncio
 async def test_gql_query_no_country_code_and_no_id_token(config_na, session):
+    """Ensure gql_query raises ParsingError when no country info is available."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = None
@@ -901,6 +907,7 @@ async def test_gql_query_no_country_code_and_no_id_token(config_na, session):
 
 @pytest.mark.asyncio
 async def test_gql_query_graphql_error(config_na, session):
+    """Ensure gql_query raises AuthenticationError on GraphQL auth errors."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = None
@@ -932,6 +939,7 @@ async def test_gql_query_graphql_error(config_na, session):
 
 @pytest.mark.asyncio
 async def test_get_sleep_records_success(config_na, session):
+    """Verify get_sleep_records returns parsed records on success."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -959,6 +967,7 @@ async def test_get_sleep_records_success(config_na, session):
 
 @pytest.mark.asyncio
 async def test_get_sleep_records_missing_keys(config_na, session):
+    """Verify get_sleep_records raises ParsingError when keys are missing."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -973,6 +982,7 @@ async def test_get_sleep_records_missing_keys(config_na, session):
 
 @pytest.mark.asyncio
 async def test_get_sleep_records_not_a_list(config_na, session):
+    """Verify get_sleep_records raises ParsingError when items is not a list."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -987,6 +997,7 @@ async def test_get_sleep_records_not_a_list(config_na, session):
 
 @pytest.mark.asyncio
 async def test_get_user_device_data_success(config_na, session):
+    """Verify get_user_device_data returns device dict on success."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -1007,6 +1018,7 @@ async def test_get_user_device_data_success(config_na, session):
 
 @pytest.mark.asyncio
 async def test_get_user_device_data_missing_keys(config_na, session):
+    """Verify get_user_device_data raises ParsingError when keys are missing."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -1021,6 +1033,7 @@ async def test_get_user_device_data_missing_keys(config_na, session):
 
 @pytest.mark.asyncio
 async def test_get_user_device_data_not_a_dict(config_na, session):
+    """Verify get_user_device_data raises ParsingError on invalid response type."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -1042,6 +1055,7 @@ async def test_get_user_device_data_not_a_dict(config_na, session):
     ],
 )
 async def test_get_initial_dt_variants(config_na, session, cookie_headers, expected_extract_arg):
+    """Parametrized checks for _get_initial_dt with different cookie headers."""
     client = RESTClient(config_na, session)
     mock_headers = MagicMock()
     mock_headers.getall = MagicMock(return_value=cookie_headers)

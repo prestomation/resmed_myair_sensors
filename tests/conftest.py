@@ -1,3 +1,5 @@
+"""Shared pytest fixtures used across the test suite."""
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -28,6 +30,7 @@ def config_entry():
 
 @pytest.fixture
 def coordinator():
+    """Return a simple AsyncMock used as a data update coordinator in tests."""
     return AsyncMock()
 
 

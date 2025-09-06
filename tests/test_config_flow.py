@@ -1,3 +1,5 @@
+"""Tests for the integration config flow behavior and edge cases."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -80,6 +82,7 @@ async def test_async_step_user_auth_error(flow: MyAirConfigFlow) -> None:
 
 @pytest.mark.asyncio
 async def test_async_step_verify_mfa_user_input_and_client(monkeypatch):
+    """Verify MFA step with valid user input leads to create_entry."""
     flow = MyAirConfigFlow()
     flow.hass = MagicMock()
     flow._data = {}
@@ -409,6 +412,7 @@ async def test_async_step_reauth_verify_mfa_incomplete_account_parametrized(
 async def test_get_device_variants(
     connect_return, get_user_device_data_return, expected_status, expected_device, raises
 ):
+    """Test get_device behavior across connection and device data variants."""
     hass = MagicMock()
     mock_client = MagicMock()
     if isinstance(connect_return, Exception):
@@ -463,6 +467,7 @@ async def test_get_mfa_device_variants(
     expected_device,
     raises,
 ):
+    """Test get_mfa_device behavior across MFA and device-data branches."""
     mock_client = MagicMock()
     if verify_side_effect:
         mock_client.verify_mfa_and_get_access_token = AsyncMock(side_effect=verify_side_effect)
@@ -623,6 +628,7 @@ async def test_async_step_verify_mfa_no_user_input_shows_form(
 
 @pytest.mark.asyncio
 async def test_async_step_reauth_calls_confirm(monkeypatch):
+    """Ensure reauth entry route calls the reauth confirm step and populates data."""
     flow = MyAirConfigFlow()
     flow.hass = MagicMock()
     flow.context = {"entry_id": "123"}
@@ -853,6 +859,7 @@ async def test_async_step_reauth_confirm_missing_serial_number(monkeypatch):
     ],
 )
 async def test_async_step_reauth_confirm_exceptions(monkeypatch, exception, expected_error):
+    """Parametrized: reauth confirm maps client exceptions to form errors/abort reasons."""
     flow = MyAirConfigFlow()
     flow.hass = MagicMock()
     flow._data = {

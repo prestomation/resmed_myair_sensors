@@ -1,3 +1,5 @@
+"""Unit tests for helper functions in the integration (redaction)."""
+
 import pytest
 
 from custom_components.resmed_myair.helpers import REDACTED, redact_dict
@@ -47,6 +49,7 @@ def test_redact_dict(monkeypatch, input_data, expected):
     ],
 )
 def test_redact_dict_empty_and_trivial(monkeypatch, input_data, expected):
+    """Ensure redact_dict handles empty and trivial cases without changes."""
     monkeypatch.setattr(
         "custom_components.resmed_myair.helpers.KEYS_TO_REDACT",
         {"username", "password", "token"},

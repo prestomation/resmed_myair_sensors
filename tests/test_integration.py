@@ -1,3 +1,5 @@
+"""Tests for the resmed_myair integration (integration-level unit tests)."""
+
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -415,6 +417,7 @@ async def test_sensor_handles_empty_or_missing_data(
 
 # Fix: Make fake_forward_entry_setups an AsyncMock with the correct signature
 async def fake_forward_entry_setups(config_entry, platforms):
+    """Forward sensor platform setups during tests using the provided config entry."""
     # Use the hass from config_entry, which is set by Home Assistant during setup
     hass = config_entry.hass
     if "sensor" in platforms:

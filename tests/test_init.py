@@ -1,3 +1,5 @@
+"""Tests for package initialization logic, including migration helpers."""
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,6 +10,7 @@ from custom_components.resmed_myair.const import CONF_REGION, REGION_NA
 
 @pytest.mark.asyncio
 async def test_async_migrate_entry_version_1(hass, config_entry):
+    """Migrate from version 1 should add CONF_REGION and update entry."""
     config_entry.version = 1
     config_entry.data = {"foo": "bar"}
 
