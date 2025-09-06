@@ -3,9 +3,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.resmed_myair.__init__ import async_migrate_entry
-
-
 from custom_components.resmed_myair.const import CONF_REGION, REGION_NA
+
 
 @pytest.mark.asyncio
 async def test_async_migrate_entry_version_1(hass, config_entry):
