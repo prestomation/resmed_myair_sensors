@@ -5,6 +5,7 @@
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Release Date][release-date-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
+[![Coverage][coverage-shield]][coverage]
 [![License][license-shield]](LICENSE)
 [![hacs][hacsbadge]][hacs]
 ![Project Maintenance][maintenance-shield]
@@ -70,3 +71,5 @@ If you want to support the development of this component, please don't donate to
 [releases-shield]: https://img.shields.io/github/release/prestomation/resmed_myair_sensors.svg?style=for-the-badge
 [release-date-shield]: https://img.shields.io/github/release-date/prestomation/resmed_myair_sensors?style=for-the-badge
 [releases]: https://github.com/prestomation/resmed_myair_sensors/releases
+[coverage]: https://htmlpreview.github.io/?https://github.com/prestomation/resmed_myair_sensors/blob/python-coverage-comment-action-data/htmlcov/index.html
+[coverage-shield]: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prestomation/resmed_myair_sensors/python-coverage-comment-action-data/endpoint.json&style=for-the-badge
