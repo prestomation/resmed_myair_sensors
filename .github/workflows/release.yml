@@ -2,7 +2,9 @@ name: Release
 on:
   workflow_dispatch:
   release:
-    types: [published, edited]
+    types:
+      - published
+      - edited
 
 jobs:
   update_version_and_create_zip:
