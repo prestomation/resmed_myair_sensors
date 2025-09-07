@@ -9,13 +9,13 @@
 | custom\_components/resmed\_myair/client/const.py         |        5 |        0 |        0 |        0 |     100% |           |
 | custom\_components/resmed\_myair/client/helpers.py       |       22 |        0 |       16 |        0 |     100% |           |
 | custom\_components/resmed\_myair/client/myair\_client.py |       18 |        0 |        0 |        0 |     100% |           |
-| custom\_components/resmed\_myair/client/rest\_client.py  |      315 |        0 |       80 |        0 |     100% |           |
+| custom\_components/resmed\_myair/client/rest\_client.py  |      317 |        0 |       80 |        0 |     100% |           |
 | custom\_components/resmed\_myair/config\_flow.py         |      173 |        0 |       36 |        0 |     100% |           |
 | custom\_components/resmed\_myair/const.py                |       19 |        0 |        0 |        0 |     100% |           |
 | custom\_components/resmed\_myair/coordinator.py          |       39 |        0 |        0 |        0 |     100% |           |
 | custom\_components/resmed\_myair/helpers.py              |       22 |        0 |       16 |        0 |     100% |           |
 | custom\_components/resmed\_myair/sensor.py               |      125 |        0 |       14 |        0 |     100% |           |
-|                                                **TOTAL** |  **773** |    **0** |  **164** |    **0** | **100%** |           |
+|                                                **TOTAL** |  **775** |    **0** |  **164** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
