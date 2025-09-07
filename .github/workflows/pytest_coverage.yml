@@ -38,7 +38,6 @@ jobs:
           cache-dependency-path: |
             requirements-pytest.txt
             pyproject.toml
-            .pre-commit-config.yaml
 
       - name: Install pytest Requirements
         run: |

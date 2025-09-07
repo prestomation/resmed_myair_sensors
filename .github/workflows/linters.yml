@@ -29,7 +29,6 @@ jobs:
           cache-dependency-path: |
             requirements-lint.txt
             pyproject.toml
-            .pre-commit-config.yaml
 
       - name: Install Linting Requirements
         run: |
@@ -42,7 +41,7 @@ jobs:
           path: |
             ~/.cache/pre-commit
             .mypy_cache
-          key: ${{ runner.os }}-lint-${{ hashFiles('**/requirements-lint.txt') }}
+          key: ${{ runner.os }}-lint-${{ hashFiles('**/requirements-lint.txt', '**/.pre-commit-config.yaml', '**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-lint-
 
