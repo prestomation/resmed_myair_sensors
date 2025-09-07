@@ -2,14 +2,22 @@ name: Release
 on:
   workflow_dispatch:
   release:
-    types: [published, edited]
+    types:
+      - published
+      - edited
 
 jobs:
   update_version_and_create_zip:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG_NAME: ${{ github.event.release.tag_name || github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5.0.0
+        with:
+          fetch-depth: 0
 
       - name: Debug Variables
         run: |
@@ -24,12 +32,12 @@ jobs:
       - name: Update Version in Manifest
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
-          jq '.version = "${{ github.event.release.tag_name }}"' ./custom_components/resmed_myair/manifest.json > tmp.json && mv tmp.json ./custom_components/resmed_myair/manifest.json
+          jq --arg TAG "$TAG_NAME" '.version = $TAG' ./custom_components/resmed_myair/manifest.json > tmp.json && mv tmp.json ./custom_components/resmed_myair/manifest.json
 
       - name: Update Version in const.py
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
-          VERSION_LINE="VERSION = \"${{ github.event.release.tag_name }}\""
+          VERSION_LINE="VERSION = \"$TAG_NAME\""
           sed -i "s/^VERSION *= *.*/$VERSION_LINE/" ./custom_components/resmed_myair/const.py
 
       - name: Commit & Push Version Changes
@@ -38,7 +46,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.event.release.target_commitish }}
-          message: 'Updating to version ${{ github.event.release.tag_name }} [skip ci]'
+          message: 'Updating to version ${{ env.TAG_NAME }} [skip ci]'
 
       - name: Update Release with Version Changes Commit
         if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}

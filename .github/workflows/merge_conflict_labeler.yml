@@ -3,7 +3,8 @@ name: Merge Conflict Labeler
 on:
   push:
   pull_request_target:
-    types: [synchronize]
+    types:
+      - synchronize
 
 jobs:
   label:
@@ -14,7 +15,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Apply label
-        uses: eps1lon/actions-label-merge-conflict@v3
+        uses: eps1lon/actions-label-merge-conflict@v3.0.3
         with:
           dirtyLabel: 'merge conflict'
           commentOnDirty: 'This pull request has merge conflicts. Please resolve the conflicts so the PR can be successfully reviewed and merged.'

@@ -1,0 +1,11 @@
+homeassistant-stubs
+pre-commit
+mypy
+ruff
+types-cffi
+types-PyMySQL
+types-pyRFC3339
+types-python-dateutil
+types-PyYAML
+types-requests
+types-setuptools
