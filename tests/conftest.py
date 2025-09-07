@@ -10,7 +10,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.myair_client import MyAirConfig
 from custom_components.resmed_myair.client.rest_client import RESTClient
-from custom_components.resmed_myair.const import CONF_PASSWORD, CONF_REGION, CONF_USER_NAME
+from custom_components.resmed_myair.const import (
+    CONF_PASSWORD,
+    CONF_REGION,
+    CONF_USER_NAME,
+    REGION_EU,
+    REGION_NA,
+)
 
 
 def _ensure_config_entries_helpers(hass: Any) -> None:
@@ -120,7 +126,7 @@ def config_entry(hass: Any) -> MockConfigEntry:
     data = {
         CONF_USER_NAME: "test@example.com",
         CONF_PASSWORD: "dummy_password",
-        CONF_REGION: "NA",
+        CONF_REGION: REGION_NA,
     }
     entry = MockConfigEntry(
         domain="resmed_myair", title="ResMed-CPAP", data=data, entry_id="mock_entry_id", version=2
@@ -223,13 +229,13 @@ def myair_client() -> MagicMock:
 @pytest.fixture
 def config_na() -> MyAirConfig:
     """Return a MyAirConfig for the NA region used by REST client tests."""
-    return MyAirConfig(username="user", password="pass", region="NA", device_token="token")
+    return MyAirConfig(username="user", password="pass", region=REGION_NA, device_token="token")
 
 
 @pytest.fixture
 def config_eu() -> MyAirConfig:
     """Return a MyAirConfig for the EU region used by REST client tests."""
-    return MyAirConfig(username="user", password="pass", region="EU", device_token="token")
+    return MyAirConfig(username="user", password="pass", region=REGION_EU, device_token="token")
 
 
 @pytest.fixture

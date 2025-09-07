@@ -18,13 +18,15 @@ from custom_components.resmed_myair.client.rest_client import (
     AUTHN_SUCCESS,
     EU_CONFIG,
     NA_CONFIG,
+    REGION_NA,
     ParsingError,
     RESTClient,
 )
+from custom_components.resmed_myair.const import REGION_EU
 from tests.conftest import make_mock_aiohttp_context_manager, make_mock_aiohttp_response
 
 
-@pytest.mark.parametrize("region,expected_config", [("NA", NA_CONFIG), ("EU", EU_CONFIG)])
+@pytest.mark.parametrize("region,expected_config", [(REGION_NA, NA_CONFIG), (REGION_EU, EU_CONFIG)])
 def test_rest_client_init_region(region, expected_config, session):
     """Test RESTClient initialization for both NA and EU regions."""
     config = MyAirConfig(username="user", password="pass", region=region, device_token="token")
@@ -128,7 +130,7 @@ async def test_resmed_response_error_check_variants(status, resp_dict, expected_
     """Parametrized tests for various error responses in _resmed_response_error_check."""
     response = MagicMock(spec=ClientResponse)
     response.status = status
-    response.headers = {}
+    response.headers = CIMultiDict()
     with pytest.raises(expected_exception):
         await RESTClient._resmed_response_error_check("authn", response, resp_dict)
 
@@ -364,7 +366,7 @@ async def test_resmed_response_error_check_gql_query_not_initial_raises_parsing_
     # Prepare a fake response and error dict
     response = MagicMock(spec=ClientResponse)
     response.status = 401
-    response.headers = {}
+    response.headers = CIMultiDict()
 
     resp_dict = {"errors": [{"errorInfo": {"errorType": "unauthorized", "errorCode": "401"}}]}
 

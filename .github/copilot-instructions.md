@@ -18,7 +18,6 @@
 - The agent may create and use a repository-local virtual environment at `./.venv` and should reference the interpreter at `./.venv/bin/python` when running commands.
 - The agent may install packages from repository manifests (for example `requirements-dev.txt`, `pyproject.toml`) into the repo venv without needing additional explicit approval for each run. The agent should prefer installing into `./.venv` rather than the global environment and must avoid performing unnecessary or unrelated network operations.
 
-
 ## Folder Structure
 
 - `/custom_components/resmed_myair`: Contains the integration code.
@@ -75,10 +74,6 @@
 ## PR and branch behavior
 
 - The agent will only create branches or open PRs when the user explicitly requests it or includes the hashtag `#github-pull-request_copilot-coding-agent` to hand off to the asynchronous coding agent.
-
-## Network / install consent
-
-- The agent must obtain explicit consent before performing network operations outside the repository that are not strictly necessary for running local tests (for example fetching external APIs or secrets). Package installs from PyPI required for running tests are allowed when the user has given permission to install dev dependencies.
 
 ## CI/CD
 

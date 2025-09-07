@@ -229,6 +229,7 @@ async def test_most_recent_sleep_date_sensor_multiple_updates(hass, coordinator)
     sensor.async_write_ha_state = MagicMock()
     await sensor.async_added_to_hass()
     assert sensor.native_value.isoformat() == "2024-06-01"
+    assert sensor.available is True
     # Add a new record with usage
     coordinator.data["sleep_records"].append(
         {
