@@ -3,7 +3,7 @@ name: Merge Conflict Labeler
 on:
   push:
   pull_request_target:
-    types: 
+    types:
       - synchronize
 
 jobs:
