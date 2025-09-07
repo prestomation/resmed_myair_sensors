@@ -449,11 +449,10 @@ class RESTClient(MyAirClient):
             cookies=self._cookies,
         ) as code_res:
             _LOGGER.debug("[get_access_token] code_res: %s", code_res)
-            if "location" not in code_res.headers:
+            _LOGGER.debug("[get_access_token] code_res.headers: %s", code_res.headers)
+            location = code_res.headers.get("location")
+            if location is None:
                 raise ParsingError("Unable to get location from code_res")
-            location: str = code_res.headers["location"]
-            _LOGGER.debug("[get_access_token code] location: %s", location)
-
         fragment: DefragResult = urldefrag(location)
         _LOGGER.debug("[get_access_token code] fragment: %s", fragment)
         # Pull the code out of the location header fragment

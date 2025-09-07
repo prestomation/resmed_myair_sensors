@@ -136,7 +136,7 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         if self.coordinator.data.get("sleep_records"):
             try:
                 value = self.coordinator.data["sleep_records"][-1][self.sensor_key]
-            except (KeyError, IndexError) as e:
+            except KeyError as e:
                 _LOGGER.error("Unable to parse Sleep Record. %s: %s", type(e).__name__, e)
                 self._available = False
             else:
@@ -147,6 +147,7 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
             ):
                 value = dt_util.parse_date(value)
         else:
+            _LOGGER.error("Sleep record data missing from coordinator data")
             self._available = False
 
         self._attr_native_value = value
@@ -183,6 +184,7 @@ class MyAirDeviceSensor(MyAirBaseSensor):
             ):
                 value = dt_util.parse_datetime(value)
         else:
+            _LOGGER.error("Device data missing from coordinator data")
             self._available = False
 
         self._attr_native_value = value
@@ -212,9 +214,11 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
                 _LOGGER.error("Unable to parse Usage Time. %s: %s", type(e).__name__, e)
                 self._available = False
             else:
+                usage_minutes = max(usage_minutes, 0)
                 value = f"{usage_minutes // 60}:{(usage_minutes % 60):02}"
                 self._available = True
         else:
+            _LOGGER.error("Sleep record data missing from coordinator data")
             self._available = False
 
         self._attr_native_value = value
@@ -254,10 +258,11 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
                     self._available = True
                 else:
                     self._available = False
-            except (KeyError, IndexError) as e:
+            except KeyError as e:
                 _LOGGER.error("Unable to parse Most Recent Sleep Date. %s: %s", type(e).__name__, e)
                 self._available = False
         else:
+            _LOGGER.error("Sleep record data missing from coordinator data")
             self._available = False
 
         self._attr_native_value = value

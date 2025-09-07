@@ -1,6 +1,6 @@
 """Base classes for myAir Client."""
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from typing import Any, NamedTuple
 
@@ -32,14 +32,14 @@ class MyAirConfig(NamedTuple):
 class MyAirClient(ABC):
     """Basic myAir Client Class."""
 
+    @abstractmethod
     async def connect(self) -> str:
         """Connect to ResMed myAir."""
-        raise NotImplementedError
 
+    @abstractmethod
     async def get_user_device_data(self) -> Mapping[str, Any]:
         """Get user device data from ResMed servers."""
-        raise NotImplementedError
 
+    @abstractmethod
     async def get_sleep_records(self) -> list[Mapping[str, Any]]:
         """Get sleep records from ResMed servers."""
-        raise NotImplementedError

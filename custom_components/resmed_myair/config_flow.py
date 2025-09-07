@@ -9,7 +9,7 @@ from aiohttp.client_exceptions import ClientResponseError
 from aiohttp.http_exceptions import HttpProcessingError
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, UnknownEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -133,15 +133,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                                 e,
                             )
                             return self.async_abort(reason="incomplete_account_verify_email")
-                    except (
-                        ParsingError,
-                        AuthenticationError,
-                        IncompleteAccountError,
-                        KeyError,
-                        TypeError,
-                        HttpProcessingError,
-                        ValueError,
-                    ):
+                    except Exception:  # noqa: BLE001
                         pass
                 _LOGGER.error(
                     "Account Setup Incomplete at async_step_user. %s: %s",
@@ -179,6 +171,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         user_input = user_input or {}
         if user_input and isinstance(self._client, RESTClient):
+            # _LOGGER.debug("[async_step_verify_mfa] user_input: %s", redact_dict(user_input))
             self._data.update(user_input)
             try:
                 status, device = await get_mfa_device(
@@ -204,25 +197,16 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.error("Connection Error at verify_mfa. %s: %s", type(e).__name__, e)
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
-                if self._client:
-                    try:
-                        if not (await self._client.is_email_verified()):
-                            _LOGGER.error(
-                                "Account Setup Incomplete at verify_mfa. Email Address not verified. %s: %s",
-                                type(e).__name__,
-                                e,
-                            )
-                            return self.async_abort(reason="incomplete_account_verify_email")
-                    except (
-                        ParsingError,
-                        AuthenticationError,
-                        IncompleteAccountError,
-                        KeyError,
-                        TypeError,
-                        HttpProcessingError,
-                        ValueError,
-                    ):
-                        pass
+                try:
+                    if not (await self._client.is_email_verified()):
+                        _LOGGER.error(
+                            "Account Setup Incomplete at verify_mfa. Email Address not verified. %s: %s",
+                            type(e).__name__,
+                            e,
+                        )
+                        return self.async_abort(reason="incomplete_account_verify_email")
+                except Exception:  # noqa: BLE001
+                    pass
                 _LOGGER.error("Account Setup Incomplete at verify_mfa. %s: %s", type(e).__name__, e)
                 return self.async_abort(reason="incomplete_account")
 
@@ -245,8 +229,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(self, entry_data: MutableMapping[str, Any]) -> ConfigFlowResult:
         """Handle configuration by re-auth."""
         _LOGGER.info("Starting Reauthorization")
-        if entry := self.hass.config_entries.async_get_entry(self.context["entry_id"]):
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        if entry:
             self._entry = entry
+        else:
+            _LOGGER.error("No entry found for reauthorization")
+            raise UnknownEntry(self.context["entry_id"])
         _LOGGER.debug("[async_step_reauth] entry: %s", redact_dict(self._entry))
         _LOGGER.debug("[async_step_reauth] entry_data: %s", redact_dict(entry_data))
         self._data.update(entry_data)
@@ -301,15 +289,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                                 e,
                             )
                             return self.async_abort(reason="incomplete_account_verify_email")
-                    except (
-                        ParsingError,
-                        AuthenticationError,
-                        IncompleteAccountError,
-                        KeyError,
-                        TypeError,
-                        HttpProcessingError,
-                        ValueError,
-                    ):
+                    except Exception:  # noqa: BLE001
                         pass
                 _LOGGER.error(
                     "Account Setup Incomplete at reauth_confirm. %s: %s",
@@ -375,25 +355,16 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.error("Connection Error at reauth_verify_mfa. %s: %s", type(e).__name__, e)
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
-                if self._client:
-                    try:
-                        if not (await self._client.is_email_verified()):
-                            _LOGGER.error(
-                                "Account Setup Incomplete at reauth_verify_mfa. Email Address not verified. %s: %s",
-                                type(e).__name__,
-                                e,
-                            )
-                            return self.async_abort(reason="incomplete_account_verify_email")
-                    except (
-                        ParsingError,
-                        AuthenticationError,
-                        IncompleteAccountError,
-                        KeyError,
-                        TypeError,
-                        HttpProcessingError,
-                        ValueError,
-                    ):
-                        pass
+                try:
+                    if not (await self._client.is_email_verified()):
+                        _LOGGER.error(
+                            "Account Setup Incomplete at reauth_verify_mfa. Email Address not verified. %s: %s",
+                            type(e).__name__,
+                            e,
+                        )
+                        return self.async_abort(reason="incomplete_account_verify_email")
+                except Exception:  # noqa: BLE001
+                    pass
                 _LOGGER.error(
                     "Account Setup Incomplete at reauth_verify_mfa. %s: %s",
                     type(e).__name__,

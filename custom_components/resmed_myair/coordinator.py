@@ -50,7 +50,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
         except AuthenticationError as e:
             _LOGGER.error("Authentication Error while updating. %s: %s", type(e).__name__, e)
             raise ConfigEntryAuthFailed(
-                "Authentication Error while updating. %s: %s", type(e).__name__, e
+                f"Authentication Error while updating. {type(e).__name__}: {e}"
             ) from e
 
         data: dict[str, Any] = {}
