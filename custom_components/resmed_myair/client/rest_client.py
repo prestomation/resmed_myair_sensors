@@ -195,8 +195,10 @@ class RESTClient(MyAirClient):
         for header in cookie_headers:
             cookie = SimpleCookie(header)
             for key, morsel in cookie.items():
-                if key.lower() in {"dt", "sid"}:
-                    cookies[key] = morsel.value
+                k = key.lower()
+                if k in {"dt", "sid"}:
+                    norm = "DT" if k == "dt" else "sid"
+                    cookies[norm] = morsel.value
         _LOGGER.debug("[extract_and_update_cookies] extracted cookies: %s", cookies)
 
         if cookies.get("DT") and cookies.get("DT") != self._cookie_dt:

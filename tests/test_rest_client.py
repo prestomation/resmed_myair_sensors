@@ -58,6 +58,8 @@ def test_properties_variants(case, config_na, session):
         (None, None, ["DT=abc; Path=/", "sid=xyz; Path=/"], "abc", "xyz", False),
         # No change if cookies are the same
         ("abc", "xyz", ["DT=abc; Path=/", "sid=xyz; Path=/"], "abc", "xyz", False),
+        # Case-insensitive cookie names should work too
+        (None, None, ["dt=abc; Path=/", "SID=xyz; Path=/"], "abc", "xyz", False),
         # DT was None, should update DT
         (None, "xyz", ["DT=abc; Path=/", "sid=xyz; Path=/"], "abc", "xyz", False),
         # SID changes

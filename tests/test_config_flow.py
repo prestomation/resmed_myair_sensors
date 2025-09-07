@@ -138,8 +138,10 @@ async def test_async_step_verify_mfa_error(
     # RESTClient path should set a specific 'base' error; non-RESTClient may only return a generic errors dict
     if is_restclient:
         assert result["errors"].get("base") == "mfa_error"
+        assert result["step_id"] == "verify_mfa"
     else:
         assert "base" not in result["errors"]
+        assert result["step_id"] == "verify_mfa"
 
 
 @pytest.mark.asyncio
@@ -782,8 +784,8 @@ async def test_async_step_reauth_verify_mfa_user_input_and_restclient(
             )
         ),
     )
-    # Patch device_token() on the client to return a token
-    flow._client.device_token.return_value = "token"
+    # RESTClient.device_token is a @property; set it directly
+    flow._client.device_token = "token"
 
     # Patch async_abort to just return its arguments for assertion
     flow.async_abort = MagicMock(return_value={"type": "abort", "reason": "reauth_successful"})
