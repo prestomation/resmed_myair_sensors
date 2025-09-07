@@ -1,10 +1,11 @@
 """Tests for the resmed_myair integration (integration-level unit tests)."""
 
 from datetime import date, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import custom_components.resmed_myair as resmed_module
 from custom_components.resmed_myair import (
     async_migrate_entry,
     async_setup_entry,
@@ -25,44 +26,51 @@ from custom_components.resmed_myair.sensor import (
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_refresh_failure(hass, config_entry, session):
+async def test_async_setup_entry_refresh_failure(hass, config_entry, session, monkeypatch):
     """Test integration setup entry raises if first refresh fails."""
-    with (
-        patch(
-            "custom_components.resmed_myair.async_create_clientsession",
-            return_value=session,
-        ),
-        patch("custom_components.resmed_myair.MyAirDataUpdateCoordinator") as mock_coordinator,
-        patch.object(hass.config_entries, "async_forward_entry_setups", new=AsyncMock()) as fwd,
-    ):
-        instance = mock_coordinator.return_value
-        instance.async_config_entry_first_refresh = AsyncMock(side_effect=Exception("refresh fail"))
-        with pytest.raises(Exception) as exc:
-            await async_setup_entry(hass, config_entry)
-        assert "refresh fail" in str(exc.value)
-        fwd.assert_not_awaited()
+    # Replace async_create_clientsession to return the provided session
+    monkeypatch.setattr(
+        resmed_module, "async_create_clientsession", lambda *args, **kwargs: session
+    )
+
+    # Mock the coordinator class and capture the MagicMock for assertions
+    mock_coordinator = MagicMock()
+    monkeypatch.setattr(resmed_module, "MyAirDataUpdateCoordinator", mock_coordinator)
+    instance = mock_coordinator.return_value
+    instance.async_config_entry_first_refresh = AsyncMock(side_effect=Exception("refresh fail"))
+
+    # Replace hass.config_entries.async_forward_entry_setups with an AsyncMock and keep a ref
+    monkeypatch.setattr(hass.config_entries, "async_forward_entry_setups", AsyncMock())
+    fwd = hass.config_entries.async_forward_entry_setups
+
+    with pytest.raises(Exception) as exc:
+        await async_setup_entry(hass, config_entry)
+    assert "refresh fail" in str(exc.value)
+    fwd.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_multiple_calls(hass, config_entry, session):
+async def test_async_setup_entry_multiple_calls(hass, config_entry, session, monkeypatch):
     """Test async_setup_entry can be called multiple times without error."""
-    with (
-        patch(
-            "custom_components.resmed_myair.async_create_clientsession",
-            return_value=session,
-        ),
-        patch("custom_components.resmed_myair.MyAirDataUpdateCoordinator") as mock_coordinator,
-        patch.object(hass.config_entries, "async_forward_entry_setups", new=AsyncMock()) as fwd,
-    ):
-        instance = mock_coordinator.return_value
-        instance.async_config_entry_first_refresh = AsyncMock()
-        result1 = await async_setup_entry(hass, config_entry)
-        result2 = await async_setup_entry(hass, config_entry)
-        assert result1 is True
-        assert result2 is True
-        assert fwd.await_count == 2
-        fwd.assert_awaited_with(config_entry, PLATFORMS)
-        assert instance.async_config_entry_first_refresh.await_count == 2
+    monkeypatch.setattr(
+        resmed_module, "async_create_clientsession", lambda *args, **kwargs: session
+    )
+
+    mock_coordinator = MagicMock()
+    monkeypatch.setattr(resmed_module, "MyAirDataUpdateCoordinator", mock_coordinator)
+    instance = mock_coordinator.return_value
+    instance.async_config_entry_first_refresh = AsyncMock()
+
+    monkeypatch.setattr(hass.config_entries, "async_forward_entry_setups", AsyncMock())
+    fwd = hass.config_entries.async_forward_entry_setups
+
+    result1 = await async_setup_entry(hass, config_entry)
+    result2 = await async_setup_entry(hass, config_entry)
+    assert result1 is True
+    assert result2 is True
+    assert fwd.await_count == 2
+    fwd.assert_awaited_with(config_entry, PLATFORMS)
+    assert instance.async_config_entry_first_refresh.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -376,7 +384,9 @@ async def fake_forward_entry_setups(config_entry, platforms):
 
 
 @pytest.mark.asyncio
-async def test_force_poll_service_triggers_refresh(hass, config_entry, coordinator_factory):
+async def test_force_poll_service_triggers_refresh(
+    hass, config_entry, coordinator_factory, monkeypatch
+):
     """Test that the force_poll service calls coordinator.async_refresh()."""
 
     # Use the centralized factory to create a mock coordinator with the
@@ -400,21 +410,19 @@ async def test_force_poll_service_triggers_refresh(hass, config_entry, coordinat
         side_effect=fake_forward_entry_setups
     )
 
-    with (
-        patch(
-            "custom_components.resmed_myair.MyAirDataUpdateCoordinator",
-            return_value=dummy_coordinator,
-        ),
-        patch(
-            "custom_components.resmed_myair.sensor.MyAirDataUpdateCoordinator",
-            return_value=dummy_coordinator,
-        ),
-        patch("custom_components.resmed_myair.sensor.MyAirSleepRecordSensor"),
-        patch("custom_components.resmed_myair.sensor.MyAirDeviceSensor"),
-        patch("custom_components.resmed_myair.sensor.MyAirFriendlyUsageTime"),
-        patch("custom_components.resmed_myair.sensor.MyAirMostRecentSleepDate"),
-    ):
-        await async_setup_entry(hass, config_entry)
+    # Monkeypatch coordinator classes and sensor classes to avoid full sensor setup
+    monkeypatch.setattr(
+        resmed_module, "MyAirDataUpdateCoordinator", lambda *a, **k: dummy_coordinator
+    )
+    monkeypatch.setattr(
+        sensor_platform, "MyAirDataUpdateCoordinator", lambda *a, **k: dummy_coordinator
+    )
+    monkeypatch.setattr(sensor_platform, "MyAirSleepRecordSensor", MagicMock())
+    monkeypatch.setattr(sensor_platform, "MyAirDeviceSensor", MagicMock())
+    monkeypatch.setattr(sensor_platform, "MyAirFriendlyUsageTime", MagicMock())
+    monkeypatch.setattr(sensor_platform, "MyAirMostRecentSleepDate", MagicMock())
+
+    await async_setup_entry(hass, config_entry)
 
     # Since fake_forward_entry_setups is wired as the side effect, ensure it ran once
     assert hass.config_entries.async_forward_entry_setups.await_count == 1
@@ -442,7 +450,7 @@ async def test_sensor_unique_id_and_device_info(hass, coordinator):
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_registers_all_sensors(hass, config_entry):
+async def test_async_setup_entry_registers_all_sensors(hass, config_entry, monkeypatch):
     """Test async_setup_entry adds all expected sensor entities."""
     added_entities = []
 
@@ -450,20 +458,25 @@ async def test_async_setup_entry_registers_all_sensors(hass, config_entry):
         assert isinstance(update_before_add, bool)
         added_entities.extend(entities)
 
-    # Only patch the coordinator, NOT the sensor classes
-    with patch(
-        "custom_components.resmed_myair.sensor.MyAirDataUpdateCoordinator"
-    ) as mock_coordinator:
-        instance = mock_coordinator.return_value
-        instance.data = {
-            "device": {"serialNumber": "SN123"},
-            "sleep_records": [{"totalUsage": 100, "startDate": "2024-06-01"}],
-        }
-        config_entry.runtime_data = instance
-        await sensor_platform.async_setup_entry(hass, config_entry, fake_add_entities)
+    # Only patch the coordinator class used by the sensor platform
+    mock_coordinator = MagicMock()
+    monkeypatch.setattr(sensor_platform, "MyAirDataUpdateCoordinator", mock_coordinator)
+    instance = mock_coordinator.return_value
+    instance.data = {
+        "device": {"serialNumber": "SN123"},
+        "sleep_records": [{"totalUsage": 100, "startDate": "2024-06-01"}],
+    }
+    config_entry.runtime_data = instance
+    await sensor_platform.async_setup_entry(hass, config_entry, fake_add_entities)
 
     # Should include all device, sleep record, and synthesized sensors
     assert any(isinstance(e, MyAirSleepRecordSensor) for e in added_entities)
     assert any(isinstance(e, MyAirDeviceSensor) for e in added_entities)
     assert any(isinstance(e, MyAirFriendlyUsageTime) for e in added_entities)
     assert any(isinstance(e, MyAirMostRecentSleepDate) for e in added_entities)
+    expected_count = (
+        len(DEVICE_SENSOR_DESCRIPTIONS)
+        + len(SLEEP_RECORD_SENSOR_DESCRIPTIONS)
+        + 2  # FriendlyUsageTime + MostRecentSleepDate
+    )
+    assert len(added_entities) == expected_count

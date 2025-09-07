@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -33,7 +33,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescr
     ],
 )
 def test_device_sensor_all_branches(
-    data, sensor_key, device_class, expected_available, coordinator_factory
+    data, sensor_key, device_class, expected_available, monkeypatch, coordinator_factory
 ):
     """Parametrized tests for MyAirDeviceSensor behavior across branches."""
     # Construct description using the explicit device_class parameter so the test
@@ -44,8 +44,8 @@ def test_device_sensor_all_branches(
         desc = SensorEntityDescription(key=sensor_key, device_class=device_class)
     coordinator = coordinator_factory(data=data)
     sensor = MyAirDeviceSensor("Test", desc, coordinator)
-    with patch.object(sensor, "async_write_ha_state", return_value=None):
-        sensor._handle_coordinator_update()
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+    sensor._handle_coordinator_update()
     assert sensor.available == expected_available
 
 
@@ -60,13 +60,13 @@ def test_device_sensor_all_branches(
     ],
 )
 def test_friendly_usage_time_all_branches(
-    data, expected_native, expected_available, coordinator_factory
+    data, expected_native, expected_available, monkeypatch, coordinator_factory
 ):
     """Parametrized tests for MyAirFriendlyUsageTime behavior across branches."""
     coordinator = coordinator_factory(data=data)
     sensor = MyAirFriendlyUsageTime(coordinator)
-    with patch.object(sensor, "async_write_ha_state", return_value=None):
-        sensor._handle_coordinator_update()
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+    sensor._handle_coordinator_update()
     assert sensor.available == expected_available
     # Only check native_value if available
     if expected_available:
@@ -96,13 +96,13 @@ def test_friendly_usage_time_all_branches(
     ],
 )
 def test_most_recent_sleep_date_all_branches(
-    data, expected_native, expected_available, coordinator_factory
+    data, expected_native, expected_available, monkeypatch, coordinator_factory
 ):
     """Parametrized tests for MyAirMostRecentSleepDate behavior across branches."""
     coordinator = coordinator_factory(data=data)
     sensor = MyAirMostRecentSleepDate(coordinator)
-    with patch.object(sensor, "async_write_ha_state", return_value=None):
-        sensor._handle_coordinator_update()
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+    sensor._handle_coordinator_update()
     assert sensor.available == expected_available
     if expected_available:
         # sensor.native_value is a date object
@@ -145,8 +145,8 @@ def test_sleep_record_sensor_handle_coordinator_update(
         data["sleep_records"] = sleep_records
     coordinator = coordinator_factory(data=data)
     sensor = MyAirSleepRecordSensor("Test", desc, coordinator)
-    with patch.object(sensor, "async_write_ha_state", return_value=None):
-        sensor._handle_coordinator_update()
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+    sensor._handle_coordinator_update()
     assert sensor.available == expected_available
     assert sensor.native_value == expected_value
 
@@ -204,8 +204,8 @@ def test_myair_device_sensor_parametrized(
         data["device"] = device_data
     coordinator = coordinator_factory(data=data)
     sensor = MyAirDeviceSensor("Test", desc, coordinator)
-    with patch.object(sensor, "async_write_ha_state", return_value=None):
-        sensor._handle_coordinator_update()
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+    sensor._handle_coordinator_update()
     assert sensor.available == expected_available
     assert sensor.native_value == expected_native
 
@@ -217,7 +217,6 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
     """Test that async_setup_entry adds sensor entities and registers service."""
     async_add_entities = MagicMock()
     coordinator = coordinator_factory(mock=True)
-    coordinator.async_refresh = AsyncMock()
     # This test will create its own local MockConfigEntry (below) because
     # MockConfigEntry.data is a mappingproxy and should not be mutated in-place.
 
@@ -269,7 +268,9 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
     coordinator.async_refresh.assert_awaited_once()
 
 
-def test_myair_device_sensor_handle_coordinator_update_keyerror(caplog, coordinator_factory):
+def test_myair_device_sensor_handle_coordinator_update_keyerror(
+    caplog, coordinator_factory, monkeypatch
+):
     """Ensure MyAirDeviceSensor handles missing keys and logs an error."""
     coordinator = coordinator_factory(mock=True)
     coordinator.data = {"device": {"serialNumber": "SN123"}}
@@ -282,10 +283,8 @@ def test_myair_device_sensor_handle_coordinator_update_keyerror(caplog, coordina
     sensor.entity_id = "sensor.test_device"
 
     # Patch async_write_ha_state so no Home Assistant internals are called
-    with (
-        patch.object(sensor, "async_write_ha_state", return_value=None),
-        caplog.at_level(logging.ERROR),
-    ):
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+    with caplog.at_level(logging.ERROR):
         sensor._handle_coordinator_update()
 
     # Verify

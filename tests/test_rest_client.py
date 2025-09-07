@@ -1,7 +1,7 @@
 """Unit tests for the REST client used by the resmed_myair integration."""
 
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from aiohttp import ClientResponse
 from aiohttp.http_exceptions import HttpProcessingError
@@ -172,13 +172,14 @@ async def test_authn_check_variants(
     expect_state_token,
     expect_email_factor_id,
     expect_mfa_url_prefix,
+    monkeypatch,
 ):
     """Parametrized tests for _authn_check success and MFA_REQUIRED paths."""
     client = RESTClient(config_na, session)
     mock_response = make_mock_aiohttp_response(json_value=json_value)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
-    with patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()):
-        status = await client._authn_check()
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    status = await client._authn_check()
 
     assert status == expected_status
     if expect_session_token is not None:
@@ -193,15 +194,13 @@ async def test_authn_check_variants(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("json_value", [{}, {"status": "UNKNOWN"}])
-async def test_authn_check_invalid_status_raises(config_na, session, json_value):
+async def test_authn_check_invalid_status_raises(config_na, session, json_value, monkeypatch):
     """Parametrized: _authn_check should raise AuthenticationError for invalid status payloads."""
     client = RESTClient(config_na, session)
     mock_response = make_mock_aiohttp_response(json_value=json_value)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
-    with (
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(AuthenticationError),
-    ):
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    with pytest.raises(AuthenticationError):
         await client._authn_check()
 
 
@@ -214,50 +213,49 @@ async def test_authn_check_invalid_status_raises(config_na, session, json_value)
     ],
 )
 async def test_verify_mfa_and_get_access_token_variants(
-    config_na, session, verify_return, expect_exception, expected_status
+    config_na, session, verify_return, expect_exception, expected_status, monkeypatch
 ):
     """Parametrized: verify_mfa_and_get_access_token success and failure paths."""
     client = RESTClient(config_na, session)
-    with (
-        patch.object(client, "_verify_mfa", new=AsyncMock(return_value=verify_return)),
-        patch.object(client, "_get_access_token", new=AsyncMock()),
-    ):
-        if expect_exception:
-            with pytest.raises(AuthenticationError):
-                await client.verify_mfa_and_get_access_token("123456")
-        else:
-            status = await client.verify_mfa_and_get_access_token("123456")
-            assert status == expected_status
+    # use monkeypatch to replace instance methods
+    client_verify = AsyncMock(return_value=verify_return)
+    client_get_access = AsyncMock()
+    monkeypatch.setattr(client, "_verify_mfa", client_verify)
+    monkeypatch.setattr(client, "_get_access_token", client_get_access)
+    if expect_exception:
+        with pytest.raises(AuthenticationError):
+            await client.verify_mfa_and_get_access_token("123456")
+    else:
+        status = await client.verify_mfa_and_get_access_token("123456")
+        assert status == expected_status
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("cookie_dt", ["dt", "cookie"])
-async def test_connect_access_token_active_variants(config_na, session, cookie_dt):
+async def test_connect_access_token_active_variants(config_na, session, cookie_dt, monkeypatch):
     """Parametrized: connect returns AUTHN_SUCCESS when access token is active (different cookie values)."""
     client = RESTClient(config_na, session)
     client._cookie_dt = cookie_dt
     client._access_token = "token"
-    with (
-        patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=True)),
-        patch.object(client, "_authn_check", new=AsyncMock()),
-        patch.object(client, "_get_access_token", new=AsyncMock()),
-    ):
-        result = await client.connect()
+    # use monkeypatch to replace instance methods
+    monkeypatch.setattr(client, "_is_access_token_active", AsyncMock(return_value=True))
+    monkeypatch.setattr(client, "_authn_check", AsyncMock())
+    monkeypatch.setattr(client, "_get_access_token", AsyncMock())
+    result = await client.connect()
     assert result == AUTHN_SUCCESS
 
 
 @pytest.mark.asyncio
-async def test_connect_authn_success(config_na, session):
+async def test_connect_authn_success(config_na, session, monkeypatch):
     """Test connect calls _authn_check and _get_access_token on success."""
     client = RESTClient(config_na, session)
     client._cookie_dt = "dt"
     client._access_token = None
-    with (
-        patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=False)),
-        patch.object(client, "_authn_check", new=AsyncMock(return_value="SUCCESS")),
-        patch.object(client, "_get_access_token", new=AsyncMock()) as get_access_token_mock,
-    ):
-        result = await client.connect()
+    monkeypatch.setattr(client, "_is_access_token_active", AsyncMock(return_value=False))
+    monkeypatch.setattr(client, "_authn_check", AsyncMock(return_value="SUCCESS"))
+    get_access_token_mock = AsyncMock()
+    monkeypatch.setattr(client, "_get_access_token", get_access_token_mock)
+    result = await client.connect()
     get_access_token_mock.assert_called_once()
     assert result == "SUCCESS"
 
@@ -271,24 +269,24 @@ async def test_connect_authn_success(config_na, session):
     ],
 )
 async def test_connect_needs_mfa_parametrized(
-    config_na, session, initial, expect_trigger, expect_result, expect_raises
+    config_na, session, initial, expect_trigger, expect_result, expect_raises, monkeypatch
 ):
     """Parametrized: connect behavior when MFA is required for initial True/False."""
     client = RESTClient(config_na, session)
     client._cookie_dt = "dt"
     client._access_token = None
-    with (
-        patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=False)),
-        patch.object(client, "_authn_check", new=AsyncMock(return_value="MFA_REQUIRED")),
-        patch.object(client, "_trigger_mfa", new=AsyncMock()) as trigger_mfa_mock,
-        patch.object(client, "_get_access_token", new=AsyncMock()),
-    ):
-        if expect_raises:
-            with pytest.raises(AuthenticationError):
-                await client.connect(initial=initial)
-        else:
-            result = await client.connect(initial=initial)
-            assert result == expect_result
+    monkeypatch.setattr(client, "_is_access_token_active", AsyncMock(return_value=False))
+    monkeypatch.setattr(client, "_authn_check", AsyncMock(return_value="MFA_REQUIRED"))
+    trigger_mfa_mock = AsyncMock()
+    monkeypatch.setattr(client, "_trigger_mfa", trigger_mfa_mock)
+    monkeypatch.setattr(client, "_get_access_token", AsyncMock())
+
+    if expect_raises:
+        with pytest.raises(AuthenticationError):
+            await client.connect(initial=initial)
+    else:
+        result = await client.connect(initial=initial)
+        assert result == expect_result
 
     # trigger_mfa should be awaited only when expected
     if expect_trigger:
@@ -304,20 +302,19 @@ async def test_connect_needs_mfa_parametrized(
     ],
 )
 async def test_connect_initial_dt_and_warning_variants(
-    config_na, session, caplog, uses_mfa, expect_warn
+    config_na, session, caplog, uses_mfa, expect_warn, monkeypatch
 ):
     """Parametrized: when _cookie_dt is None the client should call _get_initial_dt; when _uses_mfa is True it logs a warning."""
     client = RESTClient(config_na, session)
     client._cookie_dt = None
     client._uses_mfa = uses_mfa
     client._access_token = None
-    with (
-        patch.object(client, "_get_initial_dt", new=AsyncMock()) as get_initial_dt_mock,
-        patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=False)),
-        patch.object(client, "_authn_check", new=AsyncMock(return_value="SUCCESS")),
-        patch.object(client, "_get_access_token", new=AsyncMock()),
-        caplog.at_level(logging.WARNING),
-    ):
+    get_initial_dt_mock = AsyncMock()
+    monkeypatch.setattr(client, "_get_initial_dt", get_initial_dt_mock)
+    monkeypatch.setattr(client, "_is_access_token_active", AsyncMock(return_value=False))
+    monkeypatch.setattr(client, "_authn_check", AsyncMock(return_value="SUCCESS"))
+    monkeypatch.setattr(client, "_get_access_token", AsyncMock())
+    with caplog.at_level(logging.WARNING):
         await client.connect()
 
     get_initial_dt_mock.assert_called_once()
@@ -336,24 +333,24 @@ async def test_connect_initial_dt_and_warning_variants(
     ],
 )
 async def test_connect_status_needs_mfa_parametrized(
-    config_na, session, initial, expect_trigger, expect_result, expect_raises
+    config_na, session, initial, expect_trigger, expect_result, expect_raises, monkeypatch
 ):
     """Parametrized: connect behavior when _authn_check returns AUTH_NEEDS_MFA for initial True/False."""
     client = RESTClient(config_na, session)
     client._cookie_dt = "cookie"
     client._access_token = None
-    with (
-        patch.object(client, "_is_access_token_active", new=AsyncMock(return_value=False)),
-        patch.object(client, "_authn_check", new=AsyncMock(return_value=AUTH_NEEDS_MFA)),
-        patch.object(client, "_trigger_mfa", new=AsyncMock()) as trigger_mfa_mock,
-        patch.object(client, "_get_access_token", new=AsyncMock()),
-    ):
-        if expect_raises:
-            with pytest.raises(AuthenticationError):
-                await client.connect(initial=initial)
-        else:
-            status = await client.connect(initial=initial)
-            assert status == expect_result
+    monkeypatch.setattr(client, "_is_access_token_active", AsyncMock(return_value=False))
+    monkeypatch.setattr(client, "_authn_check", AsyncMock(return_value=AUTH_NEEDS_MFA))
+    trigger_mfa_mock = AsyncMock()
+    monkeypatch.setattr(client, "_trigger_mfa", trigger_mfa_mock)
+    monkeypatch.setattr(client, "_get_access_token", AsyncMock())
+
+    if expect_raises:
+        with pytest.raises(AuthenticationError):
+            await client.connect(initial=initial)
+    else:
+        status = await client.connect(initial=initial)
+        assert status == expect_result
 
     if expect_trigger:
         trigger_mfa_mock.assert_awaited_once()
@@ -412,22 +409,16 @@ async def test_resmed_response_error_check_no_errors_key():
         ),
     ],
 )
-async def test_authn_check_raises_variants(config_na, session, json_value, match):
+async def test_authn_check_raises_variants(config_na, session, json_value, match, monkeypatch):
     """Parametrized: _authn_check raises AuthenticationError for missing stateToken or sessionToken cases."""
     client = RESTClient(config_na, session)
 
     mock_response = make_mock_aiohttp_response(json_value=json_value)
 
     # Patch session.post and _resmed_response_error_check to not raise
-    with (
-        patch.object(
-            session,
-            "post",
-            return_value=make_mock_aiohttp_context_manager(mock_response),
-        ),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(AuthenticationError, match=match),
-    ):
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    with pytest.raises(AuthenticationError, match=match):
         await client._authn_check()
 
 
@@ -446,7 +437,7 @@ async def test_authn_check_raises_variants(config_na, session, json_value, match
     ],
 )
 async def test_mfa_methods_success_variants(
-    config_na, session, method, resp_json, call_arg, post_assert, expected
+    config_na, session, method, resp_json, call_arg, post_assert, expected, monkeypatch
 ):
     """Parametrized: covers _trigger_mfa and _verify_mfa success paths."""
     client = RESTClient(config_na, session)
@@ -458,25 +449,20 @@ async def test_mfa_methods_success_variants(
 
     mock_response = make_mock_aiohttp_response(json_value=resp_json)
 
-    with (
-        patch.object(
-            session,
-            "post",
-            return_value=make_mock_aiohttp_context_manager(mock_response),
-        ),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-    ):
-        if call_arg is None:
-            # _trigger_mfa
-            await client._trigger_mfa()
-            if post_assert:
-                session.post.assert_called_once()
-                mock_response.json.assert_awaited_once()
-        else:
-            # _verify_mfa
-            status = await client._verify_mfa(call_arg)
-            assert status == expected
-            assert client._session_token == resp_json.get("sessionToken")
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    # execute
+    if call_arg is None:
+        # _trigger_mfa
+        await client._trigger_mfa()
+        if post_assert:
+            session.post.assert_called_once()
+            mock_response.json.assert_awaited_once()
+    else:
+        # _verify_mfa
+        status = await client._verify_mfa(call_arg)
+        assert status == expected
+        assert client._session_token == resp_json.get("sessionToken")
 
 
 @pytest.mark.asyncio
@@ -488,7 +474,7 @@ async def test_mfa_methods_success_variants(
         ({"status": "FAIL"}, "Unknown status in verify_mfa step: FAIL"),
     ],
 )
-async def test_verify_mfa_raises_variants(config_na, session, json_value, match):
+async def test_verify_mfa_raises_variants(config_na, session, json_value, match, monkeypatch):
     """Parametrized: Test _verify_mfa raises AuthenticationError for several failure responses."""
     client = RESTClient(config_na, session)
     client._state_token = "dummy_state_token"
@@ -499,20 +485,14 @@ async def test_verify_mfa_raises_variants(config_na, session, json_value, match)
 
     mock_response = make_mock_aiohttp_response(json_value=json_value)
 
-    with (
-        patch.object(
-            session,
-            "post",
-            return_value=make_mock_aiohttp_context_manager(mock_response),
-        ),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(AuthenticationError, match=match),
-    ):
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    with pytest.raises(AuthenticationError, match=match):
         await client._verify_mfa("123456")
 
 
 @pytest.mark.asyncio
-async def test_get_access_token_success(config_na, session):
+async def test_get_access_token_success(config_na, session, monkeypatch):
     """Test _get_access_token sets tokens on success."""
     client = RESTClient(config_na, session)
     client._session_token = "dummy_session_token"
@@ -532,56 +512,39 @@ async def test_get_access_token_success(config_na, session):
     )
 
     # Patch urldefrag and parse_qs to simulate code extraction
-    with (
-        patch.object(
-            session,
-            "get",
-            return_value=make_mock_aiohttp_context_manager(mock_code_res),
-        ),
-        patch.object(
-            session,
-            "post",
-            return_value=make_mock_aiohttp_context_manager(mock_token_res),
-        ),
-        patch(
-            "custom_components.resmed_myair.client.rest_client.urldefrag",
-            return_value=MagicMock(fragment="code=abc123"),
-        ),
-        patch(
-            "custom_components.resmed_myair.client.rest_client.parse_qs",
-            return_value={"code": ["the_code"]},
-        ),
-        patch.object(RESTClient, "_extract_and_update_cookies", new=AsyncMock()) as mock_extract,
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-    ):
-        await client._get_access_token()
-        mock_extract.assert_awaited_once()
-        assert client._access_token == "access_token_value"
-        assert client._id_token == "id_token_value"
+    session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_token_res)
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.rest_client.urldefrag",
+        lambda *a, **k: MagicMock(fragment="code=abc123"),
+    )
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.rest_client.parse_qs",
+        lambda *a, **k: {"code": ["the_code"]},
+    )
+    mock_extract = AsyncMock()
+    monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", mock_extract)
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+
+    await client._get_access_token()
+    mock_extract.assert_awaited_once()
+    assert client._access_token == "access_token_value"
+    assert client._id_token == "id_token_value"
 
 
 @pytest.mark.asyncio
-async def test_get_access_token_raises_on_missing_location(config_na, session):
+async def test_get_access_token_raises_on_missing_location(config_na, session, monkeypatch):
     """Test _get_access_token raises ParsingError if location header is missing."""
     client = RESTClient(config_na, session)
     client._session_token = "dummy_session_token"
     client._json_headers = {"Content-Type": "application/json"}
 
     mock_code_res = make_mock_aiohttp_response(json_value=None)
-    mock_code_res.headers = {}
-    mock_code_res.cookies = {}
-    mock_code_res.json = AsyncMock()
 
-    with (
-        pytest.raises(ParsingError, match="Unable to get location from code_res"),
-        patch.object(
-            session,
-            "get",
-            return_value=make_mock_aiohttp_context_manager(mock_code_res),
-        ),
-        patch.object(RESTClient, "_extract_and_update_cookies", new=AsyncMock()),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-    ):
+    session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
+    monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", AsyncMock())
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    with pytest.raises(ParsingError, match="Unable to get location from code_res"):
         await client._get_access_token()
 
 
@@ -594,7 +557,7 @@ async def test_get_access_token_raises_on_missing_location(config_na, session):
     ],
 )
 async def test_get_access_token_raises_on_missing_token_variants(
-    config_na, session, token_json, match_msg
+    config_na, session, token_json, match_msg, monkeypatch
 ):
     """Parametrized: Test _get_access_token raises ParsingError when token response lacks required keys."""
     client = RESTClient(config_na, session)
@@ -613,29 +576,21 @@ async def test_get_access_token_raises_on_missing_token_variants(
 
     mock_token_res = make_mock_aiohttp_response(json_value=token_json)
 
-    with (
-        patch.object(
-            session,
-            "get",
-            return_value=make_mock_aiohttp_context_manager(mock_code_res),
-        ),
-        patch.object(
-            session,
-            "post",
-            return_value=make_mock_aiohttp_context_manager(mock_token_res),
-        ),
-        patch(
-            "custom_components.resmed_myair.client.rest_client.urldefrag",
-            return_value=MagicMock(fragment="code=abc123"),
-        ),
-        patch(
-            "custom_components.resmed_myair.client.rest_client.parse_qs",
-            return_value={"code": ["the_code"]},
-        ),
-        patch.object(RESTClient, "_extract_and_update_cookies", new=AsyncMock()),
-        patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        pytest.raises(ParsingError, match=match_msg),
-    ):
+    session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
+    monkeypatch.setattr(
+        session, "post", lambda *args, **kwargs: make_mock_aiohttp_context_manager(mock_token_res)
+    )
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.rest_client.urldefrag",
+        lambda *a, **k: MagicMock(fragment="code=abc123"),
+    )
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.rest_client.parse_qs",
+        lambda *a, **k: {"code": ["the_code"]},
+    )
+    monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", AsyncMock())
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    with pytest.raises(ParsingError, match=match_msg):
         await client._get_access_token()
 
 
@@ -648,7 +603,7 @@ async def test_get_access_token_raises_on_missing_token_variants(
     ],
 )
 async def test_gql_query_variants(
-    config_na, session, jwt_behavior, post_json, expect_exception, expected_country
+    config_na, session, jwt_behavior, post_json, expect_exception, expected_country, monkeypatch
 ):
     """Parametrized: gql_query success (extract country from id_token) and jwt decode error cases."""
     client = RESTClient(config_na, session)
@@ -658,31 +613,31 @@ async def test_gql_query_variants(
 
     if jwt_behavior == "valid":
         # jwt.decode returns a payload including myAirCountryId
-        with (
-            patch(
-                "custom_components.resmed_myair.client.rest_client.jwt.decode",
-                return_value={"myAirCountryId": expected_country},
+        monkeypatch.setattr(
+            "custom_components.resmed_myair.client.rest_client.jwt.decode",
+            lambda *a, **k: {"myAirCountryId": expected_country},
+        )
+        monkeypatch.setattr(
+            session,
+            "post",
+            lambda *args, **kwargs: make_mock_aiohttp_context_manager(
+                MagicMock(json=AsyncMock(return_value=post_json))
             ),
-            patch.object(
-                session,
-                "post",
-                return_value=make_mock_aiohttp_context_manager(
-                    MagicMock(json=AsyncMock(return_value=post_json))
-                ),
-            ),
-            patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()),
-        ):
-            result = await client._gql_query("op", "query")
-            assert result == post_json
-            assert client._country_code == expected_country
+        )
+        monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+        result = await client._gql_query("op", "query")
+        assert result == post_json
+        assert client._country_code == expected_country
     else:
-        with (
-            patch(
-                "custom_components.resmed_myair.client.rest_client.jwt.decode",
-                side_effect=Exception("bad jwt"),
-            ),
-            pytest.raises(ParsingError, match="Unable to decode id_token into jwt_data"),
-        ):
+
+        def bad_decode(*a, **k):
+            raise ValueError("bad jwt")
+
+        monkeypatch.setattr(
+            "custom_components.resmed_myair.client.rest_client.jwt.decode",
+            bad_decode,
+        )
+        with pytest.raises(ParsingError, match="Unable to decode id_token into jwt_data"):
             await client._gql_query("op", "query")
 
 
@@ -699,7 +654,9 @@ async def test_gql_query_variants(
         (None, None, "country_code not defined and id_token not present to identify it"),
     ],
 )
-async def test_gql_query_failure_variants(config_na, session, id_token, jwt_behavior, match):
+async def test_gql_query_failure_variants(
+    config_na, session, id_token, jwt_behavior, match, monkeypatch
+):
     """Parametrized: _gql_query failure modes for JWT decoding, missing key, and missing id_token."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
@@ -709,22 +666,22 @@ async def test_gql_query_failure_variants(config_na, session, id_token, jwt_beha
     if id_token is not None and jwt_behavior is not None:
         # Configure jwt.decode according to jwt_behavior dict
         if "side_effect" in jwt_behavior:
-            with (
-                patch(
-                    "custom_components.resmed_myair.client.rest_client.jwt.decode",
-                    side_effect=jwt_behavior["side_effect"],
-                ),
-                pytest.raises(ParsingError, match=match),
-            ):
+
+            def side(*a, **k):
+                raise jwt_behavior["side_effect"]
+
+            monkeypatch.setattr(
+                "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                side,
+            )
+            with pytest.raises(ParsingError, match=match):
                 await client._gql_query("op", "query")
         else:
-            with (
-                patch(
-                    "custom_components.resmed_myair.client.rest_client.jwt.decode",
-                    return_value=jwt_behavior.get("return_value", {}),
-                ),
-                pytest.raises(ParsingError, match=match),
-            ):
+            monkeypatch.setattr(
+                "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                lambda *a, **k: jwt_behavior.get("return_value", {}),
+            )
+            with pytest.raises(ParsingError, match=match):
                 await client._gql_query("op", "query")
     else:
         # No id_token provided -> immediate failure
@@ -733,7 +690,7 @@ async def test_gql_query_failure_variants(config_na, session, id_token, jwt_beha
 
 
 @pytest.mark.asyncio
-async def test_gql_query_graphql_error(config_na, session):
+async def test_gql_query_graphql_error(config_na, session, monkeypatch):
     """Ensure gql_query raises AuthenticationError on GraphQL auth errors."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
@@ -745,19 +702,13 @@ async def test_gql_query_graphql_error(config_na, session):
         return_value={"errors": [{"errorInfo": {"errorType": "unauthorized", "errorCode": "401"}}]}
     )
 
-    with (
-        patch.object(
-            session,
-            "post",
-            return_value=make_mock_aiohttp_context_manager(mock_res),
-        ),
-        patch.object(
-            RESTClient,
-            "_resmed_response_error_check",
-            side_effect=AuthenticationError("unauthorized"),
-        ),
-        pytest.raises(AuthenticationError, match="unauthorized"),
-    ):
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_res)
+    monkeypatch.setattr(
+        RESTClient,
+        "_resmed_response_error_check",
+        AsyncMock(side_effect=AuthenticationError("unauthorized")),
+    )
+    with pytest.raises(AuthenticationError, match="unauthorized"):
         await client._gql_query("op", "query")
 
 
@@ -840,15 +791,15 @@ async def test_gql_query_graphql_error(config_na, session):
     ],
 )
 async def test_data_fetch_success_variants(
-    config_na, session, method_name, mock_response, expected
+    config_na, session, method_name, mock_response, expected, monkeypatch
 ):
     """Parametrized: success paths for data-fetching helpers (sleep records and device data)."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
-    with patch.object(client, "_gql_query", AsyncMock(return_value=mock_response)):
-        result = await getattr(client, method_name)()
-        assert result == expected
+    monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
+    result = await getattr(client, method_name)()
+    assert result == expected
 
 
 @pytest.mark.asyncio
@@ -862,15 +813,15 @@ async def test_data_fetch_success_variants(
         ),
     ],
 )
-async def test_get_sleep_records_failure_variants(config_na, session, mock_response, match_msg):
+async def test_get_sleep_records_failure_variants(
+    config_na, session, mock_response, match_msg, monkeypatch
+):
     """Parametrized: get_sleep_records raises ParsingError for missing keys and non-list items."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
-    with (
-        patch.object(client, "_gql_query", AsyncMock(return_value=mock_response)),
-        pytest.raises(ParsingError, match=match_msg),
-    ):
+    monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
+    with pytest.raises(ParsingError, match=match_msg):
         await client.get_sleep_records()
 
 
@@ -885,15 +836,15 @@ async def test_get_sleep_records_failure_variants(config_na, session, mock_respo
         ),
     ],
 )
-async def test_get_user_device_data_failure_variants(config_na, session, mock_response, match_msg):
+async def test_get_user_device_data_failure_variants(
+    config_na, session, mock_response, match_msg, monkeypatch
+):
     """Parametrized: get_user_device_data raises ParsingError for missing keys and invalid response types."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
-    with (
-        patch.object(client, "_gql_query", AsyncMock(return_value=mock_response)),
-        pytest.raises(ParsingError, match=match_msg),
-    ):
+    monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
+    with pytest.raises(ParsingError, match=match_msg):
         await client.get_user_device_data()
 
 
@@ -905,7 +856,9 @@ async def test_get_user_device_data_failure_variants(config_na, session, mock_re
         ([], []),
     ],
 )
-async def test_get_initial_dt_variants(config_na, session, cookie_headers, expected_extract_arg):
+async def test_get_initial_dt_variants(
+    config_na, session, cookie_headers, expected_extract_arg, monkeypatch
+):
     """Parametrized checks for _get_initial_dt with different cookie headers."""
     client = RESTClient(config_na, session)
     mock_headers = MagicMock()
@@ -913,17 +866,12 @@ async def test_get_initial_dt_variants(config_na, session, cookie_headers, expec
     mock_response = MagicMock()
     mock_response.headers = mock_headers
 
-    with (
-        patch.object(
-            session,
-            "get",
-            return_value=make_mock_aiohttp_context_manager(mock_response),
-        ),
-        patch.object(client, "_extract_and_update_cookies", AsyncMock()) as mock_extract,
-    ):
-        await client._get_initial_dt()
-        session.get.assert_called_once()
-        mock_extract.assert_called_once_with(expected_extract_arg)
+    session.get.return_value = make_mock_aiohttp_context_manager(mock_response)
+    mock_extract = AsyncMock()
+    monkeypatch.setattr(client, "_extract_and_update_cookies", mock_extract)
+    await client._get_initial_dt()
+    session.get.assert_called_once()
+    mock_extract.assert_called_once_with(expected_extract_arg)
 
 
 @pytest.mark.asyncio
@@ -988,7 +936,7 @@ async def test_authn_check_email_factor_id_exceptions(authn_dict, session, confi
     ],
 )
 async def test_get_access_token_token_change_and_logging(
-    config_na, session, caplog, returned_token, expect_log, expect_change
+    config_na, session, caplog, returned_token, expect_log, expect_change, monkeypatch
 ):
     """Parametrized: test token equality vs new token and logging behavior for _get_access_token."""
     # MyAirConfig is a NamedTuple (immutable) so create a modified copy
@@ -1012,10 +960,8 @@ async def test_get_access_token_token_change_and_logging(
     session.post.return_value = make_mock_aiohttp_context_manager(mock_token_res)
 
     # Patch error check to do nothing and always capture INFO logs
-    with (
-        patch.object(RESTClient, "_resmed_response_error_check", AsyncMock()),
-        caplog.at_level(logging.INFO),
-    ):
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    with caplog.at_level(logging.INFO):
         await client._get_access_token()
 
     # Assert token updated only when expected
@@ -1040,7 +986,7 @@ async def test_get_access_token_token_change_and_logging(
     ],
 )
 async def test_status_helpers_variants(
-    config_na, session, method_name, session_method, response_json, expected
+    config_na, session, method_name, session_method, response_json, expected, monkeypatch
 ):
     """Parametrized test covering small boolean helper methods that hit the auth endpoints."""
     client = RESTClient(config_na, session)
@@ -1052,6 +998,6 @@ async def test_status_helpers_variants(
         session.post.return_value = make_mock_aiohttp_context_manager(mock_res)
     else:
         session.get.return_value = make_mock_aiohttp_context_manager(mock_res)
-    with patch.object(RESTClient, "_resmed_response_error_check", new=AsyncMock()):
-        result = await getattr(client, method_name)()
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    result = await getattr(client, method_name)()
     assert result is expected

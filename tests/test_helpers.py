@@ -40,6 +40,8 @@ MODULE_PATHS = [
     "custom_components.resmed_myair.helpers",
 ]
 
+MODULE_IDS = [p.replace("custom_components.resmed_myair.", "") for p in MODULE_PATHS]
+
 
 def _replace_placeholder(obj: Any, placeholder: str, replacement: Any) -> Any:
     """Recursively replace placeholder strings in expected structures.
@@ -58,7 +60,7 @@ def _replace_placeholder(obj: Any, placeholder: str, replacement: Any) -> Any:
     return obj
 
 
-@pytest.mark.parametrize("module_path", MODULE_PATHS)
+@pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
 def test_redact_dict_equivalence(monkeypatch, module_path):
     """Run the common redact_dict test vectors against both implementations.
 
@@ -78,7 +80,7 @@ def test_redact_dict_equivalence(monkeypatch, module_path):
         assert redact(inp) == expected
 
 
-@pytest.mark.parametrize("module_path", MODULE_PATHS)
+@pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
 def test_redact_dict_empty_and_trivial(monkeypatch, module_path):
     """Ensure redact_dict handles empty/trivial inputs for both implementations."""
     module = importlib.import_module(module_path)
