@@ -31,17 +31,13 @@ repos:
         additional_dependencies:
           - tomli
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.12
+    rev: v0.13.0
     hooks:
       # Run the linter.
       - id: ruff-check
         args: [--fix]
       # Run the formatter.
       - id: ruff-format
-  - repo: https://gitlab.com/vojko.pribudic.foss/pre-commit-update
-    rev: v0.8.0
-    hooks:
-      - id: pre-commit-update
 
 ci:
   autofix_commit_msg: |
