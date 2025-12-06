@@ -68,7 +68,7 @@ jobs:
 
       - name: Add Zip to Action
         if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v5.0.0
         with:
           name: resmed_myair
           path: ./custom_components/resmed_myair/resmed_myair.zip
