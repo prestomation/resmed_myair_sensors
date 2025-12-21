@@ -15,7 +15,7 @@
 | custom\_components/resmed\_myair/coordinator.py          |       36 |        0 |        0 |        0 |     100% |           |
 | custom\_components/resmed\_myair/helpers.py              |       22 |        0 |       16 |        0 |     100% |           |
 | custom\_components/resmed\_myair/sensor.py               |      125 |        0 |       14 |        0 |     100% |           |
-|                                                **TOTAL** |  **769** |    **0** |  **164** |    **0** | **100%** |           |
+| **TOTAL**                                                |  **769** |    **0** |  **164** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
