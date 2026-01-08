@@ -9,7 +9,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, Platform, UnitOfTime
 
-VERSION = "v0.2.5"
+VERSION = "v0.2.6"
 
 DOMAIN = "resmed_myair"
 PLATFORMS: list[Platform] = [Platform.SENSOR]
