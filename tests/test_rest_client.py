@@ -88,7 +88,7 @@ async def test_extract_and_update_cookies_variants(
     client._cookie_dt = initial_dt
     client._cookie_sid = initial_sid
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         await client._extract_and_update_cookies(cookie_headers)
     assert client._cookie_dt == expected_dt
     assert client._cookie_sid == expected_sid
@@ -100,6 +100,12 @@ async def test_extract_and_update_cookies_variants(
         )
     else:
         assert "Changing Device Token" not in caplog.text
+
+    # Check sid update logging when sid changed from a non-None value
+    if initial_sid is not None and expected_sid is not None and initial_sid != expected_sid:
+        assert "Updating to new sid cookie" in caplog.text
+    else:
+        assert "Updating to new sid cookie" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -854,6 +860,41 @@ async def test_get_user_device_data_failure_variants(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "masks,expect_warning,expected_mask",
+    [
+        ([{"maskCode": "MASK123"}], False, "MASK123"),
+        ([{"maskCode": ""}], False, None),
+        ([], True, None),
+    ],
+)
+async def test_get_user_device_data_masks_variants(
+    config_na, session, masks, expect_warning, expected_mask, monkeypatch, caplog
+):
+    """Parametrized tests for masks behavior in get_user_device_data."""
+    client = RESTClient(config_na, session)
+    client._access_token = "access"
+    client._country_code = "US"
+
+    device = {"serialNumber": "12345"}
+    mock_response = {"data": {"getPatientWrapper": {"fgDevices": [device], "masks": masks}}}
+    monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
+
+    with caplog.at_level(logging.WARNING):
+        result = await client.get_user_device_data()
+
+    if expect_warning:
+        assert "Error getting User Mask Data" in caplog.text
+    else:
+        assert "Error getting User Mask Data" not in caplog.text
+
+    if expected_mask:
+        assert result["maskCode"] == expected_mask
+    else:
+        assert "maskCode" not in result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "cookie_headers, expected_extract_arg",
     [
         (["DT=token; Path=/;"], ["DT=token; Path=/;"]),
@@ -1005,3 +1046,23 @@ async def test_status_helpers_variants(
     monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
     result = await getattr(client, method_name)()
     assert result is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "resp_dict,expected_substring",
+    [
+        ({"errors": [{"message": "custom error message"}]}, "custom error message"),
+        ({"errors": [{"foo": "bar"}]}, "'foo': 'bar'"),
+        ({"errors": [{"errorInfo": None}]}, "Unable to parse error message"),
+    ],
+)
+async def test_resmed_response_error_check_parsing_variants(resp_dict, expected_substring):
+    """Parametrized: check various parsing fallbacks in _resmed_response_error_check."""
+    response = MagicMock(spec=ClientResponse)
+    response.status = 400
+    response.headers = CIMultiDict()
+
+    with pytest.raises(HttpProcessingError) as exc:
+        await RESTClient._resmed_response_error_check("any_step", response, resp_dict)
+    assert expected_substring in str(exc.value)
