@@ -280,27 +280,32 @@ class RESTClient(MyAirClient):
     ) -> None:
         if "errors" in resp_dict:
             try:
-                error_message: str = f"{resp_dict['errors'][0]['errorInfo']['errorType']}: {resp_dict['errors'][0]['errorInfo']['errorCode']}"
-                if resp_dict["errors"][0]["errorInfo"]["errorType"] == "unauthorized":
-                    if step == "gql_query" and not initial:
-                        raise ParsingError(
+                if "errorInfo" in resp_dict["errors"][0]:
+                    error_message: str = f"{resp_dict['errors'][0]['errorInfo']['errorType']}: {resp_dict['errors'][0]['errorInfo']['errorCode']}"
+                    if resp_dict["errors"][0]["errorInfo"]["errorType"] == "unauthorized":
+                        if step == "gql_query" and not initial:
+                            raise ParsingError(
+                                f"Getting unauthorized error on {step} step. {error_message}"
+                            )
+                        raise AuthenticationError(
                             f"Getting unauthorized error on {step} step. {error_message}"
                         )
-                    raise AuthenticationError(
-                        f"Getting unauthorized error on {step} step. {error_message}"
-                    )
-                if resp_dict["errors"][0]["errorInfo"]["errorType"] == "badRequest" and resp_dict[
-                    "errors"
-                ][0]["errorInfo"]["errorCode"] in {
-                    "onboardingFlowInProgress",
-                    "equipmentNotAssigned",
-                }:
-                    raise IncompleteAccountError(f"{error_message}")
-            except TypeError:
-                error_message = "Error"
+                    if resp_dict["errors"][0]["errorInfo"][
+                        "errorType"
+                    ] == "badRequest" and resp_dict["errors"][0]["errorInfo"]["errorCode"] in {
+                        "onboardingFlowInProgress",
+                        "equipmentNotAssigned",
+                    }:
+                        raise IncompleteAccountError(f"{error_message}")
+                elif "message" in resp_dict["errors"][0]:
+                    error_message = resp_dict["errors"][0]["message"]
+                else:
+                    error_message = str(resp_dict["errors"][0])
+            except (TypeError, KeyError) as e:
+                error_message = f"Unable to parse error message. {type(e).__name__}: {e}"
             raise HttpProcessingError(
                 code=response.status,
-                message=f"{step} step: {error_message}. {resp_dict})",
+                message=f"{step} step: {error_message}. {resp_dict}",
                 headers=CIMultiDict(response.headers),
             )
 
@@ -637,14 +642,17 @@ class RESTClient(MyAirClient):
         query: str = """
         query getPatientWrapper {
             getPatientWrapper {
+                masks {
+                    maskCode
+                }
                 fgDevices {
                     serialNumber
-                    deviceType
-                    lastSleepDataReportTime
                     localizedName
+                    deviceSeries
+                    deviceFamily
+                    lastSleepDataReportTime
                     fgDeviceManufacturerName
                     fgDevicePatientId
-                    __typename
                 }
             }
         }
@@ -656,10 +664,18 @@ class RESTClient(MyAirClient):
         )
         _LOGGER.debug("[get_user_device_data] records_dict: %s", redact_dict(records_dict))
         try:
-            device: Mapping[str, Any] = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
+            device: dict[str, Any] = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
         except Exception as e:
             _LOGGER.error("Error getting User Device Data. %s: %s", type(e).__name__, e)
             raise ParsingError("Error getting User Device Data") from e
+        mask_code: str | None = None
+        try:
+            mask_code = records_dict["data"]["getPatientWrapper"]["masks"][0]["maskCode"]
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.warning("Error getting User Mask Data. %s: %s", type(e).__name__, e)
+        else:
+            if mask_code:
+                device["maskCode"] = mask_code
         if not isinstance(device, dict):
             _LOGGER.error("Error getting User Device Data. Returned data is not a dict")
             raise ParsingError("Error getting User Device Data. Returned data is not a dict")
