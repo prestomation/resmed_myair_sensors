@@ -1,8 +1,4 @@
-"""Home Assistant Custom Component for ResMed myAir devices.
-
-It uses the myair_client which is standalone and can be used outside Home Assistant
-myair_client is a reverse engineering and can break at anytime.
-"""
+"""The ResMed myAir integration."""
 
 from collections.abc import MutableMapping
 import logging
@@ -21,6 +17,7 @@ from .const import (
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
+    DOMAIN,
     PLATFORMS,
     REGION_NA,
     VERSION,
@@ -50,12 +47,22 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     coordinator: MyAirDataUpdateCoordinator = MyAirDataUpdateCoordinator(
         hass=hass, config_entry=config_entry, myair_client=client
     )
+    sanitized_username = config_entry.data[CONF_USER_NAME].replace("@", "_").replace(".", "_")
+    service_name = f"force_poll_{sanitized_username}"
 
     config_entry.runtime_data = coordinator
+    await coordinator.async_initialize()
 
     await coordinator.async_config_entry_first_refresh()
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+
+    async def refresh(_: Any) -> None:
+        await coordinator.async_refresh()
+
+    hass.services.async_register(DOMAIN, service_name, refresh)
+    config_entry.async_on_unload(lambda: hass.services.async_remove(DOMAIN, service_name))
+
     return True
 
 
@@ -78,6 +85,4 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading: %s", redact_dict(entry.data))
-    unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

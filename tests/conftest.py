@@ -17,6 +17,7 @@ from custom_components.resmed_myair.const import (
     REGION_EU,
     REGION_NA,
 )
+from custom_components.resmed_myair.coordinator import _merge_sleep_history
 
 
 def _ensure_config_entries_helpers(hass: Any) -> None:
@@ -302,9 +303,17 @@ def coordinator_factory():
         class DummyCoordinator:
             def __init__(self, d: dict):
                 self.data = d
+                self._usage_hours_history: list[dict] = []
 
             def async_add_listener(self, *args, **kwargs):
                 return lambda: None
+
+            @property
+            def chart_sleep_records(self):
+                history = self.data.get("sleep_records_history")
+                if not history:
+                    history = self.data.get("sleep_records", [])
+                return _merge_sleep_history(self._usage_hours_history, history)
 
         return DummyCoordinator(data)
 
