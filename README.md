@@ -1,4 +1,5 @@
 # resmed_myair
+[![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=integration%20usage&suffix=%20installs&cacheSeconds=15600&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json&query=%24.resmed_myair.total)](https://analytics.home-assistant.io/custom_integrations.json)
 
 [![GitHub Downloads][downloads-shield]][releases]
 [![GitHub Latest Downloads][downloads-latest-shield]][releases]
