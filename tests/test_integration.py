@@ -13,7 +13,9 @@ from custom_components.resmed_myair import (
     sensor as sensor_platform,
 )
 from custom_components.resmed_myair.const import (
+    CONF_USER_NAME,
     DEVICE_SENSOR_DESCRIPTIONS,
+    DOMAIN,
     PLATFORMS,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
 )
@@ -22,6 +24,8 @@ from custom_components.resmed_myair.sensor import (
     MyAirFriendlyUsageTime,
     MyAirMostRecentSleepDate,
     MyAirSleepRecordSensor,
+    MyAirUsageHoursAverageSensor,
+    MyAirUsageHoursSensor,
 )
 
 
@@ -37,6 +41,7 @@ async def test_async_setup_entry_refresh_failure(hass, config_entry, session, mo
     mock_coordinator = MagicMock()
     monkeypatch.setattr(resmed_module, "MyAirDataUpdateCoordinator", mock_coordinator)
     instance = mock_coordinator.return_value
+    instance.async_initialize = AsyncMock()
     instance.async_config_entry_first_refresh = AsyncMock(side_effect=Exception("refresh fail"))
 
     # Replace hass.config_entries.async_forward_entry_setups with an AsyncMock and keep a ref
@@ -59,6 +64,7 @@ async def test_async_setup_entry_multiple_calls(hass, config_entry, session, mon
     mock_coordinator = MagicMock()
     monkeypatch.setattr(resmed_module, "MyAirDataUpdateCoordinator", mock_coordinator)
     instance = mock_coordinator.return_value
+    instance.async_initialize = AsyncMock()
     instance.async_config_entry_first_refresh = AsyncMock()
 
     monkeypatch.setattr(hass.config_entries, "async_forward_entry_setups", AsyncMock())
@@ -71,6 +77,28 @@ async def test_async_setup_entry_multiple_calls(hass, config_entry, session, mon
     assert fwd.await_count == 2
     fwd.assert_awaited_with(config_entry, PLATFORMS)
     assert instance.async_config_entry_first_refresh.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_registers_force_poll_service(hass, config_entry, session, monkeypatch):
+    """Test integration setup registers the per-user force poll service."""
+    monkeypatch.setattr(
+        resmed_module, "async_create_clientsession", lambda *args, **kwargs: session
+    )
+
+    mock_coordinator = MagicMock()
+    monkeypatch.setattr(resmed_module, "MyAirDataUpdateCoordinator", mock_coordinator)
+    instance = mock_coordinator.return_value
+    instance.async_initialize = AsyncMock()
+    instance.async_config_entry_first_refresh = AsyncMock()
+    instance.async_refresh = AsyncMock()
+
+    monkeypatch.setattr(hass.config_entries, "async_forward_entry_setups", AsyncMock())
+
+    await async_setup_entry(hass, config_entry)
+
+    service_name = f"force_poll_{config_entry.data[CONF_USER_NAME].replace('@', '_').replace('.', '_')}"
+    assert hass.services.has_service(DOMAIN, service_name)
 
 
 @pytest.mark.asyncio
@@ -394,6 +422,7 @@ async def test_force_poll_service_triggers_refresh(
     # attributes tests expect (async_refresh, async_config_entry_first_refresh, .data)
     dummy_coordinator = coordinator_factory(mock=True)
     dummy_coordinator.data = {"device": {"serialNumber": "SN123"}, "sleep_records": []}
+    dummy_coordinator.async_initialize = AsyncMock()
     config_entry.runtime_data = dummy_coordinator
     config_entry.hass = hass
 
@@ -406,6 +435,9 @@ async def test_force_poll_service_triggers_refresh(
         domains.append(domain)
 
     hass.services.async_register = register
+    monkeypatch.setattr(
+        resmed_module, "async_create_clientsession", lambda *args, **kwargs: MagicMock()
+    )
 
     hass.config_entries.async_forward_entry_setups = AsyncMock(
         side_effect=fake_forward_entry_setups
@@ -474,10 +506,12 @@ async def test_async_setup_entry_registers_all_sensors(hass, config_entry, monke
     assert any(isinstance(e, MyAirSleepRecordSensor) for e in added_entities)
     assert any(isinstance(e, MyAirDeviceSensor) for e in added_entities)
     assert any(isinstance(e, MyAirFriendlyUsageTime) for e in added_entities)
+    assert any(isinstance(e, MyAirUsageHoursSensor) for e in added_entities)
+    assert sum(isinstance(e, MyAirUsageHoursAverageSensor) for e in added_entities) == 2
     assert any(isinstance(e, MyAirMostRecentSleepDate) for e in added_entities)
     expected_count = (
         len(DEVICE_SENSOR_DESCRIPTIONS)
         + len(SLEEP_RECORD_SENSOR_DESCRIPTIONS)
-        + 2  # FriendlyUsageTime + MostRecentSleepDate
+        + 5  # FriendlyUsageTime + UsageHours + 7d Avg + 30d Avg + MostRecentSleepDate
     )
     assert len(added_entities) == expected_count

@@ -1,0 +1,60 @@
+cpap_usage_range_day:
+  alias: CPAP Usage Range Day
+  sequence:
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.cpap_usage_range
+      data:
+        option: 1D
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.cpap_usage_page
+      data:
+        value: 0
+
+cpap_usage_range_week:
+  alias: CPAP Usage Range Week
+  sequence:
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.cpap_usage_range
+      data:
+        option: 7D
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.cpap_usage_page
+      data:
+        value: 0
+
+cpap_usage_range_30d:
+  alias: CPAP Usage Range 30D
+  sequence:
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.cpap_usage_range
+      data:
+        option: 30D
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.cpap_usage_page
+      data:
+        value: 0
+
+cpap_usage_prev:
+  alias: CPAP Usage Previous Range
+  sequence:
+    - action: input_number.increment
+      target:
+        entity_id: input_number.cpap_usage_page
+
+cpap_usage_next:
+  alias: CPAP Usage Next Range
+  sequence:
+    - if:
+        - condition: numeric_state
+          entity_id: input_number.cpap_usage_page
+          above: 0
+      then:
+        - action: input_number.decrement
+          target:
+            entity_id: input_number.cpap_usage_page

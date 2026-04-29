@@ -13,9 +13,11 @@
 
 ## Features
 
-This integration creates sensors from your myAir CPAP data like AHI Events/hr, Usage Minutes, Mask On/Off count, Mask Leak %. There is also a Last Sleep Data Recorded sensor to tell you the last date that myAir has recorded. This can be used to, say, notify you of your scores when they are updated in myAir in the morning.
+This integration creates sensors from your myAir CPAP data like AHI Events/hr, Usage Minutes, Usage Hours, 7-day and 30-day Usage Hours averages, Mask On/Off count, Mask Leak %. There is also a Last Sleep Data Recorded sensor to tell you the last date that myAir has recorded. This can be used to, say, notify you of your scores when they are updated in myAir in the morning.
 
 By the nature of CPAP data, sensors will only update once per day (assuming your CPAP is used every day). For this reason, the integration only polls every 30 minutes. A service exists for each config that will force update if you want to automate the sync after you wake up.
+
+For nightly metrics, the integration also imports the last 30 days of dated myAir records into Home Assistant recorder statistics. This lets you graph nightly usage hours, AHI, mask on/off count, mask leak %, and sleep score with the standard `statistics-graph` card instead of relying on a sensor that appears to increase and reset. The live sensor exposes the imported recorder statistic ID in its `historical_statistic_id` attribute. Nightly usage hours are imported as cumulative `sum` statistics so Home Assistant can render daily bars using the `change` statistic type.
 
 ## Installation via HACS
 
@@ -35,6 +37,9 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
 
 1. CPAP AHI Events Per Hour
 1. CPAP Usage Minutes
+1. CPAP Usage Hours
+1. CPAP Usage Hours 7 Day Average
+1. CPAP Usage Hours 30 Day Average
 1. CPAP Mask On/Off Count
 1. CPAP Current Data Date
     * This is the last date currently being displayed by the other sensors
@@ -44,6 +49,113 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
     * This is the datetime the CPAP uploaded the most recent data
 1. Most Recent Sleep Date
     * This is the most recent date for which data is available. This will match Current Data Date if you use your CPAP every day. An automation that triggers when these two sensors are different will signal that you have missed a night
+
+## Dashboard card
+
+An example `statistics-graph` card is available at [`examples/lovelace_sleep_statistics.yaml`](examples/lovelace_sleep_statistics.yaml). For cloud-backed nightly bars, use the `historical_statistic_id` attribute from the live usage-hours sensor in the card YAML. Replace the example entity IDs / statistic IDs with the values from your Home Assistant instance for:
+
+* CPAP Usage Hours
+* CPAP Usage Hours 7 Day Average
+* CPAP Usage Hours 30 Day Average
+* CPAP AHI Events Per Hour
+* CPAP Mask On/Off Count
+* CPAP Mask Leak %
+* CPAP Total myAir Score
+
+If you use `apexcharts-card`, the `CPAP Usage Hours` sensor also exposes a `daily_usage_hours` attribute containing the last 30 nightly data points so a custom card can render bars directly from the entity without relying on the built-in statistics-graph card behavior. See [`examples/apexcharts_card.yaml`](examples/apexcharts_card.yaml) and [`examples/apexcharts_dashboard.yaml`](examples/apexcharts_dashboard.yaml).
+
+For a more interactive dashboard, [`examples/apexcharts_navigation_dashboard.yaml`](examples/apexcharts_navigation_dashboard.yaml) adds `Prev`, `Next`, `1D`, `7D`, and `30D` controls using `config-template-card`, plus the required helpers/scripts in [`examples/navigation_helpers.yaml`](examples/navigation_helpers.yaml) and [`examples/navigation_scripts.yaml`](examples/navigation_scripts.yaml).
+
+### Built-in Statistics Graph
+
+This is the safest option because it only uses built-in Home Assistant cards. It does not require HACS or third-party frontend cards.
+
+How it works:
+
+* The integration imports nightly usage hours into Home Assistant recorder statistics.
+* The `CPAP Usage Hours` sensor exposes the internal recorder statistic ID in its `historical_statistic_id` attribute.
+* A `statistics-graph` card can graph that statistic ID directly.
+
+Pros:
+
+* No HACS dependency
+* Uses only built-in Home Assistant dashboard cards
+* More stable over time
+
+Cons:
+
+* The card uses an internal recorder statistic ID, not just a normal entity
+* Formatting is limited
+* The card still shows the built-in history/navigation affordance
+
+Setup steps:
+
+1. Install the integration and restart Home Assistant.
+2. Go to Developer Tools -> States.
+3. Open `sensor.cpap_usage_hours`.
+4. Copy the `historical_statistic_id` attribute.
+5. Paste a `statistics-graph` card into your dashboard raw YAML or card editor and replace the statistic ID with your actual value.
+
+Example card:
+
+```yaml
+type: statistics-graph
+title: CPAP Usage Hours
+chart_type: bar
+period: day
+days_to_show: 30
+stat_types:
+  - change
+hide_legend: true
+entities:
+  - resmed_myair:23172442329_usagehours_sum
+```
+
+If you want a full dashboard example, see [`examples/working_card.yaml`](examples/working_card.yaml) and the multi-view example YAML in this repository.
+
+### ApexCharts Card
+
+This is the better UX option, but it depends on third-party frontend cards from HACS.
+
+How it works:
+
+* The integration exposes a `daily_usage_hours` attribute on `sensor.cpap_usage_hours`.
+* That attribute contains the nightly usage points plus additional nightly metrics like AHI, mask on/off count, mask leak %, and myAir score.
+* `apexcharts-card` reads those points directly from the entity attribute and renders a custom bar chart with custom tooltips.
+
+Pros:
+
+* Better chart presentation
+* Tooltip can show `6h 26m` instead of decimal-only hours
+* Tooltip can include AHI, mask on/off, leak %, and score
+* Dashboard YAML does not need the internal recorder statistic ID
+
+Cons:
+
+* Requires HACS
+* Requires `ApexCharts Card`
+* Optional navigation views increase dashboard YAML complexity
+
+Setup steps:
+
+1. Install HACS if you do not already use it.
+2. In HACS -> Frontend, install `ApexCharts Card`.
+3. Restart Home Assistant if prompted.
+4. Paste one of the ApexCharts examples from this repository into your dashboard raw YAML editor.
+
+Available examples:
+
+* [`examples/apexcharts_card.yaml`](examples/apexcharts_card.yaml)
+  Single ApexCharts card
+* [`examples/apexcharts_dashboard.yaml`](examples/apexcharts_dashboard.yaml)
+  Full dashboard using ApexCharts
+* [`examples/apexcharts_views_dashboard.yaml`](examples/apexcharts_views_dashboard.yaml)
+  Multi-view dashboard with Week / 30 Days / 90 Days / 365 Days navigation
+
+Recommended choice:
+
+* If you want the most stable setup with no third-party dependencies, use the built-in `statistics-graph` card.
+* If you want the better chart UX and are comfortable using HACS, use the ApexCharts dashboard examples.
 
 ## Services
 
