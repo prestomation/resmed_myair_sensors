@@ -50,7 +50,6 @@ language_version = "python3.14"
 args = ["--config-file=pyproject.toml"]
 additional_dependencies = [
   "aiohttp",
-  "awesomeversion",
   "homeassistant-stubs",
   "pytest-asyncio",
   "pytest",

@@ -4,6 +4,7 @@ import asyncio
 import logging
 from unittest.mock import MagicMock
 
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -15,7 +16,6 @@ from custom_components.resmed_myair.sensor import (
     MyAirSleepRecordSensor,
     async_setup_entry,
 )
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
 
 
 @pytest.mark.parametrize(
