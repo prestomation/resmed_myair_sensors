@@ -14,9 +14,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
-          # Edited releases must package the existing release tag instead of a
-          # moving target_commitish branch.
-          ref: ${{ github.event_name == 'release' && github.event.action == 'edited' && github.event.release.tag_name || github.event_name == 'release' && github.event.release.target_commitish || github.ref }}
+          # Release events must package the release tag instead of a moving
+          # target_commitish branch.
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
 
       - name: Update Version in Manifest
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
