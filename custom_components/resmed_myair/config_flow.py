@@ -35,6 +35,13 @@ from .const import (
 from .helpers import redact_dict
 
 _LOGGER = logging.getLogger(__name__)
+EMAIL_VERIFICATION_ERRORS: tuple[type[Exception], ...] = (
+    AuthenticationError,
+    HttpProcessingError,
+    ClientResponseError,
+    ParsingError,
+    ValueError,
+)
 
 
 async def get_device(
@@ -133,8 +140,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                                 e,
                             )
                             return self.async_abort(reason="incomplete_account_verify_email")
-                    except Exception:  # noqa: BLE001, S110
-                        pass
+                    except EMAIL_VERIFICATION_ERRORS as email_error:
+                        _LOGGER.debug(
+                            "Unable to check email verification at async_step_user. %s: %s",
+                            type(email_error).__name__,
+                            email_error,
+                        )
                 _LOGGER.error(
                     "Account Setup Incomplete at async_step_user. %s: %s",
                     type(e).__name__,
@@ -206,8 +217,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                             e,
                         )
                         return self.async_abort(reason="incomplete_account_verify_email")
-                except Exception:  # noqa: BLE001, S110
-                    pass
+                except EMAIL_VERIFICATION_ERRORS as email_error:
+                    _LOGGER.debug(
+                        "Unable to check email verification at verify_mfa. %s: %s",
+                        type(email_error).__name__,
+                        email_error,
+                    )
                 _LOGGER.error("Account Setup Incomplete at verify_mfa. %s: %s", type(e).__name__, e)
                 return self.async_abort(reason="incomplete_account")
 
@@ -291,8 +306,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                                 e,
                             )
                             return self.async_abort(reason="incomplete_account_verify_email")
-                    except Exception:  # noqa: BLE001, S110
-                        pass
+                    except EMAIL_VERIFICATION_ERRORS as email_error:
+                        _LOGGER.debug(
+                            "Unable to check email verification at reauth_confirm. %s: %s",
+                            type(email_error).__name__,
+                            email_error,
+                        )
                 _LOGGER.error(
                     "Account Setup Incomplete at reauth_confirm. %s: %s",
                     type(e).__name__,
@@ -366,8 +385,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                             e,
                         )
                         return self.async_abort(reason="incomplete_account_verify_email")
-                except Exception:  # noqa: BLE001, S110
-                    pass
+                except EMAIL_VERIFICATION_ERRORS as email_error:
+                    _LOGGER.debug(
+                        "Unable to check email verification at reauth_verify_mfa. %s: %s",
+                        type(email_error).__name__,
+                        email_error,
+                    )
                 _LOGGER.error(
                     "Account Setup Incomplete at reauth_verify_mfa. %s: %s",
                     type(e).__name__,

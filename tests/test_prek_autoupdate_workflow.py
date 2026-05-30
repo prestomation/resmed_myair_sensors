@@ -117,6 +117,9 @@ def cleanup_script() -> Generator[ModuleType]:
     [
         ("actions/setup-python@v6", "pins a Python runtime for cleanup"),
         ("python-version: '3.14'", "uses the same runtime as local tooling"),
+        ("concurrency:", "serializes workflow runs that mutate the update branch"),
+        ("group: prek-autoupdate", "uses a stable concurrency group"),
+        ("cancel-in-progress: false", "queues update branch mutations instead of canceling them"),
         (WORKFLOW_SCRIPT_PATH, "runs the checked-in cleanup helper"),
         ("Close extra auto-generated PRs", "closes duplicate generated PRs"),
         ("Close stale prek update PRs", "closes stale PRs when no diff remains"),
@@ -153,6 +156,20 @@ def test_workflow_contains_expected_cleanup_logic(needle: str, reason: str) -> N
 def test_workflow_avoids_inline_repository_template_expansion() -> None:
     """Workflow should not expand the repository context inside shell scripts."""
     assert '--repository "${{ github.repository }}"' not in WORKFLOW_PATH.read_text()
+
+
+def test_workflow_scopes_write_permissions_to_update_job() -> None:
+    """Workflow should grant write permissions only to the mutating job."""
+    workflow = WORKFLOW_PATH.read_text()
+    jobs_index = workflow.index("jobs:")
+    root_block = workflow[:jobs_index]
+    job_block = workflow[jobs_index:]
+
+    assert "contents: write" not in root_block
+    assert "pull-requests: write" not in root_block
+    assert "permissions:" in job_block
+    assert "contents: write" in job_block
+    assert "pull-requests: write" in job_block
 
 
 def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(

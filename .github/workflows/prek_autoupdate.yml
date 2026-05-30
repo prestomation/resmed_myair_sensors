@@ -4,14 +4,17 @@ on:
     - cron: '0 2 * * 1'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
+concurrency:
+  group: prek-autoupdate
+  cancel-in-progress: false
 
 jobs:
   update-hooks:
     name: Update prek Hooks
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6

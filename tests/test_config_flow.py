@@ -361,7 +361,7 @@ async def test_async_step_reauth_incomplete_account_parametrized(
     if client_exists:
         flow._client = myair_client
         if is_email_verified == "exception":
-            flow._client.is_email_verified = AsyncMock(side_effect=Exception("fail"))
+            flow._client.is_email_verified = AsyncMock(side_effect=ParsingError("fail"))
         else:
             flow._client.is_email_verified = AsyncMock(return_value=is_email_verified)
     else:
@@ -446,7 +446,7 @@ async def test_async_step_reauth_verify_mfa_error(
             "exception",
             True,
             "incomplete_account",
-        ),  # Exception in is_email_verified (should abort, not raise)
+        ),  # ParsingError in is_email_verified (should abort, not raise)
     ],
 )
 async def test_async_step_reauth_verify_mfa_incomplete_account_parametrized(
@@ -479,7 +479,7 @@ async def test_async_step_reauth_verify_mfa_incomplete_account_parametrized(
     if client_exists:
         flow._client = myair_client
         if is_email_verified == "exception":
-            flow._client.is_email_verified = AsyncMock(side_effect=Exception("fail"))
+            flow._client.is_email_verified = AsyncMock(side_effect=ParsingError("fail"))
         else:
             flow._client.is_email_verified = AsyncMock(return_value=is_email_verified)
     else:
@@ -1012,7 +1012,7 @@ async def test_async_step_reauth_confirm_exceptions(
 async def test_async_step_verify_mfa_incomplete_account_email_check_exception(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock, myair_client: MagicMock
 ) -> None:
-    """Test async_step_verify_mfa IncompleteAccountError with Exception in is_email_verified."""
+    """Test async_step_verify_mfa IncompleteAccountError with ParsingError in is_email_verified."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -1024,8 +1024,8 @@ async def test_async_step_verify_mfa_incomplete_account_email_check_exception(
         "custom_components.resmed_myair.config_flow.get_mfa_device",
         AsyncMock(side_effect=IncompleteAccountError("incomplete")),
     )
-    # Patch is_email_verified to raise a generic Exception
-    flow._client.is_email_verified = AsyncMock(side_effect=Exception("unexpected error"))
+    # Patch is_email_verified to raise a client parsing error
+    flow._client.is_email_verified = AsyncMock(side_effect=ParsingError("unexpected error"))
     flow.async_abort = MagicMock(return_value={"type": "abort", "reason": "incomplete_account"})
 
     result = await flow.async_step_verify_mfa(user_input)
@@ -1040,7 +1040,7 @@ async def test_async_step_verify_mfa_incomplete_account_email_check_exception(
         (False, True, "incomplete_account_verify_email"),  # Email not verified
         (True, True, "incomplete_account"),  # Email verified
         (None, False, "incomplete_account"),  # No client
-        ("exception", True, "incomplete_account"),  # Exception in is_email_verified
+        ("exception", True, "incomplete_account"),  # ParsingError in is_email_verified
     ],
 )
 async def test_async_step_user_incomplete_account_parametrized(
@@ -1067,13 +1067,13 @@ async def test_async_step_user_incomplete_account_parametrized(
     if client_exists:
         flow._client = myair_client
         if is_email_verified == "exception":
-            flow._client.is_email_verified = AsyncMock(side_effect=Exception("fail"))
+            flow._client.is_email_verified = AsyncMock(side_effect=ParsingError("fail"))
         else:
             flow._client.is_email_verified = AsyncMock(return_value=is_email_verified)
     else:
         flow._client = None
 
-    # The flow should always abort, even if is_email_verified raises
+    # The flow should always abort if is_email_verified raises
     result = await flow.async_step_user(user_input)
     assert result["type"] == "abort"
     assert result["reason"] == expected_abort_reason
