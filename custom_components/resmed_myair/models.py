@@ -28,6 +28,13 @@ def _format_usage_time(total_usage_minutes: int | None) -> str | None:
     return f"{clamped_minutes // 60}:{clamped_minutes % 60:02}"
 
 
+def _to_optional_str(raw: Any) -> str | None:
+    """Return a normalized optional string value from arbitrary API payload data."""
+    if not isinstance(raw, str):
+        return None
+    return raw
+
+
 @dataclass(frozen=True, slots=True)
 class MyAirDevice:
     """Normalized typed representation of a device payload."""
@@ -39,18 +46,18 @@ class MyAirDevice:
     name: str | None
 
     @classmethod
-    def from_api(cls, data: Mapping[str, Any]) -> Self:
+    def from_api(cls, data: Mapping[str, Any] | None) -> Self:
         """Create a typed device from raw API payload data."""
-        raw = dict(data)
+        raw = dict(data or {})
         serial_number = raw.get("serialNumber", "")
         if not isinstance(serial_number, str):
             serial_number = ""
         return cls(
             raw=raw,
             serial_number=serial_number,
-            manufacturer=raw.get("fgDeviceManufacturerName"),
-            model=raw.get("deviceType"),
-            name=raw.get("localizedName"),
+            manufacturer=_to_optional_str(raw.get("fgDeviceManufacturerName")),
+            model=_to_optional_str(raw.get("deviceType")),
+            name=_to_optional_str(raw.get("localizedName")),
         )
 
     def native_value(self, key: str) -> Any | None:
@@ -69,9 +76,9 @@ class MyAirSleepRecord:
     has_usage: bool
 
     @classmethod
-    def from_api(cls, data: Mapping[str, Any]) -> Self:
+    def from_api(cls, data: Mapping[str, Any] | None) -> Self:
         """Create a typed sleep record from raw API payload data."""
-        raw = dict(data)
+        raw = dict(data or {})
         start_date = dt_util.parse_date(raw.get("startDate", ""))
         total_usage_minutes = _to_usage_minutes(raw.get("totalUsage"))
         has_usage = total_usage_minutes is not None and total_usage_minutes > 0

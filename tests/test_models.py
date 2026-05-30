@@ -84,10 +84,47 @@ def test_device_ignores_non_string_serial_number() -> None:
     assert device.serial_number == ""
 
 
+def test_device_fields_with_non_string_optional_values_are_none() -> None:
+    """Non-string optional fields should become None."""
+    device = MyAirDevice.from_api(
+        {
+            "fgDeviceManufacturerName": 123,
+            "deviceType": True,
+            "localizedName": {"name": "AirSense"},
+        }
+    )
+
+    assert device.manufacturer is None
+    assert device.model is None
+    assert device.name is None
+
+
 def test_sleep_record_with_missing_fields_defaults() -> None:
     """Missing usage and date values should be safe defaults."""
     record = MyAirSleepRecord.from_api({})
 
+    assert record.start_date is None
+    assert record.total_usage_minutes is None
+    assert record.friendly_usage_time is None
+    assert record.has_usage is False
+
+
+def test_device_from_api_accepts_none() -> None:
+    """from_api accepts None and produces a safe empty device."""
+    device = MyAirDevice.from_api(None)
+
+    assert device.raw == {}
+    assert device.serial_number == ""
+    assert device.manufacturer is None
+    assert device.model is None
+    assert device.name is None
+
+
+def test_sleep_record_from_api_accepts_none() -> None:
+    """from_api accepts None and produces a safe empty record."""
+    record = MyAirSleepRecord.from_api(None)
+
+    assert record.raw == {}
     assert record.start_date is None
     assert record.total_usage_minutes is None
     assert record.friendly_usage_time is None
