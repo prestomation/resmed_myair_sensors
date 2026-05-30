@@ -52,6 +52,7 @@ pass_filenames = false
 additional_dependencies = [
   "aiohttp",
   "homeassistant-stubs",
+  "PyJWT",
   "pytest-asyncio",
   "pytest",
   "pytest-cov",
