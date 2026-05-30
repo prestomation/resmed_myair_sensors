@@ -72,8 +72,8 @@ def test_redact_dict_equivalence(monkeypatch, module_path):
     # Ensure both modules redact the same keys for testing
     monkeypatch.setattr(module, "KEYS_TO_REDACT", {"username", "password", "token"}, raising=False)
 
-    redact = getattr(module, "redact_dict")
-    redacted_const = getattr(module, "REDACTED")
+    redact = module.redact_dict
+    redacted_const = module.REDACTED
 
     for inp, exp in COMMON_CASES:
         expected = _replace_placeholder(exp, "<REDACTED>", redacted_const)
@@ -85,7 +85,7 @@ def test_redact_dict_empty_and_trivial(monkeypatch, module_path):
     """Ensure redact_dict handles empty/trivial inputs for both implementations."""
     module = importlib.import_module(module_path)
     monkeypatch.setattr(module, "KEYS_TO_REDACT", {"username", "password", "token"}, raising=False)
-    redact = getattr(module, "redact_dict")
+    redact = module.redact_dict
 
     for inp, exp in EMPTY_TRIVIAL:
         assert redact(inp) == exp

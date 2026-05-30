@@ -7,12 +7,11 @@ from typing import Any
 from aiohttp import DummyCookieJar
 from aiohttp.client_exceptions import ClientResponseError
 from aiohttp.http_exceptions import HttpProcessingError
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, UnknownEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+import voluptuous as vol
 
 from .client.myair_client import (
     AuthenticationError,
@@ -101,7 +100,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 if device and status == AUTHN_SUCCESS:
                     _LOGGER.debug("[async_step_user] device: %s", redact_dict(device))
                     if "serialNumber" not in device:
-                        raise ParsingError("Unable to get Serial Number from Device Data")  # noqa: TRY301
+                        raise ParsingError("Unable to get Serial Number from Device Data")
                     serial_number: str = device["serialNumber"]
                     _LOGGER.info("Found device with serial number %s", serial_number)
 
@@ -128,12 +127,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     try:
                         if not (await self._client.is_email_verified()):
                             _LOGGER.error(
-                                "Account Setup Incomplete at async_step_user. Email Address not verified. %s: %s",
+                                "Account Setup Incomplete at async_step_user. "
+                                "Email Address not verified. %s: %s",
                                 type(e).__name__,
                                 e,
                             )
                             return self.async_abort(reason="incomplete_account_verify_email")
-                    except Exception:  # noqa: BLE001
+                    except Exception:  # noqa: BLE001, S110
                         pass
                 _LOGGER.error(
                     "Account Setup Incomplete at async_step_user. %s: %s",
@@ -200,12 +200,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 try:
                     if not (await self._client.is_email_verified()):
                         _LOGGER.error(
-                            "Account Setup Incomplete at verify_mfa. Email Address not verified. %s: %s",
+                            "Account Setup Incomplete at verify_mfa. "
+                            "Email Address not verified. %s: %s",
                             type(e).__name__,
                             e,
                         )
                         return self.async_abort(reason="incomplete_account_verify_email")
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001, S110
                     pass
                 _LOGGER.error("Account Setup Incomplete at verify_mfa. %s: %s", type(e).__name__, e)
                 return self.async_abort(reason="incomplete_account")
@@ -259,7 +260,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 if device and status == AUTHN_SUCCESS:
                     _LOGGER.debug("[async_step_reauth_confirm] device: %s", redact_dict(device))
                     if "serialNumber" not in device:
-                        raise ParsingError("Unable to get Serial Number from Device Data")  # noqa: TRY301
+                        raise ParsingError("Unable to get Serial Number from Device Data")
                     serial_number: str = device["serialNumber"]
                     _LOGGER.info("Found device with serial number %s", serial_number)
                     # await self.async_set_unique_id(serial_number)
@@ -284,12 +285,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     try:
                         if not (await self._client.is_email_verified()):
                             _LOGGER.error(
-                                "Account Setup Incomplete at reauth_confirm. Email Address not verified. %s: %s",
+                                "Account Setup Incomplete at reauth_confirm. "
+                                "Email Address not verified. %s: %s",
                                 type(e).__name__,
                                 e,
                             )
                             return self.async_abort(reason="incomplete_account_verify_email")
-                    except Exception:  # noqa: BLE001
+                    except Exception:  # noqa: BLE001, S110
                         pass
                 _LOGGER.error(
                     "Account Setup Incomplete at reauth_confirm. %s: %s",
@@ -358,12 +360,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 try:
                     if not (await self._client.is_email_verified()):
                         _LOGGER.error(
-                            "Account Setup Incomplete at reauth_verify_mfa. Email Address not verified. %s: %s",
+                            "Account Setup Incomplete at reauth_verify_mfa. "
+                            "Email Address not verified. %s: %s",
                             type(e).__name__,
                             e,
                         )
                         return self.async_abort(reason="incomplete_account_verify_email")
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001, S110
                     pass
                 _LOGGER.error(
                     "Account Setup Incomplete at reauth_verify_mfa. %s: %s",

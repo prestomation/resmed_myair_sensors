@@ -20,9 +20,9 @@ AUTH_NEEDS_MFA = "MFA_REQUIRED"
 
 # Config keys
 CONF_USER_NAME = "Username"
-CONF_PASSWORD = "Password"
+CONF_PASSWORD = "Password"  # noqa: S105
 CONF_REGION = "Region"
-CONF_DEVICE_TOKEN = "device_token"
+CONF_DEVICE_TOKEN = "device_token"  # noqa: S105
 CONF_VERIFICATION_CODE = "verification_code"
 
 REGION_NA = "NA"

@@ -155,12 +155,21 @@ convention = "google"
     "E501",    # line too long
     "S101",    # Use of assert detected
     "S105",    # Possible hardcoded password
+    "S106",    # Possible hardcoded password
     "S108",    # hardcoded-temp-file
     "SLF001",  # Private member accessed
+    # Temporary
+    "ANN001",
+    "ANN201",
+    "ANN202",
+    "ANN204",
+    "PT006",
 ]
 
 [tool.codespell]
 ignore-words-list = "hass"
+skip = "custom_components/resmed_myair/translations/fr.json"
+
 
 [tool.pytest.ini_options]
 addopts = """

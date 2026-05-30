@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.config_entries import UnknownEntry
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -23,7 +24,6 @@ from custom_components.resmed_myair.config_flow import (
     get_device,
     get_mfa_device,
 )
-from homeassistant.config_entries import UnknownEntry
 
 
 @pytest.fixture

@@ -48,6 +48,7 @@ rev = "v2.1.0"
 id = "mypy"
 language_version = "python3.14"
 args = ["--config-file=pyproject.toml"]
+pass_filenames = false
 additional_dependencies = [
   "aiohttp",
   "homeassistant-stubs",

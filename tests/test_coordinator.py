@@ -2,11 +2,11 @@
 
 from unittest.mock import MagicMock
 
+from homeassistant.exceptions import ConfigEntryAuthFailed
 import pytest
 
 from custom_components.resmed_myair.client.myair_client import AuthenticationError, ParsingError
 from custom_components.resmed_myair.coordinator import MyAirDataUpdateCoordinator
-from homeassistant.exceptions import ConfigEntryAuthFailed
 
 
 @pytest.mark.asyncio

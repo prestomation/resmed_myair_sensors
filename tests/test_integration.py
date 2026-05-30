@@ -1,6 +1,6 @@
 """Tests for the resmed_myair integration (integration-level unit tests)."""
 
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -76,7 +76,6 @@ async def test_async_setup_entry_multiple_calls(hass, config_entry, session, mon
 @pytest.mark.asyncio
 async def test_friendly_usage_time_sensor_with_negative_usage(hass, coordinator_factory):
     """Test MyAirFriendlyUsageTime handles negative usage values."""
-
     coordinator = coordinator_factory(data={"sleep_records": [{"totalUsage": -10}]})
     sensor = MyAirFriendlyUsageTime(coordinator)
     sensor.hass = hass
@@ -90,7 +89,7 @@ async def test_friendly_usage_time_sensor_with_negative_usage(hass, coordinator_
 @pytest.mark.asyncio
 async def test_most_recent_sleep_date_sensor_with_future_date(hass, coordinator_factory):
     """Test MyAirMostRecentSleepDate handles future dates."""
-    future = (date.today() + timedelta(days=10)).isoformat()
+    future = (datetime.now(UTC).date() + timedelta(days=10)).isoformat()
 
     coordinator = coordinator_factory(
         data={"sleep_records": [{"startDate": future, "totalUsage": 10}]}
@@ -361,7 +360,6 @@ async def test_sensor_handles_empty_or_missing_data(
     coordinator_factory,
 ):
     """Test sensors handle empty or missing data gracefully."""
-
     coordinator = coordinator_factory(data=coordinator_data)
     if sensor_class in (MyAirSleepRecordSensor, MyAirDeviceSensor):
         sensor = sensor_class(key, desc, coordinator)
@@ -389,7 +387,6 @@ async def test_force_poll_service_triggers_refresh(
     hass, config_entry, coordinator_factory, monkeypatch
 ):
     """Test that the force_poll service calls coordinator.async_refresh()."""
-
     # Use the centralized factory to create a mock coordinator with the
     # attributes tests expect (async_refresh, async_config_entry_first_refresh, .data)
     dummy_coordinator = coordinator_factory(mock=True)
