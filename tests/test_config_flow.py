@@ -537,7 +537,7 @@ async def test_get_device_variants(
     monkeypatch.setattr(config_flow, "async_create_clientsession", lambda *a, **k: session)
 
     if raises:
-        with pytest.raises(Exception):
+        with pytest.raises(raises):
             await get_device(hass, "user", "pass", "region", device_token=None)
     else:
         status, device, client = await get_device(hass, "user", "pass", "region", device_token=None)
@@ -594,7 +594,7 @@ async def test_get_mfa_device_variants(
         mock_client.get_user_device_data = AsyncMock(return_value=get_user_device_data_return)
 
     if raises:
-        with pytest.raises(Exception):
+        with pytest.raises(raises):
             await get_mfa_device(mock_client, "123456")
     else:
         status, device = await get_mfa_device(mock_client, "123456")

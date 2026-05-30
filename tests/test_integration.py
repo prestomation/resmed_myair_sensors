@@ -44,13 +44,13 @@ async def test_async_setup_entry_refresh_failure(
     mock_coordinator = MagicMock()
     monkeypatch.setattr(resmed_module, "MyAirDataUpdateCoordinator", mock_coordinator)
     instance = mock_coordinator.return_value
-    instance.async_config_entry_first_refresh = AsyncMock(side_effect=Exception("refresh fail"))
+    instance.async_config_entry_first_refresh = AsyncMock(side_effect=RuntimeError("refresh fail"))
 
     # Replace hass.config_entries.async_forward_entry_setups with an AsyncMock and keep a ref
     monkeypatch.setattr(hass.config_entries, "async_forward_entry_setups", AsyncMock())
     fwd = hass.config_entries.async_forward_entry_setups
 
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(RuntimeError) as exc:
         await async_setup_entry(hass, config_entry)
     assert "refresh fail" in str(exc.value)
     fwd.assert_not_awaited()

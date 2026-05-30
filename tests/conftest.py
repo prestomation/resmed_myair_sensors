@@ -234,14 +234,21 @@ def service_registry_shim(hass: Any, monkeypatch: pytest.MonkeyPatch) -> Service
     """
 
     class _ServiceEntry:
+        """Container for handlers registered under one service name."""
+
         def __init__(self) -> None:
+            """Initialize the service entry with no registered handlers."""
             self.handlers: list[Callable[..., object]] = []
 
     class _ServiceRegistryShim:
+        """Minimal in-memory service registry used by sensor setup tests."""
+
         def __init__(self) -> None:
+            """Initialize an empty domain-to-service registry."""
             self._services: dict[str, dict[str, _ServiceEntry]] = {}
 
         def has_service(self, domain: str, service: str) -> bool:
+            """Return whether a service exists in the requested domain."""
             return domain in self._services and service in self._services[domain]
 
         def async_register(
@@ -253,6 +260,16 @@ def service_registry_shim(hass: Any, monkeypatch: pytest.MonkeyPatch) -> Service
             *a: object,
             **kw: object,
         ) -> None:
+            """Register a handler for the requested domain and service.
+
+            Args:
+                domain: Home Assistant service domain.
+                service: Service name within the domain.
+                func: Handler callback to store for later assertions.
+                schema: Optional service schema accepted for API compatibility.
+                *a: Additional positional arguments accepted for API compatibility.
+                **kw: Additional keyword arguments accepted for API compatibility.
+            """
             domain_map = self._services.setdefault(domain, {})
             entry = domain_map.get(service)
             if entry is None:
