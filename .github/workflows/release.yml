@@ -4,6 +4,10 @@ on:
   release:
     types: [published, edited]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   update_version_and_create_zip:
     name: Update Version and Create Zip on Release
@@ -20,13 +24,36 @@ jobs:
 
       - name: Update Version in Manifest
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          sed -i 's/\"version\"\s*\:\s*\".*\"/\"version\"\:\"${{ github.event.release.tag_name }}\"/g' ./custom_components/resmed_myair/manifest.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest_path = Path("./custom_components/resmed_myair/manifest.json")
+          manifest = json.loads(manifest_path.read_text())
+          manifest["version"] = os.environ["TAG_NAME"]
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
 
       - name: Update Version in const.py
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          sed -i 's/^VERSION \= \".*\"/VERSION \= \"${{ github.event.release.tag_name }}\"/' ./custom_components/resmed_myair/const.py
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          const_path = Path("./custom_components/resmed_myair/const.py")
+          const_text = const_path.read_text()
+          version_line = f"VERSION = {json.dumps(os.environ['TAG_NAME'])}"
+          const_path.write_text(re.sub(r'^VERSION = ".*"$', version_line, const_text, flags=re.M))
+          PY
 
       - name: Commit & Push Version Changes
         if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false  }}
@@ -37,9 +64,11 @@ jobs:
 
       - name: Update Release with Version Changes Commit
         if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false  }}
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          git tag -f ${{ github.event.release.tag_name }}
-          git push -f origin ${{ github.event.release.tag_name }}
+          git tag -f "$TAG_NAME"
+          git push -f origin "$TAG_NAME"
 
       - name: Create Zip
         run: |

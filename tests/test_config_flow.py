@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+from aiohttp import ClientError
 from homeassistant.config_entries import UnknownEntry
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -1079,6 +1080,40 @@ async def test_async_step_user_incomplete_account_parametrized(
     assert result["reason"] == expected_abort_reason
     if client_exists and is_email_verified != "exception":
         flow._client.is_email_verified.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "email_error",
+    [
+        ClientError("transport failure"),
+        TimeoutError("request timed out"),
+    ],
+)
+async def test_async_step_user_incomplete_account_email_check_transport_error(
+    monkeypatch: pytest.MonkeyPatch,
+    hass: MagicMock,
+    myair_client: MagicMock,
+    email_error: Exception,
+) -> None:
+    """Transient email-verification transport failures should preserve the abort."""
+    flow = MyAirConfigFlow()
+    flow.hass = hass
+    flow._data = {CONF_USER_NAME: "user"}
+    flow._client = myair_client
+    user_input = {CONF_USER_NAME: "user", CONF_PASSWORD: "pw", CONF_REGION: REGION_NA}
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.config_flow.get_device",
+        AsyncMock(side_effect=IncompleteAccountError("fail")),
+    )
+    flow._client.is_email_verified = AsyncMock(side_effect=email_error)
+    flow.async_abort = MagicMock(return_value={"type": "abort", "reason": "incomplete_account"})
+
+    result = await flow.async_step_user(user_input)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "incomplete_account"
+    flow._client.is_email_verified.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from aiohttp import DummyCookieJar
-from aiohttp.client_exceptions import ClientResponseError
+from aiohttp.client_exceptions import ClientError, ClientResponseError
 from aiohttp.http_exceptions import HttpProcessingError
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, UnknownEntry
 from homeassistant.core import HomeAssistant
@@ -38,8 +38,10 @@ _LOGGER = logging.getLogger(__name__)
 EMAIL_VERIFICATION_ERRORS: tuple[type[Exception], ...] = (
     AuthenticationError,
     HttpProcessingError,
+    ClientError,
     ClientResponseError,
     ParsingError,
+    TimeoutError,
     ValueError,
 )
 
