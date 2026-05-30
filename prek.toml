@@ -51,6 +51,7 @@ args = ["--config-file=pyproject.toml"]
 pass_filenames = false
 additional_dependencies = [
   "aiohttp",
+  "awesomeversion",
   "homeassistant-stubs",
   "PyJWT",
   "pytest-asyncio",
