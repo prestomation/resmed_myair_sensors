@@ -10,24 +10,20 @@ from typing import Any, Self
 from homeassistant.util import dt as dt_util
 
 
-def _to_usage_minutes(raw_usage: Any) -> int:
+def _to_usage_minutes(raw_usage: Any) -> int | None:
     """Convert API usage value to an integer minute count."""
+    if isinstance(raw_usage, bool):
+        return None
     if isinstance(raw_usage, int):
         return raw_usage
-    if isinstance(raw_usage, bool):
-        return 1 if raw_usage else 0
-    if isinstance(raw_usage, float):
-        return int(raw_usage)
-    if isinstance(raw_usage, str):
-        try:
-            return int(raw_usage)
-        except ValueError:
-            return 0
-    return 0
+    return None
 
 
-def _format_usage_time(total_usage_minutes: int) -> str:
+def _format_usage_time(total_usage_minutes: int | None) -> str | None:
     """Format usage minutes into friendly `H:MM` text."""
+    if total_usage_minutes is None:
+        return None
+
     clamped_minutes = max(total_usage_minutes, 0)
     return f"{clamped_minutes // 60}:{clamped_minutes % 60:02}"
 
@@ -46,9 +42,12 @@ class MyAirDevice:
     def from_api(cls, data: Mapping[str, Any]) -> Self:
         """Create a typed device from raw API payload data."""
         raw = dict(data)
+        serial_number = raw.get("serialNumber", "")
+        if not isinstance(serial_number, str):
+            serial_number = ""
         return cls(
             raw=raw,
-            serial_number=str(raw.get("serialNumber", "")),
+            serial_number=serial_number,
             manufacturer=raw.get("fgDeviceManufacturerName"),
             model=raw.get("deviceType"),
             name=raw.get("localizedName"),
@@ -65,8 +64,8 @@ class MyAirSleepRecord:
 
     raw: dict[str, Any]
     start_date: date | None
-    total_usage_minutes: int
-    friendly_usage_time: str
+    total_usage_minutes: int | None
+    friendly_usage_time: str | None
     has_usage: bool
 
     @classmethod
@@ -74,8 +73,8 @@ class MyAirSleepRecord:
         """Create a typed sleep record from raw API payload data."""
         raw = dict(data)
         start_date = dt_util.parse_date(raw.get("startDate", ""))
-        total_usage_minutes = _to_usage_minutes(raw.get("totalUsage", 0))
-        has_usage = total_usage_minutes > 0
+        total_usage_minutes = _to_usage_minutes(raw.get("totalUsage"))
+        has_usage = total_usage_minutes is not None and total_usage_minutes > 0
         return cls(
             raw=raw,
             start_date=start_date,
@@ -93,8 +92,8 @@ class MyAirSleepRecord:
 class MyAirCoordinatorData:
     """Typed coordinator payload wrapper for Home Assistant integration state."""
 
-    device: MyAirDevice | None
-    sleep_records: tuple[MyAirSleepRecord, ...]
+    device: MyAirDevice | None = None
+    sleep_records: tuple[MyAirSleepRecord, ...] = ()
 
     @property
     def latest_sleep_record(self) -> MyAirSleepRecord | None:

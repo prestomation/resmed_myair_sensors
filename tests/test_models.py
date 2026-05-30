@@ -47,6 +47,7 @@ def test_negative_usage_is_clamped_for_friendly_display() -> None:
     """Negative usage values display as zero usage."""
     record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": -5})
 
+    assert record.total_usage_minutes == -5
     assert record.friendly_usage_time == "0:00"
 
 
@@ -76,13 +77,20 @@ def test_device_fields_default_to_empty_or_none_for_missing_values() -> None:
     assert device.name is None
 
 
+def test_device_ignores_non_string_serial_number() -> None:
+    """Non-string serial numbers should not be coerced to text."""
+    device = MyAirDevice.from_api({"serialNumber": None})
+
+    assert device.serial_number == ""
+
+
 def test_sleep_record_with_missing_fields_defaults() -> None:
     """Missing usage and date values should be safe defaults."""
     record = MyAirSleepRecord.from_api({})
 
     assert record.start_date is None
-    assert record.total_usage_minutes == 0
-    assert record.friendly_usage_time == "0:00"
+    assert record.total_usage_minutes is None
+    assert record.friendly_usage_time is None
     assert record.has_usage is False
 
 
@@ -98,4 +106,23 @@ def test_most_recent_sleep_date_skips_zero_usage_records() -> None:
 
     assert data.latest_sleep_record is not None
     assert data.latest_sleep_record.start_date == date(2024, 7, 18)
+    assert data.most_recent_sleep_date is None
+
+
+def test_sleep_record_with_non_int_usage_is_none() -> None:
+    """Non-int usage values should not be treated as usage minutes."""
+    record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": True})
+
+    assert record.total_usage_minutes is None
+    assert record.friendly_usage_time is None
+    assert record.has_usage is False
+
+
+def test_coordinator_data_defaults_to_empty() -> None:
+    """Coordinator data should construct when payload members are omitted."""
+    data = MyAirCoordinatorData()
+
+    assert data.device is None
+    assert data.sleep_records == ()
+    assert data.latest_sleep_record is None
     assert data.most_recent_sleep_date is None
