@@ -417,7 +417,7 @@ async def test_sensor_handles_empty_or_missing_data(
     assert sensor.available == expected_available
 
 
-# Fix: Make fake_forward_entry_setups an AsyncMock with the correct signature
+# Home Assistant calls this through an AsyncMock side effect during setup tests.
 async def fake_forward_entry_setups(config_entry: MockConfigEntry, platforms: list[str]) -> None:
     """Forward sensor platform setups during tests using the provided config entry."""
     # Use the hass from config_entry, which is set by Home Assistant during setup

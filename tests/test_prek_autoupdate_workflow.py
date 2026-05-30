@@ -148,9 +148,7 @@ def cleanup_script() -> Generator[ModuleType]:
 )
 def test_workflow_contains_expected_cleanup_logic(needle: str, reason: str) -> None:
     """Workflow should include standalone cleanup logic for generated prek PRs."""
-    del reason
-
-    assert needle in WORKFLOW_PATH.read_text()
+    assert needle in WORKFLOW_PATH.read_text(), reason
 
 
 def test_workflow_avoids_inline_repository_template_expansion() -> None:

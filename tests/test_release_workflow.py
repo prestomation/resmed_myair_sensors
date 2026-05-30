@@ -18,8 +18,13 @@ def test_edited_release_checkout_uses_release_tag() -> None:
 def test_published_release_checkout_uses_release_tag() -> None:
     """Published releases should package the tag created for the release."""
     workflow = WORKFLOW_PATH.read_text()
-    checkout_index = workflow.index("- name: Checkout Repository")
-    update_version_index = workflow.index("- name: Update Version in Manifest")
+    checkout_step = "- name: Checkout Repository"
+    update_version_step = "- name: Update Version in Manifest"
+
+    assert checkout_step in workflow
+    assert update_version_step in workflow
+    checkout_index = workflow.index(checkout_step)
+    update_version_index = workflow.index(update_version_step, checkout_index)
     checkout_block = workflow[checkout_index:update_version_index]
 
     assert "github.event.release.tag_name" in checkout_block
