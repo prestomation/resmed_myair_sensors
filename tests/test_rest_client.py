@@ -1,5 +1,6 @@
 """Unit tests for the REST client used by the resmed_myair integration."""
 
+import datetime
 import logging
 from typing import Never
 from unittest.mock import AsyncMock, MagicMock
@@ -9,6 +10,7 @@ from aiohttp.http_exceptions import HttpProcessingError
 from multidict import CIMultiDict
 import pytest
 
+from custom_components.resmed_myair.client import rest_client as rest_client_module
 from custom_components.resmed_myair.client.myair_client import (
     AuthenticationError,
     IncompleteAccountError,
@@ -900,6 +902,34 @@ async def test_data_fetch_success_variants(
     monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
     result = await getattr(client, method_name)()
     assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_get_sleep_records_uses_local_date_range(
+    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ensure sleep record queries use the local date window."""
+
+    class FixedDateTime(datetime.datetime):
+        """DateTime class with deterministic now() for query-window assertions."""
+
+        @classmethod
+        def now(cls, tz: datetime.tzinfo | None = None) -> datetime.datetime:
+            """Return a fixed timezone-aware timestamp for the date window."""
+            return cls(2024, 7, 31, 12, tzinfo=tz)
+
+    client = RESTClient(config_na, session)
+    monkeypatch.setattr(rest_client_module.datetime, "datetime", FixedDateTime)
+    gql_query = AsyncMock(
+        return_value={"data": {"getPatientWrapper": {"sleepRecords": {"items": []}}}}
+    )
+    monkeypatch.setattr(client, "_gql_query", gql_query)
+
+    await client.get_sleep_records()
+
+    gql_query.assert_awaited_once()
+    query = gql_query.await_args.args[1]
+    assert 'sleepRecords(startMonth: "2024-07-01", endMonth: "2024-07-31")' in query
 
 
 @pytest.mark.asyncio

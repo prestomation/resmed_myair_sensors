@@ -591,9 +591,9 @@ class RESTClient(MyAirClient):
 
     async def get_sleep_records(self, initial: bool | None = False) -> list[Mapping[str, Any]]:
         """Get sleep records from ResMed servers."""
-        now: datetime.datetime = datetime.datetime.now(datetime.UTC)
-        today: str = now.strftime("%Y-%m-%d")
-        one_month_ago: str = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+        today_date: datetime.date = datetime.datetime.now(datetime.UTC).astimezone().date()
+        today: str = today_date.isoformat()
+        one_month_ago: str = (today_date - datetime.timedelta(days=30)).isoformat()
 
         query: str = """query GetPatientSleepRecords {
             getPatientWrapper {
