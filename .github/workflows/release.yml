@@ -22,38 +22,12 @@ jobs:
           # target_commitish branch.
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
 
-      - name: Update Version in Manifest
+      - name: Update Release Version Files
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          manifest_path = Path("./custom_components/resmed_myair/manifest.json")
-          manifest = json.loads(manifest_path.read_text())
-          manifest["version"] = os.environ["TAG_NAME"]
-          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-          PY
-
-      - name: Update Version in const.py
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        env:
-          TAG_NAME: ${{ github.event.release.tag_name }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import re
-          from pathlib import Path
-
-          const_path = Path("./custom_components/resmed_myair/const.py")
-          const_text = const_path.read_text()
-          version_line = f"VERSION = {json.dumps(os.environ['TAG_NAME'])}"
-          const_path.write_text(re.sub(r'^VERSION = ".*"$', version_line, const_text, flags=re.M))
-          PY
+          python .github/scripts/update_release_version.py --tag-name "$TAG_NAME"
 
       - name: Commit & Push Version Changes
         if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false  }}
