@@ -1,6 +1,7 @@
 """Shared pytest fixtures used across the test suite."""
 
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import Any, Protocol
 from unittest.mock import AsyncMock, MagicMock
 
 from aiohttp import ClientResponse, ClientSession
@@ -17,6 +18,42 @@ from custom_components.resmed_myair.const import (
     REGION_EU,
     REGION_NA,
 )
+
+type JSONValue = str | int | float | bool | None | dict[str, JSONValue] | list[JSONValue]
+type HeadersValue = Mapping[str, str] | CIMultiDict[str] | None
+
+
+class CoordinatorLike(Protocol):
+    """Protocol for the coordinator test doubles used by sensor tests."""
+
+    data: dict[str, object]
+
+    def async_add_listener(self, *args: object, **kwargs: object) -> Callable[[], None]:
+        """Register a listener callback and return an unsubscribe callback."""
+
+
+class CoordinatorFactory(Protocol):
+    """Factory protocol shared by coordinator fixtures and tests."""
+
+    def __call__(
+        self, mock: bool = False, data: dict[str, object] | None = None
+    ) -> CoordinatorLike | MagicMock:
+        """Return either a dataful coordinator double or a mock coordinator."""
+
+
+class ServiceEntryLike(Protocol):
+    """Protocol for service entries stored by the service registry shim."""
+
+    handlers: list[Callable[..., object]]
+
+
+class ServiceRegistryShimLike(Protocol):
+    """Protocol for the lightweight service registry shim used in tests."""
+
+    _services: dict[str, dict[str, ServiceEntryLike]]
+
+    def has_service(self, domain: str, service: str) -> bool:
+        """Return whether the service was registered."""
 
 
 def _ensure_config_entries_helpers(hass: Any) -> None:
@@ -69,7 +106,11 @@ def _ensure_config_entries_helpers(hass: Any) -> None:
             hass.config_entries.async_entry_for_domain_unique_id = MagicMock()
 
 
-def make_mock_aiohttp_response(json_value=None, headers=None, status: int = 200):
+def make_mock_aiohttp_response(
+    json_value: JSONValue = None,
+    headers: HeadersValue = None,
+    status: int = 200,
+) -> MagicMock:
     """Create a MagicMock that mimics an aiohttp response used in tests.
 
     The returned object has async .json(), .headers and .status attributes.
@@ -96,7 +137,11 @@ def make_mock_aiohttp_response(json_value=None, headers=None, status: int = 200)
     return mock_res
 
 
-def make_mock_aiohttp_context_manager(json_value=None, headers=None, status: int = 200):
+def make_mock_aiohttp_context_manager(
+    json_value: JSONValue | MagicMock = None,
+    headers: HeadersValue = None,
+    status: int = 200,
+) -> AsyncMock:
     """Return an async context manager that yields a mock aiohttp response.
 
     Useful for assigning to session.get/post return values in tests:
@@ -173,7 +218,7 @@ def configure_hass(hass: Any) -> None:
 
 
 @pytest.fixture
-def service_registry_shim(hass: Any, monkeypatch) -> Any:
+def service_registry_shim(hass: Any, monkeypatch: pytest.MonkeyPatch) -> ServiceRegistryShimLike:
     """Provide a lightweight ServiceRegistry shim mounted at ``hass.services``.
 
     The shim implements a minimal subset of Home Assistant's ServiceRegistry
@@ -190,7 +235,7 @@ def service_registry_shim(hass: Any, monkeypatch) -> Any:
 
     class _ServiceEntry:
         def __init__(self) -> None:
-            self.handlers: list = []
+            self.handlers: list[Callable[..., object]] = []
 
     class _ServiceRegistryShim:
         def __init__(self) -> None:
@@ -199,7 +244,15 @@ def service_registry_shim(hass: Any, monkeypatch) -> Any:
         def has_service(self, domain: str, service: str) -> bool:
             return domain in self._services and service in self._services[domain]
 
-        def async_register(self, domain: str, service: str, func, schema=None, *a, **kw):
+        def async_register(
+            self,
+            domain: str,
+            service: str,
+            func: Callable[..., object],
+            schema: object | None = None,
+            *a: object,
+            **kw: object,
+        ) -> None:
             domain_map = self._services.setdefault(domain, {})
             entry = domain_map.get(service)
             if entry is None:
@@ -239,19 +292,19 @@ def config_eu() -> MyAirConfig:
 
 
 @pytest.fixture
-def coordinator(coordinator_factory) -> Any:
+def coordinator(coordinator_factory: CoordinatorFactory) -> CoordinatorLike | MagicMock:
     """Return the default dataful coordinator via the factory (convenience wrapper)."""
     return coordinator_factory()
 
 
 @pytest.fixture
-def coordinator_mock(coordinator_factory):
+def coordinator_mock(coordinator_factory: CoordinatorFactory) -> MagicMock:
     """Return an AsyncMock coordinator via the factory (convenience wrapper)."""
     return coordinator_factory(mock=True)
 
 
 @pytest.fixture
-def coordinator_factory():
+def coordinator_factory() -> CoordinatorFactory:
     """Factory fixture that produces coordinator objects.
 
     Usage:
@@ -260,7 +313,9 @@ def coordinator_factory():
       - coordinator_factory(data=...) -> DummyCoordinator with custom data
     """
 
-    def _make(mock: bool = False, data: dict | None = None):
+    def _make(
+        mock: bool = False, data: dict[str, object] | None = None
+    ) -> CoordinatorLike | MagicMock:
         if mock:
             m = MagicMock()
             m.async_refresh = AsyncMock()
@@ -300,10 +355,10 @@ def coordinator_factory():
             }
 
         class DummyCoordinator:
-            def __init__(self, d: dict):
+            def __init__(self, d: dict[str, object]) -> None:
                 self.data = d
 
-            def async_add_listener(self, *args, **kwargs):
+            def async_add_listener(self, *args: object, **kwargs: object) -> Callable[[], None]:
                 return lambda: None
 
         return DummyCoordinator(data)

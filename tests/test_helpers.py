@@ -61,7 +61,7 @@ def _replace_placeholder(obj: Any, placeholder: str, replacement: Any) -> Any:
 
 
 @pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
-def test_redact_dict_equivalence(monkeypatch, module_path):
+def test_redact_dict_equivalence(monkeypatch: pytest.MonkeyPatch, module_path: str) -> None:
     """Run the common redact_dict test vectors against both implementations.
 
     The test monkeypatches KEYS_TO_REDACT for the module under test and swaps
@@ -81,7 +81,7 @@ def test_redact_dict_equivalence(monkeypatch, module_path):
 
 
 @pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
-def test_redact_dict_empty_and_trivial(monkeypatch, module_path):
+def test_redact_dict_empty_and_trivial(monkeypatch: pytest.MonkeyPatch, module_path: str) -> None:
     """Ensure redact_dict handles empty/trivial inputs for both implementations."""
     module = importlib.import_module(module_path)
     monkeypatch.setattr(module, "KEYS_TO_REDACT", {"username", "password", "token"}, raising=False)
