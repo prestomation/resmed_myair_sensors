@@ -23,6 +23,9 @@ def test_device_preserves_raw_values_and_device_info_fields() -> None:
     )
 
     assert device.serial_number == "123"
+    assert device.manufacturer == "ResMed"
+    assert device.model == "CPAP"
+    assert device.name == "AirSense"
     assert device.native_value("maskCode") == "M1"
     assert device.native_value("missing") is None
 
@@ -107,6 +110,16 @@ def test_sleep_record_with_missing_fields_defaults() -> None:
     assert record.total_usage_minutes is None
     assert record.friendly_usage_time is None
     assert record.has_usage is False
+
+
+def test_sleep_record_with_non_string_start_date_has_none_start_date() -> None:
+    """Non-string startDate values should not be parsed."""
+    record = MyAirSleepRecord.from_api({"startDate": 123, "totalUsage": 30})
+
+    assert record.start_date is None
+    assert record.total_usage_minutes == 30
+    assert record.friendly_usage_time == "0:30"
+    assert record.has_usage is True
 
 
 def test_device_from_api_accepts_none() -> None:

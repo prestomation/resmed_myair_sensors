@@ -79,7 +79,8 @@ class MyAirSleepRecord:
     def from_api(cls, data: Mapping[str, Any] | None) -> Self:
         """Create a typed sleep record from raw API payload data."""
         raw = dict(data or {})
-        start_date = dt_util.parse_date(raw.get("startDate", ""))
+        start_date_raw = raw.get("startDate")
+        start_date = dt_util.parse_date(start_date_raw) if isinstance(start_date_raw, str) else None
         total_usage_minutes = _to_usage_minutes(raw.get("totalUsage"))
         has_usage = total_usage_minutes is not None and total_usage_minutes > 0
         return cls(
