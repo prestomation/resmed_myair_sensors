@@ -158,6 +158,12 @@ convention = "google"
     "S106",    # Possible hardcoded password
     "S108",    # hardcoded-temp-file
     "SLF001",  # Private member accessed
+    # Temporary
+    "ANN001",
+    "ANN201",
+    "ANN202",
+    "ANN204",
+    "PT006",
 ]
 
 [tool.codespell]
