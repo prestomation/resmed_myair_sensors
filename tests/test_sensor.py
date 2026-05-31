@@ -5,10 +5,11 @@ import logging
 from unittest.mock import MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
+from homeassistant.const import UnitOfVolumeFlowRate
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.resmed_myair.const import CONF_USER_NAME
+from custom_components.resmed_myair.const import CONF_USER_NAME, SLEEP_RECORD_SENSOR_DESCRIPTIONS
 from custom_components.resmed_myair.sensor import (
     MyAirDeviceSensor,
     MyAirFriendlyUsageTime,
@@ -17,6 +18,20 @@ from custom_components.resmed_myair.sensor import (
     async_setup_entry,
 )
 from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike, coordinator_data
+
+
+def test_mask_leak_sensor_uses_liters_per_minute_without_changing_raw_key(
+    coordinator_factory: CoordinatorFactory,
+) -> None:
+    """Mask leak keeps its legacy raw key while exposing the correct flow unit."""
+    description = SLEEP_RECORD_SENSOR_DESCRIPTIONS["CPAP Mask Leak"]
+    coordinator = coordinator_factory(data=coordinator_data(device={"serialNumber": "SN123"}))
+
+    sensor = MyAirSleepRecordSensor("CPAP Mask Leak", description, coordinator)
+
+    assert description.key == "leakPercentile"
+    assert description.native_unit_of_measurement == UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+    assert sensor.unique_id == "resmed_myair_SN123_leakPercentile"
 
 
 @pytest.mark.parametrize(
@@ -96,6 +111,7 @@ def test_most_recent_sleep_date_all_branches(
         # For date parsing, we use a string and monkeypatch dt_util.parse_date in the test body
         ([{"foo": "2024-07-18"}], "foo", SensorDeviceClass.DATE, "2024-07-18", True),
         ([{"foo": "some string"}], "foo", None, "some string", True),
+        ([{"leakPercentile": 12.5}], "leakPercentile", None, 12.5, True),
     ],
 )
 def test_sleep_record_sensor_handle_coordinator_update(
@@ -117,7 +133,12 @@ def test_sleep_record_sensor_handle_coordinator_update(
         )
         expected_value = parsed_date
 
-    desc = SensorEntityDescription(key=sensor_key, device_class=device_class)
+    if sensor_key == "leakPercentile":
+        desc = SLEEP_RECORD_SENSOR_DESCRIPTIONS["CPAP Mask Leak"]
+        assert desc.key == sensor_key
+        assert desc.native_unit_of_measurement == UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+    else:
+        desc = SensorEntityDescription(key=sensor_key, device_class=device_class)
     data = {}
     if sleep_records is not None:
         data["sleep_records"] = sleep_records
