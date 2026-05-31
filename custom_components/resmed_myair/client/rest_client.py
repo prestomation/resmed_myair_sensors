@@ -29,6 +29,42 @@ AUTH_NEEDS_MFA: str = _AUTH_NEEDS_MFA
 AUTHN_SUCCESS: str = _AUTHN_SUCCESS
 
 
+def _required_mapping(value: Any, message: str) -> Mapping[str, Any]:
+    """Validate that a decoded GraphQL payload member is a mapping.
+
+    Args:
+        value: Payload member to validate.
+        message: Parsing error message to raise when validation fails.
+
+    Returns:
+        The original value typed as a mapping.
+
+    Raises:
+        ParsingError: When the payload member is not a mapping.
+    """
+    if not isinstance(value, Mapping):
+        raise ParsingError(message)
+    return value
+
+
+def _required_list(value: Any, message: str) -> list[Any]:
+    """Validate that a decoded GraphQL payload member is a JSON array.
+
+    Args:
+        value: Payload member to validate.
+        message: Parsing error message to raise when validation fails.
+
+    Returns:
+        The original value typed as a list.
+
+    Raises:
+        ParsingError: When the payload member is not a list.
+    """
+    if not isinstance(value, list):
+        raise ParsingError(message)
+    return value
+
+
 class RESTClient(MyAirClient):
     """Coordinate myAir authentication and AppSync GraphQL data access."""
 
@@ -52,7 +88,7 @@ class RESTClient(MyAirClient):
     @property
     def _country_code(self) -> str | None:
         """Proxy the AppSync country-code cache owned by the GraphQL helper."""
-        return self._graphql._country_code  # noqa: SLF001
+        return self._graphql.country_code
 
     @_country_code.setter
     def _country_code(self, value: str | None) -> None:
@@ -61,7 +97,7 @@ class RESTClient(MyAirClient):
         Args:
             value: myAir country code, or ``None`` to force token decoding later.
         """
-        self._graphql._country_code = value  # noqa: SLF001
+        self._graphql.country_code = value
 
     @property
     def device_token(self) -> str | None:
@@ -406,18 +442,17 @@ class RESTClient(MyAirClient):
             "GetPatientSleepRecords", query, initial
         )
         _LOGGER.debug("[get_sleep_records] records_dict: %s", redact_dict(records_dict))
-        try:
-            records: list[Mapping[str, Any]] = records_dict["data"]["getPatientWrapper"][
-                "sleepRecords"
-            ]["items"]
-        except Exception as e:
-            _LOGGER.error("Error getting Patient Sleep Records. %s: %s", type(e).__name__, e)
-            raise ParsingError("Error getting Patient Sleep Records") from e
-        if not isinstance(records, list):
-            _LOGGER.error("Error getting Patient Sleep Records. Returned records is not a list")
-            raise ParsingError(
-                "Error getting Patient Sleep Records. Returned records is not a list"
-            )
+        data = _required_mapping(records_dict.get("data"), "Error getting Patient Sleep Records")
+        patient_wrapper = _required_mapping(
+            data.get("getPatientWrapper"), "Error getting Patient Sleep Records"
+        )
+        sleep_records = _required_mapping(
+            patient_wrapper.get("sleepRecords"), "Error getting Patient Sleep Records"
+        )
+        records = _required_list(
+            sleep_records.get("items"),
+            "Error getting Patient Sleep Records. Returned records is not a list",
+        )
         _LOGGER.debug("[get_sleep_records] records: %s", redact_dict(records))
         typed_records: list[MyAirSleepRecord] = []
         for record in records:
@@ -464,21 +499,25 @@ class RESTClient(MyAirClient):
             "getPatientWrapper", query, initial
         )
         _LOGGER.debug("[get_user_device_data] records_dict: %s", redact_dict(records_dict))
-        try:
-            device: dict[str, Any] = records_dict["data"]["getPatientWrapper"]["fgDevices"][0]
-        except Exception as e:
-            _LOGGER.error("Error getting User Device Data. %s: %s", type(e).__name__, e)
-            raise ParsingError("Error getting User Device Data") from e
+        data = _required_mapping(records_dict.get("data"), "Error getting User Device Data")
+        patient_wrapper = _required_mapping(
+            data.get("getPatientWrapper"), "Error getting User Device Data"
+        )
+        devices = _required_list(patient_wrapper.get("fgDevices"), "Error getting User Device Data")
+        if not devices:
+            raise ParsingError("Error getting User Device Data")
+        device = dict(
+            _required_mapping(
+                devices[0], "Error getting User Device Data. Returned data is not a dict"
+            )
+        )
         mask_code: str | None = None
         try:
-            mask_code = records_dict["data"]["getPatientWrapper"]["masks"][0]["maskCode"]
+            mask_code = patient_wrapper["masks"][0]["maskCode"]
         except (KeyError, IndexError, TypeError) as e:
             _LOGGER.warning("Error getting User Mask Data. %s: %s", type(e).__name__, e)
         else:
             if mask_code:
                 device["maskCode"] = mask_code
-        if not isinstance(device, dict):
-            _LOGGER.error("Error getting User Device Data. Returned data is not a dict")
-            raise ParsingError("Error getting User Device Data. Returned data is not a dict")
         _LOGGER.debug("[get_user_device_data] device: %s", redact_dict(device))
         return MyAirDevice.from_api(device)

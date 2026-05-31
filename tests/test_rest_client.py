@@ -104,6 +104,51 @@ def test_rest_client_init_region(
     assert client._mfa_url.startswith("https://")
 
 
+@pytest.mark.parametrize(
+    ("property_name", "new_value"),
+    [
+        ("_country_code", "US"),
+        ("_json_headers", {"Accept": "application/json"}),
+        ("_region_config", EU_CONFIG),
+        ("_email_factor_id", "email-factor-id"),
+    ],
+)
+def test_rest_client_proxy_property_variants(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    property_name: str,
+    new_value: object,
+) -> None:
+    """RESTClient compatibility properties forward reads and writes to auth state."""
+    client = RESTClient(config_na, session)
+
+    setattr(client, property_name, new_value)
+
+    assert getattr(client, property_name) == new_value
+
+
+@pytest.mark.parametrize(
+    ("property_name", "new_value"),
+    [
+        ("country_code", "US"),
+        ("json_headers", {"Accept": "application/json"}),
+        ("cookie_dt", "remembered-device-token"),
+    ],
+)
+def test_auth_session_property_variants(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    property_name: str,
+    new_value: object,
+) -> None:
+    """Auth session compatibility properties forward owned state."""
+    auth = MyAirAuthSession(config_na, session)
+
+    setattr(auth, property_name, new_value)
+
+    assert getattr(auth, property_name) == new_value
+
+
 @pytest.mark.parametrize("case", ["device_token", "cookies"])
 def test_properties_variants(case: str, config_na: MyAirConfig, session: MagicMock) -> None:
     """Device-token and cookie properties mirror the client state."""
@@ -1224,7 +1269,22 @@ async def test_get_sleep_records_raises_parsing_error_for_non_mapping_items(
     [
         ({"data": {"getPatientWrapper": {}}}, "Error getting User Device Data"),
         (
+            {"data": {"getPatientWrapper": {"fgDevices": []}}},
+            "Error getting User Device Data",
+        ),
+        (
             {"data": {"getPatientWrapper": {"fgDevices": ["notadict"]}}},
+            "Returned data is not a dict",
+        ),
+        (
+            {
+                "data": {
+                    "getPatientWrapper": {
+                        "fgDevices": ["notadict"],
+                        "masks": [{"maskCode": "MASK123"}],
+                    }
+                }
+            },
             "Returned data is not a dict",
         ),
     ],

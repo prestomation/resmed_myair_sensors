@@ -10,11 +10,13 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.resmed_myair.const import CONF_USER_NAME, SLEEP_RECORD_SENSOR_DESCRIPTIONS
+from custom_components.resmed_myair.models import MyAirCoordinatorData
 from custom_components.resmed_myair.sensor import (
     MyAirDeviceSensor,
     MyAirFriendlyUsageTime,
     MyAirMostRecentSleepDate,
     MyAirSleepRecordSensor,
+    _coordinator_data,
     async_setup_entry,
 )
 from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike, coordinator_data
@@ -32,6 +34,17 @@ def test_mask_leak_sensor_uses_liters_per_minute_without_changing_raw_key(
     assert description.key == "leakPercentile"
     assert description.native_unit_of_measurement == UnitOfVolumeFlowRate.LITERS_PER_MINUTE
     assert sensor.unique_id == "resmed_myair_SN123_leakPercentile"
+
+
+@pytest.mark.parametrize("raw_data", [None, {"unexpected": "payload"}])
+def test_coordinator_data_uses_empty_payload_for_untyped_data(raw_data: object) -> None:
+    """Untyped startup coordinator payloads collapse to empty typed data."""
+    coordinator = MagicMock()
+    coordinator.data = raw_data
+
+    data = _coordinator_data(coordinator)
+
+    assert data == MyAirCoordinatorData()
 
 
 @pytest.mark.parametrize(

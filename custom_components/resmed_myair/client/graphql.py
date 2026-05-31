@@ -5,6 +5,7 @@ from typing import Any
 
 from aiohttp import ClientSession
 import jwt
+from jwt import InvalidTokenError
 
 from .auth import MyAirAuthSession
 from .helpers import redact_dict
@@ -31,6 +32,20 @@ class MyAirGraphQLClient:
         self._auth = auth
         self._region_config = region_config
         self._country_code: str | None = None
+
+    @property
+    def country_code(self) -> str | None:
+        """Expose the cached myAir country code used for AppSync headers."""
+        return self._country_code
+
+    @country_code.setter
+    def country_code(self, value: str | None) -> None:
+        """Cache the myAir country code used for AppSync headers.
+
+        Args:
+            value: myAir country code, or ``None`` to force token decoding later.
+        """
+        self._country_code = value
 
     async def query(self, operation_name: str, query: str, initial: bool = False) -> dict[str, Any]:
         """Post a myAir GraphQL operation and validate ResMed errors.
@@ -61,7 +76,7 @@ class MyAirGraphQLClient:
             _LOGGER.debug("[gql_query] records_res: %s", records_res)
             records_dict: dict[str, Any] = await records_res.json()
             _LOGGER.debug("[gql_query] records_dict: %s", redact_dict(records_dict))
-            await MyAirAuthSession._resmed_response_error_check(  # noqa: SLF001
+            await MyAirAuthSession.resmed_response_error_check(
                 "gql_query", records_res, records_dict, initial
             )
 
@@ -109,8 +124,7 @@ class MyAirGraphQLClient:
             jwt_data: dict[str, Any] = jwt.decode(
                 self._auth.id_token, options={"verify_signature": False}
             )
-        # Preserve legacy RESTClient behavior: any decode failure maps to ParsingError.
-        except Exception as err:
+        except (InvalidTokenError, ValueError) as err:
             raise ParsingError("Unable to decode id_token into jwt_data") from err
         country_code = jwt_data.get("myAirCountryId")
         if not isinstance(country_code, str):
