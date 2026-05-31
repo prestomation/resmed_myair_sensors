@@ -24,7 +24,16 @@ from custom_components.resmed_myair.sensor import (
     MyAirMostRecentSleepDate,
     MyAirSleepRecordSensor,
 )
-from tests.conftest import CoordinatorFactory, CoordinatorLike
+from tests.conftest import CoordinatorFactory, CoordinatorLike, coordinator_data
+
+
+def _coordinator_payload(
+    coordinator: CoordinatorLike,
+) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
+    """Create mutable payload copies from typed coordinator data."""
+    device = dict(coordinator.data.device.raw) if coordinator.data.device else None
+    sleep_records = [dict(record.raw) for record in coordinator.data.sleep_records]
+    return device, sleep_records
 
 
 @pytest.mark.asyncio
@@ -187,12 +196,16 @@ async def test_sleep_record_sensor_multiple_updates(
     assert sensor.native_value == 456
     assert sensor.available is True
     # Update to a new value
-    coordinator.data["sleep_records"][-1]["totalUsage"] = 321
+    device_snapshot, sleep_records = _coordinator_payload(coordinator)
+    sleep_records[-1]["totalUsage"] = 321
+    coordinator.data = coordinator_data(device=device_snapshot, sleep_records=sleep_records)
     sensor._handle_coordinator_update()
     assert sensor.native_value == 321
     assert sensor.available is True
     # Update to another value
-    coordinator.data["sleep_records"][-1]["totalUsage"] = 654
+    device_snapshot, sleep_records = _coordinator_payload(coordinator)
+    sleep_records[-1]["totalUsage"] = 654
+    coordinator.data = coordinator_data(device=device_snapshot, sleep_records=sleep_records)
     sensor._handle_coordinator_update()
     assert sensor.native_value == 654
     assert sensor.available is True
@@ -213,12 +226,18 @@ async def test_device_sensor_multiple_updates(
     assert sensor.native_value.isoformat().startswith("2024-06-01T12:00:00")
     assert sensor.available is True
     # Update to a new datetime
-    coordinator.data["device"]["lastSleepDataReportTime"] = "2024-06-03T09:00:00+00:00"
+    device_snapshot, sleep_records = _coordinator_payload(coordinator)
+    assert device_snapshot is not None
+    device_snapshot["lastSleepDataReportTime"] = "2024-06-03T09:00:00+00:00"
+    coordinator.data = coordinator_data(device=device_snapshot, sleep_records=sleep_records)
     sensor._handle_coordinator_update()
     assert sensor.native_value.isoformat().startswith("2024-06-03T09:00:00")
     assert sensor.available is True
     # Update to another datetime
-    coordinator.data["device"]["lastSleepDataReportTime"] = "2024-06-04T10:30:00+00:00"
+    device_snapshot, sleep_records = _coordinator_payload(coordinator)
+    assert device_snapshot is not None
+    device_snapshot["lastSleepDataReportTime"] = "2024-06-04T10:30:00+00:00"
+    coordinator.data = coordinator_data(device=device_snapshot, sleep_records=sleep_records)
     sensor._handle_coordinator_update()
     assert sensor.native_value.isoformat().startswith("2024-06-04T10:30:00")
     assert sensor.available is True
@@ -237,12 +256,16 @@ async def test_friendly_usage_time_sensor_multiple_updates(
     assert sensor.native_value == "7:36"
     assert sensor.available is True
     # Update usage to 120 minutes
-    coordinator.data["sleep_records"][-1]["totalUsage"] = 120
+    device_snapshot, sleep_records = _coordinator_payload(coordinator)
+    sleep_records[-1]["totalUsage"] = 120
+    coordinator.data = coordinator_data(device=device_snapshot, sleep_records=sleep_records)
     sensor._handle_coordinator_update()
     assert sensor.native_value == "2:00"
     assert sensor.available is True
     # Update usage to 0 (remains available; formatted as "0:00")
-    coordinator.data["sleep_records"][-1]["totalUsage"] = 0
+    device_snapshot, sleep_records = _coordinator_payload(coordinator)
+    sleep_records[-1]["totalUsage"] = 0
+    coordinator.data = coordinator_data(device=device_snapshot, sleep_records=sleep_records)
     sensor._handle_coordinator_update()
     assert sensor.native_value == "0:00"
     assert sensor.available is True
@@ -261,7 +284,8 @@ async def test_most_recent_sleep_date_sensor_multiple_updates(
     assert sensor.native_value.isoformat() == "2024-06-01"
     assert sensor.available is True
     # Add a new record with usage
-    coordinator.data["sleep_records"].append(
+    device_snapshot, sleep_records = _coordinator_payload(coordinator)
+    sleep_records.append(
         {
             "startDate": "2024-06-05",
             "totalUsage": 200,
@@ -271,10 +295,12 @@ async def test_most_recent_sleep_date_sensor_multiple_updates(
             "leakPercentile": 3,
         }
     )
+    coordinator.data = coordinator_data(device=device_snapshot, sleep_records=sleep_records)
     sensor._handle_coordinator_update()
     assert sensor.native_value.isoformat() == "2024-06-05"
     # Add a record with no usage (should not change)
-    coordinator.data["sleep_records"].append(
+    device_snapshot, sleep_records = _coordinator_payload(coordinator)
+    sleep_records.append(
         {
             "startDate": "2024-06-06",
             "totalUsage": 0,
@@ -284,6 +310,7 @@ async def test_most_recent_sleep_date_sensor_multiple_updates(
             "leakPercentile": 7,
         }
     )
+    coordinator.data = coordinator_data(device=device_snapshot, sleep_records=sleep_records)
     sensor._handle_coordinator_update()
     assert sensor.native_value.isoformat() == "2024-06-05"
     assert sensor.available is True
@@ -325,7 +352,17 @@ async def test_sensor_becomes_unavailable_on_missing_data(
     sensor.async_write_ha_state = MagicMock()
     await sensor.async_added_to_hass()
     assert sensor.available
-    coordinator.data[data_field] = empty_value
+    device_snapshot, sleep_records = _coordinator_payload(coordinator)
+    if data_field == "sleep_records":
+        coordinator.data = coordinator_data(
+            device=device_snapshot,
+            sleep_records=list(empty_value) if isinstance(empty_value, list) else None,
+        )
+    else:
+        coordinator.data = coordinator_data(
+            device=empty_value if isinstance(empty_value, dict) else None,
+            sleep_records=sleep_records,
+        )
     sensor._handle_coordinator_update()
     assert not sensor.available
 
@@ -437,7 +474,7 @@ async def test_force_poll_service_triggers_refresh(
     # Use the centralized factory to create a mock coordinator with the
     # attributes tests expect (async_refresh, async_config_entry_first_refresh, .data)
     dummy_coordinator = coordinator_factory(mock=True)
-    dummy_coordinator.data = {"device": {"serialNumber": "SN123"}, "sleep_records": []}
+    dummy_coordinator.data = coordinator_data(device={"serialNumber": "SN123"}, sleep_records=[])
     config_entry.runtime_data = dummy_coordinator
     config_entry.hass = hass
 
@@ -511,10 +548,10 @@ async def test_async_setup_entry_registers_all_sensors(
     mock_coordinator = MagicMock()
     monkeypatch.setattr(sensor_platform, "MyAirDataUpdateCoordinator", mock_coordinator)
     instance = mock_coordinator.return_value
-    instance.data = {
-        "device": {"serialNumber": "SN123"},
-        "sleep_records": [{"totalUsage": 100, "startDate": "2024-06-01"}],
-    }
+    instance.data = coordinator_data(
+        device={"serialNumber": "SN123"},
+        sleep_records=[{"totalUsage": 100, "startDate": "2024-06-01"}],
+    )
     config_entry.runtime_data = instance
     await sensor_platform.async_setup_entry(hass, config_entry, fake_add_entities)
 

@@ -16,7 +16,7 @@ from custom_components.resmed_myair.sensor import (
     MyAirSleepRecordSensor,
     async_setup_entry,
 )
-from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike
+from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike, coordinator_data
 
 
 @pytest.mark.parametrize(
@@ -300,7 +300,7 @@ def test_myair_device_sensor_handle_coordinator_update_keyerror(
 ) -> None:
     """Ensure MyAirDeviceSensor handles missing keys and logs an error."""
     coordinator = coordinator_factory(mock=True)
-    coordinator.data = {"device": {"serialNumber": "SN123"}}
+    coordinator.data = coordinator_data(device={"serialNumber": "SN123"})
     desc = SensorEntityDescription(key="missing_key")
     sensor = MyAirDeviceSensor("Test Device", desc, coordinator)
     sensor.hass = None
