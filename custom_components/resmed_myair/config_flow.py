@@ -171,8 +171,8 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             device: Typed myAir device returned by the API.
 
         Returns:
-            Abort result when the serial number cannot be verified against the entry
-            being repaired, otherwise `None`.
+            Abort result when the serial number conflicts with the entry being
+            repaired, otherwise `None`.
 
         Raises:
             ParsingError: When device data does not include a serial number.
@@ -180,12 +180,11 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         if not device.serial_number:
             raise ParsingError("Unable to get Serial Number from Device Data")
         if not self._entry.unique_id:
-            _LOGGER.error(
-                "Reauth cannot verify device serial number %s because existing entry "
-                "has no unique ID",
+            _LOGGER.info(
+                "Reauth will backfill missing legacy entry unique ID with device serial number %s",
                 device.serial_number,
             )
-            return self.async_abort(reason="wrong_account")
+            return None
         if device.serial_number != self._entry.unique_id:
             _LOGGER.error(
                 "Reauth device serial number %s does not match existing entry unique ID %s",
@@ -194,6 +193,20 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             return self.async_abort(reason="wrong_account")
         return None
+
+    def _reauth_update_kwargs(self, device: MyAirDevice) -> dict[str, Any]:
+        """Build config-entry update arguments for a successful reauth.
+
+        Args:
+            device: Typed myAir device returned by the API.
+
+        Returns:
+            Keyword arguments for Home Assistant's config-entry update helper.
+        """
+        update_kwargs: dict[str, Any] = {"data": {**self._data}}
+        if not self._entry.unique_id:
+            update_kwargs["unique_id"] = device.serial_number
+        return update_kwargs
 
     async def _async_abort_incomplete_account(
         self, step: str, error: IncompleteAccountError
@@ -412,7 +425,9 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._store_device_token()
                     _LOGGER.debug("[async_step_reauth_confirm] data: %s", redact_dict(self._data))
 
-                    self.hass.config_entries.async_update_entry(self._entry, data={**self._data})
+                    self.hass.config_entries.async_update_entry(
+                        self._entry, **self._reauth_update_kwargs(device)
+                    )
                     await self.hass.config_entries.async_reload(self._entry.entry_id)
                     return self.async_abort(reason="reauth_successful")
                 return await self.async_step_reauth_verify_mfa()
@@ -476,7 +491,9 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         "[async_step_reauth_verify_mfa] user_input: %s", redact_dict(self._data)
                     )
 
-                    self.hass.config_entries.async_update_entry(self._entry, data={**self._data})
+                    self.hass.config_entries.async_update_entry(
+                        self._entry, **self._reauth_update_kwargs(device)
+                    )
                     await self.hass.config_entries.async_reload(self._entry.entry_id)
                     return self.async_abort(reason="reauth_successful")
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
