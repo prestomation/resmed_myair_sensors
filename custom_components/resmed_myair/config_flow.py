@@ -286,6 +286,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 status, device = await self._async_verify_mfa_and_get_device()
                 if status == AUTHN_SUCCESS:
+                    if not device.serial_number:
+                        raise ParsingError("Unable to get Serial Number from Device Data")
+                    serial_number: str = device.serial_number
+                    _LOGGER.info("Found device with serial number %s", serial_number)
+
+                    await self.async_set_unique_id(serial_number)
+                    self._abort_if_unique_id_configured()
                     self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._store_device_token()
                     _LOGGER.debug("[async_step_verify_mfa] user_input: %s", redact_dict(self._data))

@@ -96,6 +96,7 @@ async def test_async_step_verify_mfa_user_input_and_client(
     """Valid MFA input completes setup and persists the device token."""
     flow = MyAirConfigFlow()
     flow.hass = hass
+    flow.context = {}
     flow._data = {}
     flow._client = myair_client
     user_input = {CONF_VERIFICATION_CODE: "654321"}
@@ -107,13 +108,18 @@ async def test_async_step_verify_mfa_user_input_and_client(
             return_value=(
                 AUTHN_SUCCESS,
                 MyAirDevice.from_api(
-                    {"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"}
+                    {
+                        "serialNumber": "SN123",
+                        "fgDeviceManufacturerName": "ResMed",
+                        "localizedName": "CPAP",
+                    }
                 ),
             )
         ),
     )
     # Patch device_token on the client
     flow._client.device_token = "token"
+    flow.hass.config_entries.async_entry_for_domain_unique_id = MagicMock(return_value=None)
 
     # Patch async_create_entry to just return its arguments for assertion
     flow.async_create_entry = MagicMock(
@@ -668,6 +674,7 @@ async def test_async_step_verify_mfa_success(
         "get_mfa_device",
         AsyncMock(return_value=(AUTHN_SUCCESS, device)),
     )
+    flow.hass.config_entries.async_entry_for_domain_unique_id = MagicMock(return_value=None)
     result = await flow.async_step_verify_mfa(user_input)
 
     # Expect create_entry for the RESTClient successful MFA path
