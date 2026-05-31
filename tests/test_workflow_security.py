@@ -41,6 +41,7 @@ def _step_block(workflow: str, step_name: str) -> str:
     [
         (".github/workflows/linters.yml", "Checkout Repository"),
         (".github/workflows/validate.yml", "Checkout"),
+        (".github/workflows/pytest_coverage.yml", "Checkout Repository"),
     ],
 )
 def test_read_only_workflows_disable_persisted_checkout_credentials(

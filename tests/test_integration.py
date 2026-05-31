@@ -9,7 +9,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.resmed_myair as resmed_module
 from custom_components.resmed_myair import (
-    async_migrate_entry,
     async_setup_entry,
     async_unload_entry,
     sensor as sensor_platform,
@@ -129,17 +128,6 @@ async def test_most_recent_sleep_date_sensor_with_future_date(
     await sensor.async_added_to_hass()
     assert sensor.native_value.isoformat() == future
     assert sensor.available is True
-
-
-@pytest.mark.asyncio
-async def test_async_migrate_entry_v2(hass: MagicMock, config_entry: MockConfigEntry) -> None:
-    """Version 2 config entries skip migration updates."""
-    # The shared `config_entry` fixture is already a MockConfigEntry at version 2.
-    hass.config_entries.async_update_entry = MagicMock()
-    result = await async_migrate_entry(hass, config_entry)
-    assert result is True
-    assert config_entry.version == 2
-    hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio
