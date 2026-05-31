@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Awaitable, Callable, MutableMapping
+from collections.abc import Awaitable, Callable, Mapping, MutableMapping
 import hashlib
 from http.cookies import SimpleCookie
 import logging
@@ -31,6 +31,21 @@ _ErrorCheck = Callable[
     [str, ClientResponse, MutableMapping[str, Any], bool | None], Awaitable[None]
 ]
 _CookieUpdate = Callable[[list], Awaitable[None]]
+_AUTH_LOG_SECRET_KEYS: frozenset[str] = frozenset(
+    {"code", "code_verifier", "passCode", "sessionToken", "stateToken"}
+)
+
+
+def _safe_auth_log_payload(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove auth-flow-only secret keys before debug logging.
+
+    Args:
+        data: Payload that may contain Okta or OAuth credentials.
+
+    Returns:
+        A shallow copy with known secret-bearing fields omitted.
+    """
+    return {key: value for key, value in data.items() if key not in _AUTH_LOG_SECRET_KEYS}
 
 
 class MyAirAuthSession:
@@ -184,6 +199,10 @@ class MyAirAuthSession:
     def json_headers(self) -> dict[str, Any]:
         """Access request headers used for JSON payloads."""
         return self._json_headers
+
+    @json_headers.setter
+    def json_headers(self, value: Mapping[str, Any]) -> None:
+        self._json_headers = dict(value)
 
     @property
     def cookie_dt(self) -> str | None:
@@ -441,7 +460,7 @@ class MyAirAuthSession:
         ) as authn_res:
             _LOGGER.debug("[authn_check] authn_res: %s", authn_res)
             authn_dict: MutableMapping[str, Any] = await authn_res.json()
-            _LOGGER.debug("[authn_check] authn_dict: %s", redact_dict(authn_dict))
+            _LOGGER.debug("[authn_check] authn_dict: %s", _safe_auth_log_payload(authn_dict))
             await self._run_error_check("authn", authn_res, authn_dict)
         if "status" not in authn_dict:
             raise AuthenticationError("Cannot get status in authn step")
@@ -482,7 +501,7 @@ class MyAirAuthSession:
         json_query: dict[str, Any] = {"passCode": "", "stateToken": self._state_token}
         _LOGGER.debug("[trigger_mfa] mfa_url: %s", self._mfa_url)
         _LOGGER.debug("[trigger_mfa] headers: %s", redact_dict(self._json_headers))
-        _LOGGER.debug("[trigger_mfa] json_query: %s", redact_dict(json_query))
+        _LOGGER.debug("[trigger_mfa] json payload prepared")
 
         async with self._session.post(
             self._mfa_url,
@@ -502,14 +521,13 @@ class MyAirAuthSession:
 
     async def _verify_mfa(self, verification_code: str) -> str:
         """Verify MFA code and update session token."""
-        _LOGGER.debug("[verify_mfa] verification_code: %s", verification_code)
         json_query: dict[str, Any] = {
             "passCode": verification_code,
             "stateToken": self._state_token,
         }
         _LOGGER.debug("[verify_mfa] mfa_url: %s", self._mfa_url)
         _LOGGER.debug("[verify_mfa] headers: %s", redact_dict(self._json_headers))
-        _LOGGER.debug("[verify_mfa] json_query: %s", json_query)
+        _LOGGER.debug("[verify_mfa] json payload prepared")
 
         async with self._session.post(
             self._mfa_url,
@@ -519,7 +537,10 @@ class MyAirAuthSession:
         ) as verify_mfa_res:
             _LOGGER.debug("[verify_mfa] verify_mfa_res: %s", verify_mfa_res)
             verify_mfa_dict: MutableMapping[str, Any] = await verify_mfa_res.json()
-            _LOGGER.debug("[verify_mfa] verify_mfa_dict: %s", redact_dict(verify_mfa_dict))
+            _LOGGER.debug(
+                "[verify_mfa] verify_mfa_dict: %s",
+                _safe_auth_log_payload(verify_mfa_dict),
+            )
             await self._run_error_check("verify_mfa", verify_mfa_res, verify_mfa_dict)
         if "status" not in verify_mfa_dict:
             raise AuthenticationError("Cannot get status in verify_mfa step")
@@ -547,7 +568,6 @@ class MyAirAuthSession:
         # myAir uses Authorization Code with PKCE, so we generate our verifier here
         code_verifier: str = base64.urlsafe_b64encode(os.urandom(40)).decode("utf-8")
         code_verifier = re.sub("[^a-zA-Z0-9]+", "", code_verifier)
-        _LOGGER.debug("[get_access_token] code_verifier: %s", code_verifier)
 
         code_challenge_digest = hashlib.sha256(code_verifier.encode("utf-8")).digest()
         code_challenge: str = base64.urlsafe_b64encode(code_challenge_digest).decode("utf-8")
@@ -571,7 +591,10 @@ class MyAirAuthSession:
         }
         _LOGGER.debug("[get_access_token code] authorize_url: %s", authorize_url)
         _LOGGER.debug("[get_access_token code] headers: %s", redact_dict(self._json_headers))
-        _LOGGER.debug("[get_access_token code] params_query: %s", redact_dict(params_query))
+        _LOGGER.debug(
+            "[get_access_token code] params_query: %s",
+            _safe_auth_log_payload(params_query),
+        )
 
         async with self._session.get(
             authorize_url,
@@ -581,15 +604,13 @@ class MyAirAuthSession:
             cookies=self._cookies,
         ) as code_res:
             _LOGGER.debug("[get_access_token] code_res: %s", code_res)
-            _LOGGER.debug("[get_access_token] code_res.headers: %s", code_res.headers)
             location = code_res.headers.get("location")
             if location is None:
                 raise ParsingError("Unable to get location from code_res")
         fragment: DefragResult = urldefrag(location)
-        _LOGGER.debug("[get_access_token code] fragment: %s", fragment)
         # Pull the code out of the location header fragment
         code: list[str] = parse_qs(fragment.fragment)["code"]
-        _LOGGER.debug("[get_access_token] code: %s", code)
+        _LOGGER.debug("[get_access_token] received authorization code")
 
         await _extract_cookies(code_res.headers.getall("set-cookie", []))
 
@@ -610,7 +631,10 @@ class MyAirAuthSession:
         token_url: str = self._region_config.token_url
         _LOGGER.debug("[get_access_token token] token_url: %s", token_url)
         _LOGGER.debug("[get_access_token token] headers: %s", redact_dict(headers))
-        _LOGGER.debug("[get_access_token token] token_query: %s", redact_dict(token_query))
+        _LOGGER.debug(
+            "[get_access_token token] token_query: %s",
+            _safe_auth_log_payload(token_query),
+        )
 
         async with self._session.post(
             token_url,

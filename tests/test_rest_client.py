@@ -571,6 +571,90 @@ async def test_mfa_methods_success_variants(
 
 
 @pytest.mark.asyncio
+async def test_json_headers_assignment_forwards_to_auth_trigger_mfa(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Setting RESTClient._json_headers updates delegated auth request headers."""
+    client = RESTClient(config_na, session)
+    client._state_token = "dummy_state_token"
+    client._mfa_url = "https://example.com/mfa"
+    client._json_headers = {"Content-Type": "application/json"}
+    mock_response = make_mock_aiohttp_response(json_value={"status": "MFA_CHALLENGE_SENT"})
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+
+    await client._trigger_mfa()
+
+    assert client._auth.json_headers == {"Content-Type": "application/json"}
+    assert session.post.call_args.kwargs["headers"] == {"Content-Type": "application/json"}
+
+
+@pytest.mark.asyncio
+async def test_verify_mfa_debug_logs_do_not_expose_mfa_secrets(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MFA debug logging avoids verification code and state token values."""
+    client = RESTClient(config_na, session)
+    client._state_token = "dummy_state_token"
+    client._mfa_url = "https://example.com/mfa"
+    mock_response = make_mock_aiohttp_response(
+        json_value={"status": AUTHN_SUCCESS, "sessionToken": "dummy_session_token"}
+    )
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+
+    with caplog.at_level(logging.DEBUG):
+        await client._verify_mfa("654321")
+
+    assert "654321" not in caplog.text
+    assert "dummy_state_token" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_debug_logs_do_not_expose_oauth_secrets(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OAuth debug logging avoids session token, auth code, and verifier values."""
+    client = RESTClient(config_na, session)
+    client._session_token = "dummy_session_token"
+
+    mock_code_res = make_mock_aiohttp_response()
+    mock_code_res.headers = MagicMock()
+    mock_code_res.headers.getall = MagicMock(return_value=[])
+    mock_code_res.headers.get = MagicMock(return_value="https://redirect#code=secret_auth_code")
+    mock_token_res = make_mock_aiohttp_response(
+        json_value={"access_token": "access_token_value", "id_token": "id_token_value"}
+    )
+    session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_token_res)
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.auth.urldefrag",
+        lambda *a, **k: MagicMock(fragment="code=secret_auth_code"),
+    )
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.auth.parse_qs",
+        lambda *a, **k: {"code": ["secret_auth_code"]},
+    )
+    monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", AsyncMock())
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+
+    with caplog.at_level(logging.DEBUG):
+        await client._get_access_token()
+
+    assert "dummy_session_token" not in caplog.text
+    assert "secret_auth_code" not in caplog.text
+    assert "code_verifier" not in caplog.text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("json_value", "match"),
     [

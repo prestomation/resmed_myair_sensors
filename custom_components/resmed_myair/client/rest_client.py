@@ -49,6 +49,15 @@ class RESTClient(MyAirClient):
         return self._auth.cookies
 
     @property
+    def _json_headers(self) -> dict[str, Any]:
+        """Compatibility JSON header mapping."""
+        return self._auth.json_headers
+
+    @_json_headers.setter
+    def _json_headers(self, value: Mapping[str, Any]) -> None:
+        self._auth.json_headers = value
+
+    @property
     def _region_config(self) -> RegionConfig:
         """Return region config from auth session."""
         return self._auth.region_config
