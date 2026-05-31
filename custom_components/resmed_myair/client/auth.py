@@ -636,7 +636,14 @@ class MyAirAuthSession:
                 raise ParsingError("Unable to get location from code_res")
         fragment: DefragResult = urldefrag(location)
         # Pull the code out of the location header fragment
-        code: list[str] = parse_qs(fragment.fragment)["code"]
+        code_values: list[str] = parse_qs(fragment.fragment).get("code", [])
+        if not code_values:
+            _LOGGER.error(
+                "[get_access_token] authorization code missing from redirect fragment: %s",
+                fragment.fragment,
+            )
+            raise ParsingError("Authorization code missing from redirect fragment")
+        code: str = code_values[0]
         _LOGGER.debug("[get_access_token] received authorization code")
 
         await _extract_cookies(code_res.headers.getall("set-cookie", []))

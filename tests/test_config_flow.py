@@ -636,7 +636,7 @@ async def test_get_device_passes_device_token(
     """Test get_device passes device_token to MyAirConfig."""
     mock_client = myair_client
     mock_client.connect = AsyncMock(return_value=AUTHN_SUCCESS)
-    mock_client.get_user_device_data = AsyncMock(return_value={})
+    mock_client.get_user_device_data = AsyncMock(return_value=MyAirDevice.from_api({}))
     mock_config = MagicMock()
     monkeypatch.setattr(config_flow, "MyAirConfig", mock_config)
     monkeypatch.setattr(config_flow, "RESTClient", lambda *a, **k: mock_client)

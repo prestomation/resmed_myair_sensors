@@ -19,8 +19,6 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
     """DataUpdateCoordinator for myAir."""
 
     myair_client: MyAirClient
-    device: MyAirDevice | None
-    sleep_records: tuple[MyAirSleepRecord, ...]
 
     def __init__(
         self,

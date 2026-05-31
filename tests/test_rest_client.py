@@ -806,6 +806,34 @@ async def test_get_access_token_raises_on_missing_location(
 
 
 @pytest.mark.asyncio
+async def test_get_access_token_raises_on_missing_authorization_code(
+    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test _get_access_token raises ParsingError if the redirect has no code."""
+    client = RESTClient(config_na, session)
+    client._session_token = "dummy_session_token"
+    client._json_headers = {"Content-Type": "application/json"}
+
+    mock_code_res = make_mock_aiohttp_response()
+    mock_code_res.headers = MagicMock()
+    mock_code_res.headers.getall = MagicMock(return_value=[])
+    mock_code_res.headers.get = MagicMock(return_value="https://redirect#error=access_denied")
+
+    session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.auth.urldefrag",
+        lambda *a, **k: MagicMock(fragment="error=access_denied"),
+    )
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.auth.parse_qs",
+        lambda *a, **k: {"error": ["access_denied"]},
+    )
+
+    with pytest.raises(ParsingError, match="Authorization code missing"):
+        await client._get_access_token()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("token_json", "match_msg"),
     [
@@ -962,9 +990,7 @@ async def test_gql_query_failure_variants(
 
 
 @pytest.mark.asyncio
-async def test_gql_query_graphql_error(
-    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_gql_query_graphql_error(config_na: MyAirConfig, session: MagicMock) -> None:
     """Ensure gql_query maps GraphQL unauthorized errors."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
@@ -977,7 +1003,6 @@ async def test_gql_query_graphql_error(
     )
 
     session.post.return_value = make_mock_aiohttp_context_manager(mock_res)
-    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
     with pytest.raises(ParsingError, match="unauthorized: 401"):
         await client._gql_query("op", "query")
 

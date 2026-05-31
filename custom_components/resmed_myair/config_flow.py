@@ -65,8 +65,7 @@ async def get_device(
     )
     status: str = await client.connect(initial=True)
     if status == AUTHN_SUCCESS:
-        device_data = await client.get_user_device_data(initial=True)
-        device = device_data
+        device = await client.get_user_device_data(initial=True)
         return status, device, client
     return status, None, client
 
@@ -75,8 +74,7 @@ async def get_mfa_device(client: RESTClient, verification_code: str) -> tuple[st
     """Get access token and user device data."""
     _LOGGER.debug("[get_mfa_device] Starting")
     status: str = await client.verify_mfa_and_get_access_token(verification_code)
-    device_data = await client.get_user_device_data(initial=True)
-    device = device_data
+    device = await client.get_user_device_data(initial=True)
     return status, device
 
 
@@ -137,7 +135,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 status, device = await self._async_login_and_get_device()
                 if device and status == AUTHN_SUCCESS:
-                    _LOGGER.debug("[async_step_user] device: %s", redact_dict(device))
+                    _LOGGER.debug("[async_step_user] device: %s", redact_dict(device.raw))
                     if not device.serial_number:
                         raise ParsingError("Unable to get Serial Number from Device Data")
                     serial_number: str = device.serial_number

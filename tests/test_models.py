@@ -1,6 +1,9 @@
 """Tests for typed ResMed myAir domain models."""
 
 from datetime import date
+from decimal import Decimal
+
+import pytest
 
 from custom_components.resmed_myair.models import (
     MyAirCoordinatorData,
@@ -122,6 +125,14 @@ def test_sleep_record_with_non_string_start_date_has_none_start_date() -> None:
     assert record.has_usage is True
 
 
+def test_sleep_record_with_invalid_start_date_has_none_start_date() -> None:
+    """Invalid startDate strings should not crash model construction."""
+    record = MyAirSleepRecord.from_api({"startDate": "not-a-date", "totalUsage": 30})
+
+    assert record.start_date is None
+    assert record.total_usage_minutes == 30
+
+
 def test_device_from_api_accepts_none() -> None:
     """from_api accepts None and produces a safe empty device."""
     device = MyAirDevice.from_api(None)
@@ -166,6 +177,31 @@ def test_sleep_record_with_non_int_usage_is_none() -> None:
     assert record.total_usage_minutes is None
     assert record.friendly_usage_time is None
     assert record.has_usage is False
+
+
+@pytest.mark.parametrize("raw_usage", [125.9, Decimal("125.9"), "125.9"])
+def test_sleep_record_coerces_numeric_usage_values(raw_usage: float | Decimal | str) -> None:
+    """Numeric API usage values should be coerced to integer minutes."""
+    record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
+
+    assert record.total_usage_minutes == 125
+    assert record.friendly_usage_time == "2:05"
+    assert record.has_usage is True
+
+
+def test_coordinator_data_selects_latest_record_by_start_date() -> None:
+    """Coordinator data should not rely on API sleep record order."""
+    data = MyAirCoordinatorData(
+        sleep_records=(
+            MyAirSleepRecord.from_api({"startDate": "2024-07-20", "totalUsage": 0}),
+            MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": 30}),
+            MyAirSleepRecord.from_api({"startDate": "2024-07-19", "totalUsage": 60}),
+        ),
+    )
+
+    assert data.latest_sleep_record is not None
+    assert data.latest_sleep_record.start_date == date(2024, 7, 20)
+    assert data.most_recent_sleep_date == date(2024, 7, 19)
 
 
 def test_coordinator_data_defaults_to_empty() -> None:

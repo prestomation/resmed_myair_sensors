@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal, InvalidOperation
+import logging
 from typing import Any, Self
 
-from homeassistant.util import dt as dt_util
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def _to_usage_minutes(raw_usage: Any) -> int | None:
@@ -16,6 +18,13 @@ def _to_usage_minutes(raw_usage: Any) -> int | None:
         return None
     if isinstance(raw_usage, int):
         return raw_usage
+    if isinstance(raw_usage, float | Decimal | str):
+        try:
+            usage_minutes = int(Decimal(str(raw_usage)))
+        except InvalidOperation, ValueError:
+            return None
+        _LOGGER.warning("Coerced non-integer totalUsage value to minutes: %r", raw_usage)
+        return usage_minutes
     return None
 
 
@@ -33,6 +42,16 @@ def _to_optional_str(raw: Any) -> str | None:
     if not isinstance(raw, str):
         return None
     return raw
+
+
+def _to_optional_date(raw: Any) -> date | None:
+    """Return a normalized optional date value from arbitrary API payload data."""
+    if not isinstance(raw, str):
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,13 +98,11 @@ class MyAirSleepRecord:
     def from_api(cls, data: Mapping[str, Any] | None) -> Self:
         """Create a typed sleep record from raw API payload data."""
         raw = dict(data or {})
-        start_date_raw = raw.get("startDate")
-        start_date = dt_util.parse_date(start_date_raw) if isinstance(start_date_raw, str) else None
         total_usage_minutes = _to_usage_minutes(raw.get("totalUsage"))
         has_usage = total_usage_minutes is not None and total_usage_minutes > 0
         return cls(
             raw=raw,
-            start_date=start_date,
+            start_date=_to_optional_date(raw.get("startDate")),
             total_usage_minutes=total_usage_minutes,
             friendly_usage_time=_format_usage_time(total_usage_minutes),
             has_usage=has_usage,
@@ -108,12 +125,14 @@ class MyAirCoordinatorData:
         """Return the latest available sleep record if any."""
         if not self.sleep_records:
             return None
-        return self.sleep_records[-1]
+        return max(self.sleep_records, key=lambda record: record.start_date or date.min)
 
     @property
     def most_recent_sleep_date(self) -> date | None:
         """Return the most recent date that has recorded usage."""
-        for record in reversed(self.sleep_records):
-            if record.start_date and record.has_usage:
-                return record.start_date
-        return None
+        records_with_usage = [
+            record for record in self.sleep_records if record.start_date and record.has_usage
+        ]
+        if not records_with_usage:
+            return None
+        return max(records_with_usage, key=lambda record: record.start_date or date.min).start_date

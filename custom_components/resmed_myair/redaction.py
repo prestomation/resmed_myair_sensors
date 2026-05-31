@@ -1,6 +1,6 @@
 """Shared redaction helpers for ResMed myAir logs."""
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping
 from typing import Any
 
 from .const import KEYS_TO_REDACT
@@ -23,14 +23,12 @@ def redact_dict(data: Any | None) -> Any | None:
     if isinstance(data, list):
         return [redact_dict(value) for value in data]
 
-    redacted: MutableMapping[str, Any] = {**data}
+    redacted: dict[str, Any] = {**data}
     for key, value in redacted.items():
         if value is None or (isinstance(value, str) and not value):
             continue
         if key in KEYS_TO_REDACT:
             redacted[key] = REDACTED
-        elif isinstance(value, MutableMapping):
+        else:
             redacted[key] = redact_dict(value)
-        elif isinstance(value, list):
-            redacted[key] = [redact_dict(item) for item in value]
     return redacted
