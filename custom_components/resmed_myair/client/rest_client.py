@@ -25,7 +25,14 @@ from .myair_client import (
     MyAirConfig,
     ParsingError,
 )
-from .regions import RegionConfig, get_region_config
+from .regions import EU_CONFIG, NA_CONFIG, RegionConfig, get_region_config
+
+__all__ = [
+    "EU_CONFIG",
+    "NA_CONFIG",
+    "RegionConfig",
+    "get_region_config",
+]
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 

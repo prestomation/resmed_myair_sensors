@@ -22,11 +22,10 @@ from custom_components.resmed_myair.client.rest_client import (
     AUTHN_SUCCESS,
     EU_CONFIG,
     NA_CONFIG,
-    REGION_NA,
     ParsingError,
     RESTClient,
 )
-from custom_components.resmed_myair.const import REGION_EU
+from custom_components.resmed_myair.const import REGION_EU, REGION_NA
 from tests.conftest import make_mock_aiohttp_context_manager, make_mock_aiohttp_response
 
 
