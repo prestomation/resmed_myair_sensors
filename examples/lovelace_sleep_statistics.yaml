@@ -1,0 +1,34 @@
+type: vertical-stack
+cards:
+  - type: statistics-graph
+    title: Sleep Duration
+    chart_type: line
+    period: day
+    days_to_show: 30
+    stat_types:
+      - change
+    hide_legend: false
+    entities:
+      - resmed_myair:sn123_usagehours
+      - entity: sensor.cpap_usage_hours_7_day_average
+        name: 7 Day Average
+      - entity: sensor.cpap_usage_hours_30_day_average
+        name: 30 Day Average
+
+  - type: statistics-graph
+    title: Nightly Sleep Metrics
+    chart_type: line
+    period: day
+    days_to_show: 30
+    stat_types:
+      - state
+    hide_legend: false
+    entities:
+      - entity: sensor.cpap_ahi_events_per_hour
+        name: AHI
+      - entity: sensor.cpap_mask_on_off
+        name: Mask On/Off
+      - entity: sensor.cpap_mask_leak
+        name: Mask Leak %
+      - entity: sensor.cpap_total_myair_score
+        name: myAir Score

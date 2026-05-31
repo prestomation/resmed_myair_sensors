@@ -1,0 +1,76 @@
+type: custom:apexcharts-card
+section_mode: true
+graph_span: 30d
+header:
+  show: true
+  title: CPAP Usage Hours
+  show_states: false
+  colorize_states: false
+series:
+  - entity: sensor.cpap_usage_hours
+    name: Sleep Hours
+    type: column
+    float_precision: 2
+    show:
+      legend_value: false
+      in_header: false
+      as_duration: hour
+    data_generator: |
+      return (entity.attributes.daily_usage_hours || [])
+        .filter((point) => point.date)
+        .map((point) => {
+          const day = new Date(`${point.date}T00:00:00`);
+          return [day.getTime(), point.hours];
+        });
+apex_config:
+  chart:
+    height: 320
+  colors:
+    - "#2563eb"
+  fill:
+    type: gradient
+    gradient:
+      shade: light
+      type: vertical
+      shadeIntensity: 0.25
+      opacityFrom: 0.95
+      opacityTo: 0.55
+      stops:
+        - 0
+        - 100
+  plotOptions:
+    bar:
+      borderRadius: 4
+  legend:
+    show: false
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function(value) {
+          return new Date(value).toLocaleDateString("en-US", {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            year: "numeric"
+          });
+        }
+    y:
+      formatter: |
+        EVAL:function(value) {
+          const totalMinutes = Math.round(value * 60);
+          const hours = Math.floor(totalMinutes / 60);
+          const minutes = totalMinutes % 60;
+          return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+        }
+  yaxis:
+    - decimalsInFloat: 2
+      title:
+        text: Sleep Duration
+      labels:
+        formatter: |
+          EVAL:function(value) {
+            const totalMinutes = Math.round(value * 60);
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+          }

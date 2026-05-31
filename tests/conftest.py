@@ -18,6 +18,7 @@ from custom_components.resmed_myair.const import (
     REGION_EU,
     REGION_NA,
 )
+from custom_components.resmed_myair.coordinator import _merge_sleep_history
 
 type JSONValue = str | int | float | bool | None | dict[str, JSONValue] | list[JSONValue]
 type HeadersValue = Mapping[str, str] | CIMultiDict[str] | None
@@ -374,9 +375,17 @@ def coordinator_factory() -> CoordinatorFactory:
         class DummyCoordinator:
             def __init__(self, d: dict[str, object]) -> None:
                 self.data = d
+                self._usage_hours_history: list[dict] = []
 
             def async_add_listener(self, *args: object, **kwargs: object) -> Callable[[], None]:
                 return lambda: None
+
+            @property
+            def chart_sleep_records(self) -> list[dict[str, object]]:
+                history = self.data.get("sleep_records_history")
+                if not history:
+                    history = self.data.get("sleep_records", [])
+                return _merge_sleep_history(self._usage_hours_history, history)
 
         return DummyCoordinator(data)
 

@@ -1,0 +1,18 @@
+input_select:
+  cpap_usage_range:
+    name: CPAP Usage Range
+    options:
+      - 1D
+      - 7D
+      - 30D
+    initial: 30D
+    icon: mdi:calendar-range
+
+input_number:
+  cpap_usage_page:
+    name: CPAP Usage Page
+    min: 0
+    max: 365
+    step: 1
+    mode: box
+    initial: 0

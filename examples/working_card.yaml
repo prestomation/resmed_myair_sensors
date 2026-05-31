@@ -1,0 +1,10 @@
+type: statistics-graph
+title: CPAP Usage Hours
+chart_type: bar
+period: day
+days_to_show: 30
+stat_types:
+  - change
+hide_legend: true
+entities:
+  - resmed_myair:23172442329_usagehours_sum

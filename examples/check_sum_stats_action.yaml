@@ -1,0 +1,10 @@
+action: recorder.get_statistics
+data:
+  statistic_ids:
+    - resmed_myair:23172442329_usagehours_sum
+  start_time: "2026-03-27 00:00:00"
+  end_time: "2026-03-30 23:59:59"
+  period: day
+  types:
+    - change
+response_variable: sleep_stats

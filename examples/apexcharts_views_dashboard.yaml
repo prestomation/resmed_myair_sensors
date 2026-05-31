@@ -1,0 +1,584 @@
+views:
+  - title: CPAP 30 Days
+    path: cpap-30d
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: button
+                name: Week
+                icon: mdi:calendar-week
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-week
+              - type: button
+                name: 30 Days
+                icon: mdi:calendar-month
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-30d
+              - type: button
+                name: 90 Days
+                icon: mdi:calendar-range
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-90d
+              - type: button
+                name: 365 Days
+                icon: mdi:calendar-blank
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-365d
+          - type: custom:apexcharts-card
+            graph_span: 30d
+            span:
+              end: day
+            header:
+              show: true
+              title: CPAP Usage Hours - 30 Days
+              show_states: false
+              colorize_states: false
+            series:
+              - entity: sensor.cpap_usage_hours
+                name: Sleep Hours
+                type: column
+                color: "#2563eb"
+                float_precision: 2
+                data_generator: |
+                  return (entity.attributes.daily_usage_hours || [])
+                    .filter((point) => point.date)
+                    .map((point) => {
+                      const day = new Date(`${point.date}T00:00:00`);
+                      return {
+                        x: day.getTime(),
+                        y: point.hours,
+                        minutes: point.minutes,
+                        ahi: point.ahi,
+                        mask_on_off: point.mask_on_off,
+                        mask_leak_percent: point.mask_leak_percent,
+                        myair_score: point.myair_score
+                      };
+                    });
+              - entity: sensor.cpap_usage_hours
+                name: myAir Score
+                type: line
+                color: "#eab308"
+                stroke_width: 3
+                float_precision: 0
+                yaxis_id: score
+                data_generator: |
+                  return (entity.attributes.daily_usage_hours || [])
+                    .filter((point) => point.date)
+                    .map((point) => {
+                      const day = new Date(`${point.date}T00:00:00`);
+                      return {
+                        x: day.getTime(),
+                        y: point.myair_score
+                      };
+                    });
+            apex_config:
+              chart:
+                height: 320
+              colors:
+                - "#2563eb"
+              fill:
+                type: gradient
+                gradient:
+                  shade: light
+                  type: vertical
+                  shadeIntensity: 0.25
+                  opacityFrom: 0.95
+                  opacityTo: 0.55
+                  stops:
+                    - 0
+                    - 100
+              plotOptions:
+                bar:
+                  borderRadius: 4
+              legend:
+                show: false
+              tooltip:
+                shared: true
+                intersect: false
+                custom: |
+                  EVAL:function({ dataPointIndex, w }) {
+                    const point = w.config.series[0].data[dataPointIndex];
+                    if (!point) return '';
+                    const date = new Date(point.x).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric"
+                    });
+                    const totalMinutes = point.minutes ?? Math.round((point.y || 0) * 60);
+                    const hours = Math.floor(totalMinutes / 60);
+                    const minutes = totalMinutes % 60;
+                    const score = point.myair_score === null || point.myair_score === undefined ? "-" : `${Math.round(point.myair_score)} points`;
+                    const ahi = point.ahi === null || point.ahi === undefined ? "-" : `${point.ahi} events/hr`;
+                    const maskOnOff = point.mask_on_off === null || point.mask_on_off === undefined ? "-" : point.mask_on_off;
+                    const maskSeal = point.mask_leak_percent === null || point.mask_leak_percent === undefined ? "-" : `${point.mask_leak_percent} L/min`;
+                    return `
+                      <div style="padding:8px 10px;">
+                        <div style="font-weight:600; margin-bottom:6px;">${date}</div>
+                        <div>Sleep duration: ${hours}${hours === 1 ? "hr" : "hrs"} ${minutes}${minutes === 1 ? "min" : "mins"}</div>
+                        <div>myAir score: ${score}</div>
+                        <div>Events: ${ahi}</div>
+                        <div>Mask on/off: ${maskOnOff}</div>
+                        <div>Mask seal: ${maskSeal}</div>
+                      </div>
+                    `;
+                  }
+              yaxis:
+                - decimalsInFloat: 2
+                  title:
+                    text: Sleep duration
+                - id: score
+                  opposite: true
+                  min: 0
+                  max: 100
+                  decimalsInFloat: 0
+                  title:
+                    text: myAir score
+                    rotate: 90
+
+  - title: CPAP Week
+    path: cpap-week
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: button
+                name: Week
+                icon: mdi:calendar-week
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-week
+              - type: button
+                name: 30 Days
+                icon: mdi:calendar-month
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-30d
+              - type: button
+                name: 90 Days
+                icon: mdi:calendar-range
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-90d
+              - type: button
+                name: 365 Days
+                icon: mdi:calendar-blank
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-365d
+          - type: custom:apexcharts-card
+            graph_span: 7d
+            span:
+              end: day
+            header:
+              show: true
+              title: CPAP Usage Hours - Week
+              show_states: false
+              colorize_states: false
+            series:
+              - entity: sensor.cpap_usage_hours
+                name: Sleep Hours
+                type: column
+                color: "#2563eb"
+                float_precision: 2
+                data_generator: |
+                  return (entity.attributes.daily_usage_hours || [])
+                    .filter((point) => point.date)
+                    .map((point) => {
+                      const day = new Date(`${point.date}T00:00:00`);
+                      return {
+                        x: day.getTime(),
+                        y: point.hours,
+                        minutes: point.minutes,
+                        ahi: point.ahi,
+                        mask_on_off: point.mask_on_off,
+                        mask_leak_percent: point.mask_leak_percent,
+                        myair_score: point.myair_score
+                      };
+                    });
+              - entity: sensor.cpap_usage_hours
+                name: myAir Score
+                type: line
+                color: "#eab308"
+                stroke_width: 3
+                float_precision: 0
+                yaxis_id: score
+                data_generator: |
+                  return (entity.attributes.daily_usage_hours || [])
+                    .filter((point) => point.date)
+                    .map((point) => {
+                      const day = new Date(`${point.date}T00:00:00`);
+                      return {
+                        x: day.getTime(),
+                        y: point.myair_score
+                      };
+                    });
+            apex_config:
+              chart:
+                height: 320
+              colors:
+                - "#2563eb"
+              fill:
+                type: gradient
+                gradient:
+                  shade: light
+                  type: vertical
+                  shadeIntensity: 0.25
+                  opacityFrom: 0.95
+                  opacityTo: 0.55
+                  stops:
+                    - 0
+                    - 100
+              plotOptions:
+                bar:
+                  borderRadius: 4
+              legend:
+                show: false
+              tooltip:
+                shared: true
+                intersect: false
+                custom: |
+                  EVAL:function({ dataPointIndex, w }) {
+                    const point = w.config.series[0].data[dataPointIndex];
+                    if (!point) return '';
+                    const date = new Date(point.x).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric"
+                    });
+                    const totalMinutes = point.minutes ?? Math.round((point.y || 0) * 60);
+                    const hours = Math.floor(totalMinutes / 60);
+                    const minutes = totalMinutes % 60;
+                    const score = point.myair_score === null || point.myair_score === undefined ? "-" : `${Math.round(point.myair_score)} points`;
+                    const ahi = point.ahi === null || point.ahi === undefined ? "-" : `${point.ahi} events/hr`;
+                    const maskOnOff = point.mask_on_off === null || point.mask_on_off === undefined ? "-" : point.mask_on_off;
+                    const maskSeal = point.mask_leak_percent === null || point.mask_leak_percent === undefined ? "-" : `${point.mask_leak_percent} L/min`;
+                    return `
+                      <div style="padding:8px 10px;">
+                        <div style="font-weight:600; margin-bottom:6px;">${date}</div>
+                        <div>Sleep duration: ${hours}${hours === 1 ? "hr" : "hrs"} ${minutes}${minutes === 1 ? "min" : "mins"}</div>
+                        <div>myAir score: ${score}</div>
+                        <div>Events: ${ahi}</div>
+                        <div>Mask on/off: ${maskOnOff}</div>
+                        <div>Mask seal: ${maskSeal}</div>
+                      </div>
+                    `;
+                  }
+              yaxis:
+                - decimalsInFloat: 2
+                  title:
+                    text: Sleep duration
+                - id: score
+                  opposite: true
+                  min: 0
+                  max: 100
+                  decimalsInFloat: 0
+                  title:
+                    text: myAir score
+                    rotate: 90
+
+  - title: CPAP 90 Days
+    path: cpap-90d
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: button
+                name: Week
+                icon: mdi:calendar-week
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-week
+              - type: button
+                name: 30 Days
+                icon: mdi:calendar-month
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-30d
+              - type: button
+                name: 90 Days
+                icon: mdi:calendar-range
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-90d
+              - type: button
+                name: 365 Days
+                icon: mdi:calendar-blank
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-365d
+          - type: custom:apexcharts-card
+            graph_span: 90d
+            span:
+              end: day
+            header:
+              show: true
+              title: CPAP Usage Hours - 90 Days
+              show_states: false
+              colorize_states: false
+            series:
+              - entity: sensor.cpap_usage_hours
+                name: Sleep Hours
+                type: column
+                color: "#2563eb"
+                float_precision: 2
+                data_generator: |
+                  return (entity.attributes.daily_usage_hours || [])
+                    .filter((point) => point.date)
+                    .map((point) => {
+                      const day = new Date(`${point.date}T00:00:00`);
+                      return {
+                        x: day.getTime(),
+                        y: point.hours,
+                        minutes: point.minutes,
+                        ahi: point.ahi,
+                        mask_on_off: point.mask_on_off,
+                        mask_leak_percent: point.mask_leak_percent,
+                        myair_score: point.myair_score
+                      };
+                    });
+              - entity: sensor.cpap_usage_hours
+                name: myAir Score
+                type: line
+                color: "#eab308"
+                stroke_width: 3
+                float_precision: 0
+                yaxis_id: score
+                data_generator: |
+                  return (entity.attributes.daily_usage_hours || [])
+                    .filter((point) => point.date)
+                    .map((point) => {
+                      const day = new Date(`${point.date}T00:00:00`);
+                      return {
+                        x: day.getTime(),
+                        y: point.myair_score
+                      };
+                    });
+            apex_config:
+              chart:
+                height: 320
+              colors:
+                - "#2563eb"
+              fill:
+                type: gradient
+                gradient:
+                  shade: light
+                  type: vertical
+                  shadeIntensity: 0.25
+                  opacityFrom: 0.95
+                  opacityTo: 0.55
+                  stops:
+                    - 0
+                    - 100
+              plotOptions:
+                bar:
+                  borderRadius: 4
+              legend:
+                show: false
+              tooltip:
+                shared: true
+                intersect: false
+                custom: |
+                  EVAL:function({ dataPointIndex, w }) {
+                    const point = w.config.series[0].data[dataPointIndex];
+                    if (!point) return '';
+                    const date = new Date(point.x).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric"
+                    });
+                    const totalMinutes = point.minutes ?? Math.round((point.y || 0) * 60);
+                    const hours = Math.floor(totalMinutes / 60);
+                    const minutes = totalMinutes % 60;
+                    const score = point.myair_score === null || point.myair_score === undefined ? "-" : `${Math.round(point.myair_score)} points`;
+                    const ahi = point.ahi === null || point.ahi === undefined ? "-" : `${point.ahi} events/hr`;
+                    const maskOnOff = point.mask_on_off === null || point.mask_on_off === undefined ? "-" : point.mask_on_off;
+                    const maskSeal = point.mask_leak_percent === null || point.mask_leak_percent === undefined ? "-" : `${point.mask_leak_percent} L/min`;
+                    return `
+                      <div style="padding:8px 10px;">
+                        <div style="font-weight:600; margin-bottom:6px;">${date}</div>
+                        <div>Sleep duration: ${hours}${hours === 1 ? "hr" : "hrs"} ${minutes}${minutes === 1 ? "min" : "mins"}</div>
+                        <div>myAir score: ${score}</div>
+                        <div>Events: ${ahi}</div>
+                        <div>Mask on/off: ${maskOnOff}</div>
+                        <div>Mask seal: ${maskSeal}</div>
+                      </div>
+                    `;
+                  }
+              yaxis:
+                - decimalsInFloat: 2
+                  title:
+                    text: Sleep duration
+                - id: score
+                  opposite: true
+                  min: 0
+                  max: 100
+                  decimalsInFloat: 0
+                  title:
+                    text: myAir score
+                    rotate: 90
+
+  - title: CPAP 365 Days
+    path: cpap-365d
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: button
+                name: Week
+                icon: mdi:calendar-week
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-week
+              - type: button
+                name: 30 Days
+                icon: mdi:calendar-month
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-30d
+              - type: button
+                name: 90 Days
+                icon: mdi:calendar-range
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-90d
+              - type: button
+                name: 365 Days
+                icon: mdi:calendar-blank
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-cpap/cpap-365d
+          - type: custom:apexcharts-card
+            graph_span: 365d
+            span:
+              end: day
+            header:
+              show: true
+              title: CPAP Usage Hours - 365 Days
+              show_states: false
+              colorize_states: false
+            series:
+              - entity: sensor.cpap_usage_hours
+                name: Sleep Hours
+                type: column
+                color: "#2563eb"
+                float_precision: 2
+                data_generator: |
+                  return (entity.attributes.daily_usage_hours || [])
+                    .filter((point) => point.date)
+                    .map((point) => {
+                      const day = new Date(`${point.date}T00:00:00`);
+                      return {
+                        x: day.getTime(),
+                        y: point.hours,
+                        minutes: point.minutes,
+                        ahi: point.ahi,
+                        mask_on_off: point.mask_on_off,
+                        mask_leak_percent: point.mask_leak_percent,
+                        myair_score: point.myair_score
+                      };
+                    });
+              - entity: sensor.cpap_usage_hours
+                name: myAir Score
+                type: line
+                color: "#eab308"
+                stroke_width: 3
+                float_precision: 0
+                yaxis_id: score
+                data_generator: |
+                  return (entity.attributes.daily_usage_hours || [])
+                    .filter((point) => point.date)
+                    .map((point) => {
+                      const day = new Date(`${point.date}T00:00:00`);
+                      return {
+                        x: day.getTime(),
+                        y: point.myair_score
+                      };
+                    });
+            apex_config:
+              chart:
+                height: 320
+              colors:
+                - "#2563eb"
+              fill:
+                type: gradient
+                gradient:
+                  shade: light
+                  type: vertical
+                  shadeIntensity: 0.25
+                  opacityFrom: 0.95
+                  opacityTo: 0.55
+                  stops:
+                    - 0
+                    - 100
+              plotOptions:
+                bar:
+                  borderRadius: 4
+              legend:
+                show: false
+              tooltip:
+                shared: true
+                intersect: false
+                custom: |
+                  EVAL:function({ dataPointIndex, w }) {
+                    const point = w.config.series[0].data[dataPointIndex];
+                    if (!point) return '';
+                    const date = new Date(point.x).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric"
+                    });
+                    const totalMinutes = point.minutes ?? Math.round((point.y || 0) * 60);
+                    const hours = Math.floor(totalMinutes / 60);
+                    const minutes = totalMinutes % 60;
+                    const score = point.myair_score === null || point.myair_score === undefined ? "-" : `${Math.round(point.myair_score)} points`;
+                    const ahi = point.ahi === null || point.ahi === undefined ? "-" : `${point.ahi} events/hr`;
+                    const maskOnOff = point.mask_on_off === null || point.mask_on_off === undefined ? "-" : point.mask_on_off;
+                    const maskSeal = point.mask_leak_percent === null || point.mask_leak_percent === undefined ? "-" : `${point.mask_leak_percent} L/min`;
+                    return `
+                      <div style="padding:8px 10px;">
+                        <div style="font-weight:600; margin-bottom:6px;">${date}</div>
+                        <div>Sleep duration: ${hours}${hours === 1 ? "hr" : "hrs"} ${minutes}${minutes === 1 ? "min" : "mins"}</div>
+                        <div>myAir score: ${score}</div>
+                        <div>Events: ${ahi}</div>
+                        <div>Mask on/off: ${maskOnOff}</div>
+                        <div>Mask seal: ${maskSeal}</div>
+                      </div>
+                    `;
+                  }
+              yaxis:
+                - decimalsInFloat: 2
+                  title:
+                    text: Sleep duration
+                - id: score
+                  opposite: true
+                  min: 0
+                  max: 100
+                  decimalsInFloat: 0
+                  title:
+                    text: myAir score
+                    rotate: 90

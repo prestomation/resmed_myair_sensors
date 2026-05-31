@@ -1,10 +1,13 @@
 """Unit tests for sensor entities in the resmed_myair integration."""
 
-import inspect
+from collections.abc import Callable
+from datetime import datetime
 import logging
+from typing import Any
 from unittest.mock import MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
+from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -14,9 +17,11 @@ from custom_components.resmed_myair.sensor import (
     MyAirFriendlyUsageTime,
     MyAirMostRecentSleepDate,
     MyAirSleepRecordSensor,
+    MyAirUsageHoursAverageSensor,
+    MyAirUsageHoursSensor,
     async_setup_entry,
 )
-from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike
+from tests.conftest import CoordinatorFactory
 
 
 @pytest.mark.parametrize(
@@ -84,6 +89,310 @@ def test_friendly_usage_time_all_branches(
 
 
 @pytest.mark.parametrize(
+    ("data", "days", "expected_native", "expected_available"),
+    [
+        ({}, 7, None, False),
+        ({"sleep_records": []}, 7, None, False),
+        (
+            {
+                "sleep_records": [
+                    {"startDate": "2024-07-01", "totalUsage": 60},
+                    {"startDate": "2024-07-02", "totalUsage": 120},
+                    {"startDate": "2024-07-03", "totalUsage": 180},
+                ]
+            },
+            7,
+            2.0,
+            True,
+        ),
+        (
+            {
+                "sleep_records": [
+                    {"startDate": "2024-07-01", "totalUsage": 60},
+                    {"startDate": "2024-07-02", "totalUsage": 120},
+                    {"startDate": "2024-07-03", "totalUsage": 180},
+                ]
+            },
+            2,
+            2.5,
+            True,
+        ),
+        (
+            {
+                "sleep_records": [
+                    {"startDate": "2024-07-01", "totalUsage": -60},
+                    {"startDate": "2024-07-02", "totalUsage": 120},
+                ]
+            },
+            7,
+            1.0,
+            True,
+        ),
+    ],
+)
+def test_usage_hours_average_all_branches(
+    data: dict[str, object],
+    days: int,
+    expected_native: float | None,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
+    """Parametrized tests for rolling average usage hours sensors."""
+    coordinator = coordinator_factory(data=data)
+    sensor = MyAirUsageHoursAverageSensor(coordinator, days=days)
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+    sensor._handle_coordinator_update()
+    assert sensor.available == expected_available
+    assert sensor.native_value == expected_native
+
+
+@pytest.mark.asyncio
+async def test_usage_hours_imports_external_statistics(
+    hass: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
+    """Ensure usage hours imports dated records as external statistics."""
+    coordinator = coordinator_factory(
+        data={
+            "device": {"serialNumber": "SN123"},
+            "sleep_records": [
+                {"startDate": "2024-07-01", "totalUsage": 120},
+                {"startDate": "2024-07-02", "totalUsage": 180},
+            ],
+        }
+    )
+    sensor = MyAirUsageHoursSensor(coordinator)
+    sensor.hass = hass
+
+    imported: list[tuple[dict[str, object], list[dict[str, object]]]] = []
+
+    class DummyRecorder:
+        async def async_add_executor_job(self, func: Callable[..., Any], *args: object) -> Any:
+            return func(*args)
+
+    monkeypatch.setattr("custom_components.resmed_myair.sensor.get_instance", lambda hass: DummyRecorder())
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.sensor.get_last_statistics",
+        lambda *args: {},
+    )
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.sensor.async_add_external_statistics",
+        lambda hass, metadata, statistics: imported.append((metadata, list(statistics))),
+    )
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+
+    await sensor.async_added_to_hass()
+    await hass.async_block_till_done()
+
+    assert imported
+    metadata, statistics = imported[0]
+    assert metadata["source"] == "resmed_myair"
+    assert metadata["statistic_id"] == "resmed_myair:sn123_usagehours_sum"
+    assert metadata["unit_of_measurement"] == "h"
+    assert metadata["has_mean"] is False
+    assert metadata["has_sum"] is True
+    assert len(statistics) == 2
+    assert statistics[0]["start"] == datetime(2024, 7, 1, tzinfo=dt_util.DEFAULT_TIME_ZONE)
+    assert statistics[0]["sum"] == 2.0
+    assert statistics[1]["sum"] == 5.0
+    assert sensor.extra_state_attributes == {
+        "historical_statistic_id": "resmed_myair:sn123_usagehours_sum",
+        "daily_usage_hours": [
+            {
+                "date": "2024-07-01",
+                "hours": 2.0,
+                "minutes": 120,
+                "ahi": None,
+                "mask_on_off": None,
+                "mask_leak_percent": None,
+                "myair_score": None,
+            },
+            {
+                "date": "2024-07-02",
+                "hours": 3.0,
+                "minutes": 180,
+                "ahi": None,
+                "mask_on_off": None,
+                "mask_leak_percent": None,
+                "myair_score": None,
+            },
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_usage_hours_import_skips_existing_statistics(
+    hass: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
+    """Ensure import only adds new nightly records after the last imported date."""
+    coordinator = coordinator_factory(
+        data={
+            "device": {"serialNumber": "SN123"},
+            "sleep_records": [
+                {"startDate": "2024-07-01", "totalUsage": 120},
+                {"startDate": "2024-07-02", "totalUsage": 180},
+            ],
+        }
+    )
+    sensor = MyAirUsageHoursSensor(coordinator)
+    sensor.hass = hass
+
+    imported: list[tuple[dict[str, object], list[dict[str, object]]]] = []
+
+    class DummyRecorder:
+        async def async_add_executor_job(self, func: Callable[..., Any], *args: object) -> Any:
+            return func(*args)
+
+    monkeypatch.setattr("custom_components.resmed_myair.sensor.get_instance", lambda hass: DummyRecorder())
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.sensor.get_last_statistics",
+        lambda *args: {
+            "resmed_myair:sn123_usagehours_sum": [
+                {
+                    "end": datetime(2024, 7, 1, 23, 0, tzinfo=dt_util.DEFAULT_TIME_ZONE),
+                    "sum": 2.0,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.sensor.async_add_external_statistics",
+        lambda hass, metadata, statistics: imported.append((metadata, list(statistics))),
+    )
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+
+    await sensor.async_added_to_hass()
+    await hass.async_block_till_done()
+
+    assert imported
+    _, statistics = imported[0]
+    assert len(statistics) == 1
+    assert statistics[0]["start"] == datetime(2024, 7, 2, tzinfo=dt_util.DEFAULT_TIME_ZONE)
+    assert statistics[0]["sum"] == 5.0
+
+
+def test_usage_hours_sensor_exposes_daily_history(
+    monkeypatch: pytest.MonkeyPatch, coordinator_factory: CoordinatorFactory
+) -> None:
+    """Ensure usage hours sensor exposes daily history for custom chart cards."""
+    coordinator = coordinator_factory(
+        data={
+            "device": {"serialNumber": "SN123"},
+            "sleep_records": [
+                {
+                    "startDate": "2024-07-01",
+                    "totalUsage": 120,
+                    "ahi": 1.4,
+                    "maskPairCount": 2,
+                    "leakPercentile": 7,
+                    "sleepScore": 88,
+                },
+                {
+                    "startDate": "2024-07-02",
+                    "totalUsage": -30,
+                    "ahi": 0.9,
+                    "maskPairCount": 1,
+                    "leakPercentile": 3,
+                    "sleepScore": 91,
+                },
+            ],
+        }
+    )
+    sensor = MyAirUsageHoursSensor(coordinator)
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.extra_state_attributes == {
+        "historical_statistic_id": "resmed_myair:sn123_usagehours_sum",
+        "daily_usage_hours": [
+            {
+                "date": "2024-07-01",
+                "hours": 2.0,
+                "minutes": 120,
+                "ahi": 1.4,
+                "mask_on_off": 2,
+                "mask_leak_percent": 7,
+                "myair_score": 88,
+            },
+            {
+                "date": "2024-07-02",
+                "hours": 0.0,
+                "minutes": 0,
+                "ahi": 0.9,
+                "mask_on_off": 1,
+                "mask_leak_percent": 3,
+                "myair_score": 91,
+            },
+        ],
+    }
+
+
+def test_usage_hours_sensor_prefers_persisted_history(
+    monkeypatch: pytest.MonkeyPatch, coordinator_factory: CoordinatorFactory
+) -> None:
+    """Ensure dashboard history uses persisted sleep_records_history, not only live cloud records."""
+    coordinator = coordinator_factory(
+        data={
+            "device": {"serialNumber": "SN123"},
+            "sleep_records": [
+                {"startDate": "2026-03-01", "totalUsage": 120},
+            ],
+            "sleep_records_history": [
+                {"startDate": "2026-02-27", "totalUsage": 420},
+                {"startDate": "2026-02-28", "totalUsage": 360},
+                {"startDate": "2026-03-01", "totalUsage": 120},
+            ],
+        }
+    )
+    sensor = MyAirUsageHoursSensor(coordinator)
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+
+    sensor._handle_coordinator_update()
+
+    assert [entry["date"] for entry in sensor.extra_state_attributes["daily_usage_hours"]] == [
+        "2026-02-27",
+        "2026-02-28",
+        "2026-03-01",
+    ]
+
+
+def test_usage_hours_sensor_merges_recorder_usage_history(
+    monkeypatch: pytest.MonkeyPatch, coordinator_factory: CoordinatorFactory
+) -> None:
+    """Ensure dashboard history includes recorder-backed usage dates when persisted history is incomplete."""
+    coordinator = coordinator_factory(
+        data={
+            "device": {"serialNumber": "SN123"},
+            "sleep_records": [
+                {"startDate": "2026-03-01", "totalUsage": 120},
+            ],
+            "sleep_records_history": [
+                {"startDate": "2026-03-01", "totalUsage": 120},
+            ],
+        }
+    )
+    coordinator._usage_hours_history = [  # type: ignore[attr-defined]
+        {"startDate": "2026-02-27", "totalUsage": 420},
+        {"startDate": "2026-02-28", "totalUsage": 360},
+    ]
+    sensor = MyAirUsageHoursSensor(coordinator)
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+
+    sensor._handle_coordinator_update()
+
+    assert [entry["date"] for entry in sensor.extra_state_attributes["daily_usage_hours"]] == [
+        "2026-02-27",
+        "2026-02-28",
+        "2026-03-01",
+    ]
+
+
+@pytest.mark.parametrize(
     ("data", "expected_native", "expected_available"),
     [
         ({}, None, False),  # No sleep_records
@@ -107,7 +416,7 @@ def test_friendly_usage_time_all_branches(
 )
 def test_most_recent_sleep_date_all_branches(
     data: dict[str, object],
-    expected_native: object,
+    expected_native: str | None,
     expected_available: bool,
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
@@ -232,14 +541,13 @@ def test_myair_device_sensor_parametrized(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_adds_entities_and_registers_service(
+async def test_async_setup_entry_adds_entities(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
     hass: MagicMock,
     config_entry: MockConfigEntry,
-    service_registry_shim: ServiceRegistryShimLike,
 ) -> None:
-    """Test that async_setup_entry adds sensor entities and registers service."""
+    """Test that sensor async_setup_entry adds the expected entities."""
     async_add_entities = MagicMock()
     coordinator = coordinator_factory(mock=True)
     # This test will create its own local MockConfigEntry (below) because
@@ -270,28 +578,12 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
     await async_setup_entry(hass, entry, async_add_entities)
 
     # Check that async_add_entities was called with the correct number of sensors
-    # 1 sleep record + 1 device + 2 synthesized = 4
+    # 1 sleep record + 1 device + 5 synthesized = 7
     args, kwargs = async_add_entities.call_args
     sensors = args[0]
-    assert len(sensors) == 4
+    assert len(sensors) == 7
     # Ensure update_before_add is False; default to False when key is absent.
     assert kwargs.get("update_before_add", False) is False
-
-    # Check that the service was registered with sanitized username
-    expected_service = "force_poll_test_user_email_com"
-    # Assert the service was registered using the shim API
-    assert service_registry_shim.has_service("resmed_myair", expected_service)
-
-    # Retrieve the registered service entry and its first handler
-    service_entry = service_registry_shim._services["resmed_myair"][expected_service]
-    func = service_entry.handlers[0]
-    # The registered function should be awaitable
-    assert inspect.iscoroutinefunction(func)
-
-    # Test that calling the registered refresh function calls coordinator.async_refresh
-    await func(None)
-    coordinator.async_refresh.assert_awaited_once()
-
 
 def test_myair_device_sensor_handle_coordinator_update_keyerror(
     caplog: pytest.LogCaptureFixture,

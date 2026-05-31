@@ -16,5 +16,5 @@
   "requirements": [
     "PyJWT"
   ],
-  "version": "v0.2.6"
+  "version": "v0.2.17"
 }
