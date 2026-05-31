@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from aiohttp import ClientResponse
 from aiohttp.http_exceptions import HttpProcessingError
-import jwt
 from multidict import CIMultiDict
 import pytest
 
@@ -898,7 +897,7 @@ async def test_gql_query_variants(
     else:
 
         def bad_decode(*a: object, **k: object) -> Never:
-            raise jwt.PyJWTError("bad jwt")
+            raise ValueError("bad jwt")
 
         monkeypatch.setattr(
             "custom_components.resmed_myair.client.graphql.jwt.decode",
@@ -914,7 +913,7 @@ async def test_gql_query_variants(
     [
         (
             "idtoken",
-            {"side_effect": jwt.PyJWTError("bad jwt")},
+            {"side_effect": ValueError("bad jwt")},
             "Unable to decode id_token into jwt_data",
         ),
         ("idtoken", {"return_value": {}}, "myAirCountryId not found in jwt_data"),

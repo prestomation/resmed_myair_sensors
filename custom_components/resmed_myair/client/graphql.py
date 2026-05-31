@@ -95,7 +95,8 @@ class MyAirGraphQLClient:
             jwt_data: dict[str, Any] = jwt.decode(
                 self._auth.id_token, options={"verify_signature": False}
             )
-        except jwt.PyJWTError as err:
+        # Preserve legacy RESTClient behavior: any decode failure maps to ParsingError.
+        except Exception as err:
             raise ParsingError("Unable to decode id_token into jwt_data") from err
         country_code = jwt_data.get("myAirCountryId")
         if not isinstance(country_code, str):
