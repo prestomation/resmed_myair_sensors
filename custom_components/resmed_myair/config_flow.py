@@ -1,6 +1,6 @@
 """Config flow for resmed_myair."""
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 import logging
 from typing import Any
 
@@ -151,6 +151,56 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._client:
             self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
 
+    def _credentials_schema(
+        self, defaults: Mapping[str, Any] | None = None, *, include_region: bool
+    ) -> vol.Schema:
+        """Build the shared credential form schema.
+
+        Args:
+            defaults: Existing values to prefill in the form.
+            include_region: Whether the caller can change the myAir region.
+
+        Returns:
+            Voluptuous schema for Home Assistant's config-flow form.
+        """
+        defaults = defaults or {}
+        schema: dict[vol.Marker, object] = {
+            vol.Required(
+                CONF_USER_NAME, default=defaults.get(CONF_USER_NAME, None)
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
+            vol.Required(
+                CONF_PASSWORD, default=defaults.get(CONF_PASSWORD, None)
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+        }
+        if include_region:
+            schema[vol.Required(CONF_REGION, default=defaults.get(CONF_REGION, REGION_NA))] = (
+                vol.In(
+                    {
+                        REGION_NA: "North America and Australia",
+                        REGION_EU: "Europe (Email MFA)",
+                    }
+                )
+            )
+        return vol.Schema(schema)
+
+    def _mfa_schema(self) -> vol.Schema:
+        """Build the shared MFA verification code schema.
+
+        Returns:
+            Voluptuous schema for Home Assistant's MFA form.
+        """
+        return vol.Schema(
+            {
+                vol.Required(CONF_VERIFICATION_CODE): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                ),
+            }
+        )
+
     def _entry_title(self, device: MyAirDevice) -> str:
         """Build a stable Home Assistant entry title from device metadata.
 
@@ -194,19 +244,67 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="wrong_account")
         return None
 
-    def _reauth_update_kwargs(self, device: MyAirDevice) -> dict[str, Any]:
-        """Build config-entry update arguments for a successful reauth.
+    async def _async_reconfigure_unique_id_update(
+        self, entry: ConfigEntry, device: MyAirDevice
+    ) -> tuple[ConfigFlowResult | None, str | None]:
+        """Validate reconfigure device identity and identify unique ID updates.
 
         Args:
+            entry: Config entry being reconfigured.
             device: Typed myAir device returned by the API.
 
         Returns:
-            Keyword arguments for Home Assistant's config-entry update helper.
+            Abort result when reconfigure should stop, plus the device serial
+            number when a legacy entry needs unique ID backfill.
+
+        Raises:
+            ParsingError: When device data does not include a serial number.
         """
-        update_kwargs: dict[str, Any] = {"data": {**self._data}}
-        if not self._entry.unique_id:
-            update_kwargs["unique_id"] = device.serial_number
-        return update_kwargs
+        if not device.serial_number:
+            raise ParsingError("Unable to get Serial Number from Device Data")
+        await self.async_set_unique_id(device.serial_number)
+        if not entry.unique_id:
+            _LOGGER.info(
+                "Reconfigure will backfill missing legacy entry unique ID with device serial "
+                "number %s",
+                device.serial_number,
+            )
+            if self.hass.config_entries.async_entry_for_domain_unique_id(
+                self.handler,
+                device.serial_number,
+            ):
+                return self.async_abort(reason="already_configured"), None
+            return None, device.serial_number
+        if entry.unique_id != device.serial_number:
+            _LOGGER.error(
+                "Reconfigure device serial number %s does not match existing entry unique ID %s",
+                device.serial_number,
+                entry.unique_id,
+            )
+            return self.async_abort(reason="wrong_account"), None
+        return None, None
+
+    def _update_reload_and_abort(
+        self,
+        entry: ConfigEntry,
+        *,
+        data_updates: Mapping[str, Any],
+        unique_id: str | None = None,
+    ) -> ConfigFlowResult:
+        """Update a config entry, schedule reload, and finish the flow.
+
+        Args:
+            entry: Config entry being updated.
+            data_updates: Config-entry data values to merge into existing data.
+            unique_id: Optional unique ID to backfill on legacy entries.
+
+        Returns:
+            Home Assistant config-flow abort result with source-specific reason.
+        """
+        kwargs: dict[str, Any] = {"data_updates": data_updates}
+        if unique_id is not None:
+            kwargs["unique_id"] = unique_id
+        return self.async_update_reload_and_abort(entry, **kwargs)
 
     async def _async_abort_incomplete_account(
         self, step: str, error: IncompleteAccountError
@@ -293,22 +391,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         _LOGGER.info("Setting up ResMed myAir Integration Version: %s", VERSION)
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_USER_NAME): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-                    ),
-                    vol.Required(CONF_PASSWORD): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-                    ),
-                    vol.Required(CONF_REGION, default=REGION_NA): vol.In(
-                        {
-                            REGION_NA: "North America and Australia",
-                            REGION_EU: "Europe (Email MFA)",
-                        }
-                    ),
-                }
-            ),
+            data_schema=self._credentials_schema(include_region=True),
             errors=errors,
         )
 
@@ -360,13 +443,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         _LOGGER.info("Showing Verify MFA Form")
         return self.async_show_form(
             step_id="verify_mfa",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_VERIFICATION_CODE): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-                    ),
-                }
-            ),
+            data_schema=self._mfa_schema(),
             description_placeholders={
                 "username": self._data.get(CONF_USER_NAME, "your email address"),
             },
@@ -386,12 +463,11 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             UnknownEntry: When Home Assistant no longer has the reauth entry.
         """
         _LOGGER.info("Starting Reauthorization")
-        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        if entry:
-            self._entry = entry
-        else:
+        try:
+            self._entry = self._get_reauth_entry()
+        except UnknownEntry:
             _LOGGER.error("No entry found for reauthorization")
-            raise UnknownEntry(self.context["entry_id"])
+            raise
         _LOGGER.debug("[async_step_reauth] entry: %s", redact_dict(self._entry))
         _LOGGER.debug("[async_step_reauth] entry_data: %s", redact_dict(entry_data))
         self._data.update(entry_data)
@@ -425,11 +501,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._store_device_token()
                     _LOGGER.debug("[async_step_reauth_confirm] data: %s", redact_dict(self._data))
 
-                    self.hass.config_entries.async_update_entry(
-                        self._entry, **self._reauth_update_kwargs(device)
+                    unique_id = device.serial_number if not self._entry.unique_id else None
+                    return self._update_reload_and_abort(
+                        self._entry,
+                        data_updates={**self._data},
+                        unique_id=unique_id,
                     )
-                    await self.hass.config_entries.async_reload(self._entry.entry_id)
-                    return self.async_abort(reason="reauth_successful")
                 return await self.async_step_reauth_verify_mfa()
             except (
                 AuthenticationError,
@@ -446,20 +523,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         _LOGGER.info("Showing Reauth Confirm Form")
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_USER_NAME, default=self._data.get(CONF_USER_NAME, None)
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-                    ),
-                    vol.Required(
-                        CONF_PASSWORD, default=self._data.get(CONF_PASSWORD, None)
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-                    ),
-                }
-            ),
+            data_schema=self._credentials_schema(self._data, include_region=False),
             errors=errors,
         )
 
@@ -491,11 +555,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         "[async_step_reauth_verify_mfa] user_input: %s", redact_dict(self._data)
                     )
 
-                    self.hass.config_entries.async_update_entry(
-                        self._entry, **self._reauth_update_kwargs(device)
+                    unique_id = device.serial_number if not self._entry.unique_id else None
+                    return self._update_reload_and_abort(
+                        self._entry,
+                        data_updates={**self._data},
+                        unique_id=unique_id,
                     )
-                    await self.hass.config_entries.async_reload(self._entry.entry_id)
-                    return self.async_abort(reason="reauth_successful")
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
                 errors["base"] = "mfa_error"
             except (
@@ -512,13 +577,125 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         _LOGGER.info("Showing Reauth Verify MFA Form")
         return self.async_show_form(
             step_id="reauth_verify_mfa",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_VERIFICATION_CODE): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-                    ),
-                }
-            ),
+            data_schema=self._mfa_schema(),
+            description_placeholders={
+                "username": self._data.get(CONF_USER_NAME, "your email address"),
+            },
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: MutableMapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Collect updated setup data and validate it against the same device.
+
+        Args:
+            user_input: Submitted username, password, and region values.
+
+        Returns:
+            Reconfigure form, MFA step, abort, or successful update result.
+        """
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+
+        if not self._data:
+            self._data.update(entry.data)
+
+        if user_input:
+            self._data.update(user_input)
+            try:
+                status, device = await self._async_login_and_get_device(
+                    self._data.get(CONF_DEVICE_TOKEN, None),
+                )
+                if device and status == AUTHN_SUCCESS:
+                    identity_abort, unique_id = await self._async_reconfigure_unique_id_update(
+                        entry, device
+                    )
+                    if identity_abort:
+                        return identity_abort
+                    self._store_device_token()
+                    _LOGGER.debug("[async_step_reconfigure] data: %s", redact_dict(self._data))
+                    return self._update_reload_and_abort(
+                        entry,
+                        data_updates={**self._data},
+                        unique_id=unique_id,
+                    )
+                return await self.async_step_reconfigure_verify_mfa()
+            except (
+                AuthenticationError,
+                HttpProcessingError,
+                ClientResponseError,
+                ParsingError,
+            ) as e:
+                _LOGGER.error("Connection Error at reconfigure. %s: %s", type(e).__name__, e)
+                errors["base"] = "authentication_error"
+            except IncompleteAccountError as e:
+                return await self._async_abort_incomplete_account("reconfigure", e)
+
+        _LOGGER.info("Showing Reconfigure Form")
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self._credentials_schema(self._data, include_region=True),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure_verify_mfa(
+        self, user_input: MutableMapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Complete MFA during reconfigure and reload the updated config entry.
+
+        Args:
+            user_input: Submitted verification code from the reconfigure MFA form.
+
+        Returns:
+            Reconfigure MFA form, abort, or successful update result.
+        """
+        errors: dict[str, str] = {}
+        user_input = user_input or {}
+        entry = self._get_reconfigure_entry()
+
+        if user_input and isinstance(self._client, RESTClient):
+            self._data.update(user_input)
+            try:
+                status, device = await self._async_verify_mfa_and_get_device()
+                if status == AUTHN_SUCCESS:
+                    identity_abort, unique_id = await self._async_reconfigure_unique_id_update(
+                        entry, device
+                    )
+                    if identity_abort:
+                        return identity_abort
+                    self._data.pop(CONF_VERIFICATION_CODE, None)
+                    self._store_device_token()
+                    _LOGGER.debug(
+                        "[async_step_reconfigure_verify_mfa] data: %s",
+                        redact_dict(self._data),
+                    )
+                    return self._update_reload_and_abort(
+                        entry,
+                        data_updates={**self._data},
+                        unique_id=unique_id,
+                    )
+                _LOGGER.error("Issue verifying MFA. Status: %s", status)
+                errors["base"] = "mfa_error"
+            except (
+                AuthenticationError,
+                HttpProcessingError,
+                ClientResponseError,
+                ParsingError,
+            ) as e:
+                _LOGGER.error(
+                    "Connection Error at reconfigure_verify_mfa. %s: %s",
+                    type(e).__name__,
+                    e,
+                )
+                errors["base"] = "mfa_error"
+            except IncompleteAccountError as e:
+                return await self._async_abort_incomplete_account("reconfigure_verify_mfa", e)
+
+        _LOGGER.info("Showing Reconfigure Verify MFA Form")
+        return self.async_show_form(
+            step_id="reconfigure_verify_mfa",
+            data_schema=self._mfa_schema(),
             description_placeholders={
                 "username": self._data.get(CONF_USER_NAME, "your email address"),
             },

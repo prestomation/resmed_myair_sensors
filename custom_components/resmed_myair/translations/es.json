@@ -1,0 +1,66 @@
+{
+    "title": "Sensores CPAP de ResMed myAir",
+    "config": {
+        "step": {
+            "user": {
+                "title": "Información de inicio de sesión de ResMed myAir",
+                "data": {
+                    "Username": "Usuario",
+                    "Password": "Contraseña",
+                    "Region": "Región de myAir"
+                },
+                "description": "Introduce el usuario y la contraseña que usas en la aplicación o el sitio web de myAir."
+            },
+            "verify_mfa": {
+                "title": "Verificar MFA",
+                "data": {
+                    "verification_code": "Código de verificación de un solo uso"
+                },
+                "description": "Introduce el código de verificación de un solo uso que recibiste de ResMed para {username}."
+            },
+            "reauth_confirm": {
+                "title": "Reautenticación de ResMed myAir",
+                "description": "La integración ResMed myAir necesita volver a autenticar tu cuenta",
+                "data": {
+                    "Username": "Usuario",
+                    "Password": "Contraseña"
+                }
+            },
+            "reauth_verify_mfa": {
+                "title": "Verificar MFA",
+                "data": {
+                    "verification_code": "Código de verificación de un solo uso"
+                },
+                "description": "Introduce el código de verificación de un solo uso que recibiste de ResMed para {username}."
+            },
+            "reconfigure": {
+                "title": "Reconfigurar ResMed myAir",
+                "description": "Actualiza los datos de la cuenta que usa la integración ResMed myAir.",
+                "data": {
+                    "Username": "Usuario",
+                    "Password": "Contraseña",
+                    "Region": "Región de myAir"
+                }
+            },
+            "reconfigure_verify_mfa": {
+                "title": "Verificar MFA",
+                "data": {
+                    "verification_code": "Código de verificación de un solo uso"
+                },
+                "description": "Introduce el código de verificación de un solo uso que recibiste de ResMed para {username}."
+            }
+        },
+        "error": {
+            "authentication_error": "Usuario o contraseña no válidos. Verifícalos en myair.resmed.com",
+            "mfa_error": "No se pudo verificar MFA. Asegúrate de que el código sea correcto."
+        },
+        "abort": {
+            "already_configured": "El dispositivo ya está configurado",
+            "incomplete_account": "La configuración de la cuenta de ResMed myAir está incompleta. Inicia sesión en el sitio web de myAir y asegúrate de que se muestren los datos de CPAP. Además, asegúrate de que la zona horaria esté configurada en Mi cuenta.",
+            "incomplete_account_verify_email": "La configuración de la cuenta de ResMed myAir está incompleta. La dirección de correo electrónico no se ha verificado.",
+            "reauth_successful": "Reautenticación de ResMed myAir correcta",
+            "reconfigure_successful": "Reconfiguración de ResMed myAir correcta",
+            "wrong_account": "La cuenta pertenece a un dispositivo diferente. Usa las credenciales del dispositivo configurado originalmente."
+        }
+    }
+}

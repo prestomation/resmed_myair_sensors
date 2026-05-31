@@ -32,6 +32,22 @@
                     "verification_code": "Code de vérification à usage unique"
                 },
                 "description": "Entrez le code de vérification à usage unique que vous avez reçu de ResMed pour {username}."
+            },
+            "reconfigure": {
+                "title": "Reconfigurer ResMed myAir",
+                "description": "Mettez à jour les informations du compte utilisées par l’intégration ResMed myAir.",
+                "data": {
+                    "Username": "Utilisateur",
+                    "Password": "Mot de passe",
+                    "Region": "Région myAir"
+                }
+            },
+            "reconfigure_verify_mfa": {
+                "title": "Vérifier le MFA",
+                "data": {
+                    "verification_code": "Code de vérification à usage unique"
+                },
+                "description": "Entrez le code de vérification à usage unique que vous avez reçu de ResMed pour {username}."
             }
         },
         "error": {
@@ -43,7 +59,8 @@
             "incomplete_account": "La configuration du compte ResMed myAir est incomplète. Connectez-vous au site web myAir et assurez-vous que les données du CPAP s’affichent. Vérifiez également que le fuseau horaire est défini dans Mon compte.",
             "incomplete_account_verify_email": "La configuration du compte ResMed myAir est incomplète. L’adresse e-mail n’a pas été vérifiée.",
             "reauth_successful": "Réauthentification ResMed myAir réussie",
-            "wrong_account": "La réauthentification a échoué, car le compte appartient à un autre appareil. Utilisez les identifiants de l’appareil configuré à l’origine."
+            "reconfigure_successful": "Reconfiguration ResMed myAir réussie",
+            "wrong_account": "Le compte appartient à un autre appareil. Utilisez les identifiants de l’appareil configuré à l’origine."
         }
     }
 }

@@ -162,7 +162,7 @@ convention = "google"
 
 [tool.codespell]
 ignore-words-list = "hass"
-skip = "custom_components/resmed_myair/translations/fr.json"
+skip = "custom_components/resmed_myair/translations/de.json,custom_components/resmed_myair/translations/es.json,custom_components/resmed_myair/translations/fr.json"
 
 
 [tool.pytest.ini_options]
