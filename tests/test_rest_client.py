@@ -33,24 +33,36 @@ from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
 from tests.conftest import make_mock_aiohttp_context_manager, make_mock_aiohttp_response
 
 
-def test_get_region_config_returns_na_settings() -> None:
-    """NA region lookups return the expected ResMed endpoint set."""
-    config = get_region_config(REGION_NA)
+@pytest.mark.parametrize(
+    ("region", "expected_product", "expected_redirect_url", "expected_authn_url"),
+    [
+        (
+            REGION_NA,
+            "myAir",
+            "https://myair.resmed.com",
+            "https://resmed-ext-1.okta.com/api/v1/authn",
+        ),
+        (
+            REGION_EU,
+            "myAir EU",
+            "https://myair.resmed.eu",
+            "https://id.resmed.eu/api/v1/authn",
+        ),
+    ],
+)
+def test_get_region_config_returns_expected_settings(
+    region: str,
+    expected_product: str,
+    expected_redirect_url: str,
+    expected_authn_url: str,
+) -> None:
+    """Region lookups return the expected ResMed endpoint set."""
+    config = get_region_config(region)
 
     assert isinstance(config, RegionConfig)
-    assert config.product == "myAir"
-    assert config.oauth_redirect_url == "https://myair.resmed.com"
-    assert config.authn_url == "https://resmed-ext-1.okta.com/api/v1/authn"
-
-
-def test_get_region_config_returns_eu_settings() -> None:
-    """EU region lookups return the expected ResMed endpoint set."""
-    config = get_region_config(REGION_EU)
-
-    assert isinstance(config, RegionConfig)
-    assert config.product == "myAir EU"
-    assert config.oauth_redirect_url == "https://myair.resmed.eu"
-    assert config.authn_url == "https://id.resmed.eu/api/v1/authn"
+    assert config.product == expected_product
+    assert config.oauth_redirect_url == expected_redirect_url
+    assert config.authn_url == expected_authn_url
 
 
 def test_get_region_config_fallback_to_eu_for_unknown_region() -> None:
@@ -58,19 +70,24 @@ def test_get_region_config_fallback_to_eu_for_unknown_region() -> None:
     assert get_region_config("unexpected") == EU_CONFIG
 
 
-def test_rest_client_owns_auth_session(config_na: MyAirConfig, session: MagicMock) -> None:
-    """RESTClient builds a dedicated auth session wrapper."""
+@pytest.mark.parametrize(
+    ("attribute_name", "expected_type"),
+    [
+        ("_auth", MyAirAuthSession),
+        ("_graphql", MyAirGraphQLClient),
+    ],
+)
+def test_rest_client_owns_collaborator_wrappers(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    attribute_name: str,
+    expected_type: type[object],
+) -> None:
+    """RESTClient builds dedicated auth and GraphQL wrappers."""
     client = RESTClient(config_na, session)
 
-    assert isinstance(client._auth, MyAirAuthSession)
+    assert isinstance(getattr(client, attribute_name), expected_type)
     assert client.device_token == config_na.device_token
-
-
-def test_rest_client_owns_graphql_client(config_na: MyAirConfig, session: MagicMock) -> None:
-    """RESTClient builds a dedicated GraphQL client wrapper."""
-    client = RESTClient(config_na, session)
-
-    assert isinstance(client._graphql, MyAirGraphQLClient)
 
 
 @pytest.mark.parametrize(

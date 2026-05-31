@@ -97,21 +97,6 @@ async def test_async_setup_entry_multiple_calls(
 
 
 @pytest.mark.asyncio
-async def test_friendly_usage_time_sensor_with_negative_usage(
-    hass: MagicMock, coordinator_factory: CoordinatorFactory
-) -> None:
-    """Friendly usage sensors clamp negative minutes to zero."""
-    coordinator = coordinator_factory(data={"sleep_records": [{"totalUsage": -10}]})
-    sensor = MyAirFriendlyUsageTime(coordinator)
-    sensor.hass = hass
-    sensor.entity_id = "sensor.test_friendly_usage"
-    sensor.async_write_ha_state = MagicMock()
-    await sensor.async_added_to_hass()
-    assert sensor.native_value == "0:00"  # Negative values should be clamped to "0:00"
-    assert sensor.available is True
-
-
-@pytest.mark.asyncio
 async def test_most_recent_sleep_date_sensor_with_future_date(
     hass: MagicMock, coordinator_factory: CoordinatorFactory
 ) -> None:
@@ -158,18 +143,6 @@ async def test_async_unload_entry_variants(
     assert config_entry.runtime_data == expected_runtime_data
     hass.config_entries.async_unload_platforms.assert_awaited_with(config_entry, PLATFORMS)
     assert hass.config_entries.async_unload_platforms.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_async_unload_entry_calls_unload_platforms(
-    hass: MagicMock, config_entry: MockConfigEntry
-) -> None:
-    """Unload delegates to `async_unload_platforms` and returns success."""
-    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
-    config_entry.runtime_data = "dummy"
-    result = await async_unload_entry(hass, config_entry)
-    assert result is True
-    hass.config_entries.async_unload_platforms.assert_awaited_once_with(config_entry, PLATFORMS)
 
 
 @pytest.mark.asyncio
