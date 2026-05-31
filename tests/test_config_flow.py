@@ -25,6 +25,7 @@ from custom_components.resmed_myair.config_flow import (
     get_device,
     get_mfa_device,
 )
+from custom_components.resmed_myair.models import MyAirDevice
 
 
 @pytest.fixture
@@ -46,11 +47,13 @@ async def test_async_step_user_success(
         CONF_PASSWORD: "pass",
         CONF_REGION: REGION_NA,
     }
-    device: dict[str, str] = {
-        "serialNumber": "SN123",
-        "fgDeviceManufacturerName": "ResMed",
-        "localizedName": "CPAP",
-    }
+    device = MyAirDevice.from_api(
+        {
+            "serialNumber": "SN123",
+            "fgDeviceManufacturerName": "ResMed",
+            "localizedName": "CPAP",
+        }
+    )
     # Patch get_device to return a successful auth and device
     monkeypatch.setattr(
         config_flow,
@@ -103,7 +106,9 @@ async def test_async_step_verify_mfa_user_input_and_client(
         AsyncMock(
             return_value=(
                 AUTHN_SUCCESS,
-                {"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"},
+                MyAirDevice.from_api(
+                    {"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"}
+                ),
             )
         ),
     )
@@ -254,11 +259,13 @@ async def test_async_step_reauth_success(
 ) -> None:
     """Test reauth step completes successfully."""
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA}
-    device = {
-        "serialNumber": "SN123",
-        "fgDeviceManufacturerName": "ResMed",
-        "localizedName": "CPAP",
-    }
+    device = MyAirDevice.from_api(
+        {
+            "serialNumber": "SN123",
+            "fgDeviceManufacturerName": "ResMed",
+            "localizedName": "CPAP",
+        }
+    )
     flow._entry = config_entry
     monkeypatch.setattr(
         config_flow,
@@ -401,7 +408,9 @@ async def test_async_step_reauth_verify_mfa_success(
         AsyncMock(
             return_value=(
                 AUTHN_SUCCESS,
-                {"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"},
+                MyAirDevice.from_api(
+                    {"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"}
+                ),
             )
         ),
     )
@@ -531,7 +540,12 @@ async def test_get_device_variants(
         mock_client.connect = AsyncMock(side_effect=connect_return)
     else:
         mock_client.connect = AsyncMock(return_value=connect_return)
-    mock_client.get_user_device_data = AsyncMock(return_value=get_user_device_data_return)
+    if get_user_device_data_return is None:
+        mock_client.get_user_device_data = AsyncMock(return_value=None)
+    else:
+        mock_client.get_user_device_data = AsyncMock(
+            return_value=MyAirDevice.from_api(get_user_device_data_return)
+        )
     # Patch module-level collaborators using monkeypatch
     monkeypatch.setattr(config_flow, "MyAirConfig", MagicMock())
     monkeypatch.setattr(config_flow, "RESTClient", lambda *a, **k: mock_client)
@@ -543,7 +557,10 @@ async def test_get_device_variants(
     else:
         status, device, client = await get_device(hass, "user", "pass", "region", device_token=None)
         assert status == expected_status
-        assert device == expected_device
+        if expected_device is None:
+            assert device is expected_device
+        else:
+            assert device == MyAirDevice.from_api(expected_device)
         assert client is mock_client
 
 
@@ -591,8 +608,12 @@ async def test_get_mfa_device_variants(
         mock_client.verify_mfa_and_get_access_token = AsyncMock(return_value=verify_return)
     if get_user_device_data_side_effect:
         mock_client.get_user_device_data = AsyncMock(side_effect=get_user_device_data_side_effect)
+    elif get_user_device_data_return is None:
+        mock_client.get_user_device_data = AsyncMock(return_value=None)
     else:
-        mock_client.get_user_device_data = AsyncMock(return_value=get_user_device_data_return)
+        mock_client.get_user_device_data = AsyncMock(
+            return_value=MyAirDevice.from_api(get_user_device_data_return)
+        )
 
     if raises:
         with pytest.raises(raises):
@@ -602,7 +623,10 @@ async def test_get_mfa_device_variants(
         mock_client.verify_mfa_and_get_access_token.assert_awaited_once_with("123456")
         mock_client.get_user_device_data.assert_awaited_once_with(initial=True)
         assert status == expected_status
-        assert device == expected_device
+        if expected_device is None:
+            assert device is expected_device
+        else:
+            assert device == MyAirDevice.from_api(expected_device)
 
 
 @pytest.mark.asyncio
@@ -632,11 +656,13 @@ async def test_async_step_verify_mfa_success(
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user"}
     user_input: dict[str, str] = {CONF_VERIFICATION_CODE: "123456"}
-    device: dict[str, str] = {
-        "fgDeviceManufacturerName": "ResMed",
-        "localizedName": "CPAP",
-        "serialNumber": "SN123",
-    }
+    device = MyAirDevice.from_api(
+        {
+            "fgDeviceManufacturerName": "ResMed",
+            "localizedName": "CPAP",
+            "serialNumber": "SN123",
+        }
+    )
     monkeypatch.setattr(
         config_flow,
         "get_mfa_device",
@@ -672,7 +698,7 @@ async def test_async_step_verify_mfa_status_variants(
     monkeypatch.setattr(
         config_flow,
         "get_mfa_device",
-        AsyncMock(return_value=("MFA_FAIL", {})),
+        AsyncMock(return_value=("MFA_FAIL", MyAirDevice.from_api({}))),
     )
     result = await getattr(flow, step_name)(user_input)
 
@@ -780,7 +806,7 @@ async def test_async_step_user_device_missing_serial_number(
     flow._data = {}
 
     # Patch get_device to return a device dict without 'serialNumber'
-    device = {"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"}
+    device = MyAirDevice.from_api({"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"})
     monkeypatch.setattr(
         "custom_components.resmed_myair.config_flow.get_device",
         AsyncMock(return_value=(AUTHN_SUCCESS, device, MagicMock())),
@@ -842,7 +868,9 @@ async def test_async_step_reauth_verify_mfa_user_input_and_restclient(
         AsyncMock(
             return_value=(
                 AUTHN_SUCCESS,
-                {"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"},
+                MyAirDevice.from_api(
+                    {"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"}
+                ),
             )
         ),
     )
@@ -945,7 +973,7 @@ async def test_async_step_reauth_confirm_missing_serial_number(
     }
     flow._entry = config_entry
     # Patch get_device to return a device dict without 'serialNumber'
-    device = {"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"}
+    device = MyAirDevice.from_api({"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"})
     monkeypatch.setattr(
         "custom_components.resmed_myair.config_flow.get_device",
         AsyncMock(return_value=(AUTHN_SUCCESS, device, MagicMock(spec=RESTClient))),
@@ -1157,7 +1185,7 @@ async def test_async_step_verify_mfa_status_not_authn_success(
     # Patch get_mfa_device to return a status that is NOT AUTHN_SUCCESS
     monkeypatch.setattr(
         "custom_components.resmed_myair.config_flow.get_mfa_device",
-        AsyncMock(return_value=("MFA_FAIL", {})),
+        AsyncMock(return_value=("MFA_FAIL", MyAirDevice.from_api({}))),
     )
 
     result = await flow.async_step_verify_mfa(user_input)

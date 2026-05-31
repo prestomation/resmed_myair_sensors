@@ -1,6 +1,6 @@
 """Config flow for resmed_myair."""
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import MutableMapping
 import logging
 from typing import Any
 
@@ -33,6 +33,7 @@ from .const import (
     VERSION,
 )
 from .helpers import redact_dict
+from .models import MyAirDevice
 
 _LOGGER = logging.getLogger(__name__)
 EMAIL_VERIFICATION_ERRORS: tuple[type[Exception], ...] = (
@@ -52,7 +53,7 @@ async def get_device(
     password: str,
     region: str,
     device_token: str | None = None,
-) -> tuple[str, Mapping[str, Any] | None, RESTClient]:
+) -> tuple[str, MyAirDevice | None, RESTClient]:
     """Login and get user device data from ResMed servers."""
     _LOGGER.debug("[get_device] Starting")
     config = MyAirConfig(
@@ -64,18 +65,18 @@ async def get_device(
     )
     status: str = await client.connect(initial=True)
     if status == AUTHN_SUCCESS:
-        device: Mapping[str, Any] = await client.get_user_device_data(initial=True)
+        device_data = await client.get_user_device_data(initial=True)
+        device = device_data
         return status, device, client
     return status, None, client
 
 
-async def get_mfa_device(
-    client: RESTClient, verification_code: str
-) -> tuple[str, Mapping[str, Any]]:
+async def get_mfa_device(client: RESTClient, verification_code: str) -> tuple[str, MyAirDevice]:
     """Get access token and user device data."""
     _LOGGER.debug("[get_mfa_device] Starting")
     status: str = await client.verify_mfa_and_get_access_token(verification_code)
-    device: Mapping[str, Any] = await client.get_user_device_data(initial=True)
+    device_data = await client.get_user_device_data(initial=True)
+    device = device_data
     return status, device
 
 
@@ -91,6 +92,40 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         self._entry: ConfigEntry
         self._data: MutableMapping[str, Any] = {}
 
+    async def _async_login_and_get_device(
+        self,
+        device_token: str | None = None,
+    ) -> tuple[str, MyAirDevice | None]:
+        """Login with stored flow data and fetch the user device."""
+        status, device, self._client = await get_device(
+            self.hass,
+            self._data[CONF_USER_NAME],
+            self._data[CONF_PASSWORD],
+            self._data[CONF_REGION],
+            device_token,
+        )
+        return status, device
+
+    async def _async_verify_mfa_and_get_device(self) -> tuple[str, MyAirDevice]:
+        """Verify MFA with stored flow data and fetch the user device."""
+        if not isinstance(self._client, RESTClient):
+            raise AuthenticationError("MFA client is not initialized")
+        return await get_mfa_device(
+            self._client,
+            self._data.get(CONF_VERIFICATION_CODE, ""),
+        )
+
+    def _store_device_token(self) -> None:
+        """Store the current client device token in flow data."""
+        if self._client:
+            self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
+
+    def _entry_title(self, device: MyAirDevice) -> str:
+        """Return the config entry title for a device."""
+        manufacturer = device.manufacturer or "ResMed"
+        name = device.name or "myAir"
+        return f"{manufacturer}-{name}"
+
     async def async_step_user(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -100,26 +135,21 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input:
             self._data = user_input
             try:
-                status, device, self._client = await get_device(
-                    self.hass,
-                    self._data[CONF_USER_NAME],
-                    self._data[CONF_PASSWORD],
-                    self._data[CONF_REGION],
-                )
+                status, device = await self._async_login_and_get_device()
                 if device and status == AUTHN_SUCCESS:
                     _LOGGER.debug("[async_step_user] device: %s", redact_dict(device))
-                    if "serialNumber" not in device:
+                    if not device.serial_number:
                         raise ParsingError("Unable to get Serial Number from Device Data")
-                    serial_number: str = device["serialNumber"]
+                    serial_number: str = device.serial_number
                     _LOGGER.info("Found device with serial number %s", serial_number)
 
                     await self.async_set_unique_id(serial_number)
                     self._abort_if_unique_id_configured()
-                    self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
+                    self._store_device_token()
                     _LOGGER.debug("[async_step_user] data: %s", redact_dict(self._data))
 
                     return self.async_create_entry(
-                        title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
+                        title=self._entry_title(device),
                         data=self._data,
                     )
                 return await self.async_step_verify_mfa()
@@ -187,16 +217,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             # _LOGGER.debug("[async_step_verify_mfa] user_input: %s", redact_dict(user_input))
             self._data.update(user_input)
             try:
-                status, device = await get_mfa_device(
-                    self._client,
-                    self._data.get(CONF_VERIFICATION_CODE, ""),
-                )
+                status, device = await self._async_verify_mfa_and_get_device()
                 if status == AUTHN_SUCCESS:
                     self._data.pop(CONF_VERIFICATION_CODE, None)
-                    self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
+                    self._store_device_token()
                     _LOGGER.debug("[async_step_verify_mfa] user_input: %s", redact_dict(self._data))
                     return self.async_create_entry(
-                        title=f"{device['fgDeviceManufacturerName']}-{device['localizedName']}",
+                        title=self._entry_title(device),
                         data=self._data,
                     )
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
@@ -267,22 +294,18 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input:
             self._data.update(user_input)
             try:
-                status, device, self._client = await get_device(
-                    self.hass,
-                    self._data[CONF_USER_NAME],
-                    self._data[CONF_PASSWORD],
-                    self._data[CONF_REGION],
+                status, device = await self._async_login_and_get_device(
                     self._data.get(CONF_DEVICE_TOKEN, None),
                 )
                 if device and status == AUTHN_SUCCESS:
-                    _LOGGER.debug("[async_step_reauth_confirm] device: %s", redact_dict(device))
-                    if "serialNumber" not in device:
+                    _LOGGER.debug("[async_step_reauth_confirm] device: %s", redact_dict(device.raw))
+                    if not device.serial_number:
                         raise ParsingError("Unable to get Serial Number from Device Data")
-                    serial_number: str = device["serialNumber"]
+                    serial_number: str = device.serial_number
                     _LOGGER.info("Found device with serial number %s", serial_number)
                     # await self.async_set_unique_id(serial_number)
                     # self._abort_if_unique_id_configured()
-                    self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
+                    self._store_device_token()
                     _LOGGER.debug("[async_step_reauth_confirm] data: %s", redact_dict(self._data))
 
                     self.hass.config_entries.async_update_entry(self._entry, data={**self._data})
@@ -353,13 +376,10 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
 
             try:
-                status, _ = await get_mfa_device(
-                    self._client,
-                    self._data.get(CONF_VERIFICATION_CODE, ""),
-                )
+                status, _ = await self._async_verify_mfa_and_get_device()
                 if status == AUTHN_SUCCESS:
                     self._data.pop(CONF_VERIFICATION_CODE, None)
-                    self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
+                    self._store_device_token()
                     _LOGGER.debug(
                         "[async_step_reauth_verify_mfa] user_input: %s", redact_dict(self._data)
                     )
