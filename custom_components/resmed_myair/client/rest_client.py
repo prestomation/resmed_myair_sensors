@@ -297,7 +297,17 @@ class RESTClient(MyAirClient):
                 "Error getting Patient Sleep Records. Returned records is not a list"
             )
         _LOGGER.debug("[get_sleep_records] records: %s", redact_dict(records))
-        return [MyAirSleepRecord.from_api(record) for record in records]
+        typed_records: list[MyAirSleepRecord] = []
+        for record in records:
+            if not isinstance(record, Mapping):
+                _LOGGER.error(
+                    "Error getting Patient Sleep Records. Returned record item is not a mapping"
+                )
+                raise ParsingError(
+                    "Error getting Patient Sleep Records. Returned record item is not a mapping"
+                )
+            typed_records.append(MyAirSleepRecord.from_api(record))
+        return typed_records
 
     async def get_user_device_data(self, initial: bool | None = False) -> MyAirDevice:
         """Get user device data from ResMed servers."""

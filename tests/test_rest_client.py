@@ -1142,6 +1142,21 @@ async def test_get_sleep_records_failure_variants(
 
 
 @pytest.mark.asyncio
+async def test_get_sleep_records_raises_parsing_error_for_non_mapping_items(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sleep record list entries must be mappings before model parsing."""
+    client = RESTClient(config_na, session)
+    mock_response = {"data": {"getPatientWrapper": {"sleepRecords": {"items": [123]}}}}
+    monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
+
+    with pytest.raises(ParsingError, match="Returned record item is not a mapping"):
+        await client.get_sleep_records()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("mock_response", "match_msg"),
     [
