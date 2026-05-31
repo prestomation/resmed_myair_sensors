@@ -59,6 +59,16 @@ def test_negative_usage_is_clamped_for_friendly_display() -> None:
     assert record.friendly_usage_time == "0:00"
 
 
+@pytest.mark.parametrize("raw_usage", ["not-a-number", "NaN"])
+def test_invalid_usage_values_are_ignored(raw_usage: str) -> None:
+    """Malformed usage values are ignored instead of becoming sleep duration."""
+    record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
+
+    assert record.total_usage_minutes is None
+    assert record.friendly_usage_time is None
+    assert record.has_usage is False
+
+
 def test_coordinator_data_exposes_latest_and_most_recent_used_date() -> None:
     """Coordinator data derives the latest record and most recent used date."""
     data = MyAirCoordinatorData(
