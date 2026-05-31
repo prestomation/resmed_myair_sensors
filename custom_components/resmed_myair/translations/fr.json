@@ -42,7 +42,8 @@
             "already_configured": "L’appareil est déjà configuré",
             "incomplete_account": "La configuration du compte ResMed myAir est incomplète. Connectez-vous au site web myAir et assurez-vous que les données du CPAP s’affichent. Vérifiez également que le fuseau horaire est défini dans Mon compte.",
             "incomplete_account_verify_email": "La configuration du compte ResMed myAir est incomplète. L’adresse e-mail n’a pas été vérifiée.",
-            "reauth_successful": "Réauthentification ResMed myAir réussie"
+            "reauth_successful": "Réauthentification ResMed myAir réussie",
+            "wrong_account": "La réauthentification a échoué, car le compte appartient à un autre appareil. Utilisez les identifiants de l’appareil configuré à l’origine."
         }
     }
 }

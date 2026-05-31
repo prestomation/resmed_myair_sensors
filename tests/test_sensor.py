@@ -20,42 +20,6 @@ from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike, coordina
 
 
 @pytest.mark.parametrize(
-    ("data", "sensor_key", "device_class", "expected_available"),
-    [
-        ({}, "foo", None, False),  # No device
-        ({"device": {}}, "foo", None, False),  # KeyError
-        ({"device": {"foo": "bar"}}, "foo", None, True),  # Success, not timestamp
-        (
-            {"device": {"foo": "2024-07-18T12:34:56+00:00"}},
-            "foo",
-            SensorDeviceClass.TIMESTAMP,
-            True,
-        ),  # Success, timestamp
-    ],
-)
-def test_device_sensor_all_branches(
-    data: dict[str, object],
-    sensor_key: str,
-    device_class: SensorDeviceClass | None,
-    expected_available: bool,
-    monkeypatch: pytest.MonkeyPatch,
-    coordinator_factory: CoordinatorFactory,
-) -> None:
-    """Device sensors honor key lookup, timestamp parsing, and availability."""
-    # Construct description using the explicit device_class parameter so the test
-    # deterministically controls whether the sensor is a timestamp sensor.
-    if device_class is None:
-        desc = SensorEntityDescription(key=sensor_key)
-    else:
-        desc = SensorEntityDescription(key=sensor_key, device_class=device_class)
-    coordinator = coordinator_factory(data=data)
-    sensor = MyAirDeviceSensor("Test", desc, coordinator)
-    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
-    sensor._handle_coordinator_update()
-    assert sensor.available == expected_available
-
-
-@pytest.mark.parametrize(
     ("data", "expected_native", "expected_available"),
     [
         ({}, None, False),  # No sleep_records
@@ -165,13 +129,22 @@ def test_sleep_record_sensor_handle_coordinator_update(
     assert sensor.native_value == expected_value
 
 
-def test_sleep_record_sensor_is_available_when_raw_key_value_is_none(
+@pytest.mark.parametrize(
+    ("sensor_class", "coordinator_payload"),
+    [
+        (MyAirSleepRecordSensor, {"sleep_records": [{"foo": None}]}),
+        (MyAirDeviceSensor, {"device": {"foo": None}}),
+    ],
+)
+def test_sensor_is_available_when_raw_key_value_is_none(
+    sensor_class: type[MyAirSleepRecordSensor | MyAirDeviceSensor],
+    coordinator_payload: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Raw sleep-record keys with null values still count as available data."""
-    coordinator = coordinator_factory(data={"sleep_records": [{"foo": None}]})
-    sensor = MyAirSleepRecordSensor("Test", SensorEntityDescription(key="foo"), coordinator)
+    """Raw device and sleep-record keys with null values still count as available data."""
+    coordinator = coordinator_factory(data=coordinator_payload)
+    sensor = sensor_class("Test", SensorEntityDescription(key="foo"), coordinator)
     monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
 
     sensor._handle_coordinator_update()
@@ -244,21 +217,6 @@ def test_myair_device_sensor_parametrized(
     sensor._handle_coordinator_update()
     assert sensor.available == expected_available
     assert sensor.native_value == expected_native
-
-
-def test_device_sensor_is_available_when_raw_key_value_is_none(
-    monkeypatch: pytest.MonkeyPatch,
-    coordinator_factory: CoordinatorFactory,
-) -> None:
-    """Raw device keys with null values still count as available data."""
-    coordinator = coordinator_factory(data={"device": {"foo": None}})
-    sensor = MyAirDeviceSensor("Test", SensorEntityDescription(key="foo"), coordinator)
-    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
-
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is True
-    assert sensor.native_value is None
 
 
 @pytest.mark.asyncio

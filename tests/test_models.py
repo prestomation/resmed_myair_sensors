@@ -1,5 +1,6 @@
 """Model-level tests covering typed ResMed myAir payload behavior."""
 
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 import logging
@@ -73,15 +74,69 @@ def test_coordinator_data_exposes_latest_and_most_recent_used_date() -> None:
     assert data.most_recent_sleep_date == date(2024, 7, 18)
 
 
-def test_device_fields_default_to_empty_or_none_for_missing_values() -> None:
-    """Missing device keys collapse to empty or `None` values."""
-    device = MyAirDevice.from_api({})
+@pytest.mark.parametrize(
+    ("factory", "raw_payload", "expected_values"),
+    [
+        pytest.param(
+            MyAirDevice.from_api,
+            {},
+            {
+                "raw": {},
+                "serial_number": "",
+                "manufacturer": None,
+                "model": None,
+                "name": None,
+            },
+            id="device-empty",
+        ),
+        pytest.param(
+            MyAirDevice.from_api,
+            None,
+            {
+                "raw": {},
+                "serial_number": "",
+                "manufacturer": None,
+                "model": None,
+                "name": None,
+            },
+            id="device-none",
+        ),
+        pytest.param(
+            MyAirSleepRecord.from_api,
+            {},
+            {
+                "raw": {},
+                "start_date": None,
+                "total_usage_minutes": None,
+                "friendly_usage_time": None,
+                "has_usage": False,
+            },
+            id="sleep-record-empty",
+        ),
+        pytest.param(
+            MyAirSleepRecord.from_api,
+            None,
+            {
+                "raw": {},
+                "start_date": None,
+                "total_usage_minutes": None,
+                "friendly_usage_time": None,
+                "has_usage": False,
+            },
+            id="sleep-record-none",
+        ),
+    ],
+)
+def test_models_with_missing_payloads_use_safe_defaults(
+    factory: Callable[[dict[str, object] | None], object],
+    raw_payload: dict[str, object] | None,
+    expected_values: dict[str, object],
+) -> None:
+    """Empty model payloads collapse to safe empty or `None` values."""
+    model = factory(raw_payload)
 
-    assert device.raw == {}
-    assert device.serial_number == ""
-    assert device.manufacturer is None
-    assert device.model is None
-    assert device.name is None
+    for attribute, expected_value in expected_values.items():
+        assert getattr(model, attribute) == expected_value
 
 
 def test_device_ignores_non_string_serial_number() -> None:
@@ -106,54 +161,17 @@ def test_device_fields_with_non_string_optional_values_are_none() -> None:
     assert device.name is None
 
 
-def test_sleep_record_with_missing_fields_defaults() -> None:
-    """Missing sleep-record fields fall back to safe defaults."""
-    record = MyAirSleepRecord.from_api({})
-
-    assert record.start_date is None
-    assert record.total_usage_minutes is None
-    assert record.friendly_usage_time is None
-    assert record.has_usage is False
-
-
-def test_sleep_record_with_non_string_start_date_has_none_start_date() -> None:
-    """Non-string `startDate` values are skipped during parsing."""
-    record = MyAirSleepRecord.from_api({"startDate": 123, "totalUsage": 30})
+@pytest.mark.parametrize("raw_start_date", [123, "not-a-date"])
+def test_sleep_record_with_unparsable_start_date_has_none_start_date(
+    raw_start_date: int | str,
+) -> None:
+    """Unparsable `startDate` values leave the parsed date unset."""
+    record = MyAirSleepRecord.from_api({"startDate": raw_start_date, "totalUsage": 30})
 
     assert record.start_date is None
     assert record.total_usage_minutes == 30
     assert record.friendly_usage_time == "0:30"
     assert record.has_usage is True
-
-
-def test_sleep_record_with_invalid_start_date_has_none_start_date() -> None:
-    """Invalid `startDate` strings leave the parsed date unset."""
-    record = MyAirSleepRecord.from_api({"startDate": "not-a-date", "totalUsage": 30})
-
-    assert record.start_date is None
-    assert record.total_usage_minutes == 30
-
-
-def test_device_from_api_accepts_none() -> None:
-    """`from_api(None)` returns an empty, safe device model."""
-    device = MyAirDevice.from_api(None)
-
-    assert device.raw == {}
-    assert device.serial_number == ""
-    assert device.manufacturer is None
-    assert device.model is None
-    assert device.name is None
-
-
-def test_sleep_record_from_api_accepts_none() -> None:
-    """`from_api(None)` returns an empty, safe sleep-record model."""
-    record = MyAirSleepRecord.from_api(None)
-
-    assert record.raw == {}
-    assert record.start_date is None
-    assert record.total_usage_minutes is None
-    assert record.friendly_usage_time is None
-    assert record.has_usage is False
 
 
 def test_most_recent_sleep_date_skips_zero_usage_records() -> None:
@@ -180,30 +198,30 @@ def test_sleep_record_with_non_int_usage_is_none() -> None:
     assert record.has_usage is False
 
 
-@pytest.mark.parametrize("raw_usage", [125.9, Decimal("125.9"), "125.9"])
+@pytest.mark.parametrize(
+    ("raw_usage", "logs_truncation"),
+    [
+        (125.9, True),
+        (Decimal("125.9"), True),
+        ("125.9", True),
+        (125.0, False),
+        (Decimal("125.0"), False),
+        ("125.0", False),
+    ],
+)
 def test_sleep_record_coerces_numeric_usage_values(
-    raw_usage: float | Decimal | str, caplog: pytest.LogCaptureFixture
+    raw_usage: float | Decimal | str,
+    logs_truncation: bool,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Numeric usage values are coerced to whole minutes."""
+    """Numeric usage values are coerced and only fractional values log truncation."""
     with caplog.at_level(logging.INFO):
         record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
 
     assert record.total_usage_minutes == 125
     assert record.friendly_usage_time == "2:05"
     assert record.has_usage is True
-    assert "Truncated fractional totalUsage value to minutes" in caplog.text
-
-
-@pytest.mark.parametrize("raw_usage", [125.0, Decimal("125.0"), "125.0"])
-def test_sleep_record_does_not_log_for_integral_numeric_usage(
-    raw_usage: float | Decimal | str, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Integral numeric usage values skip truncation logging."""
-    with caplog.at_level(logging.INFO):
-        record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
-
-    assert record.total_usage_minutes == 125
-    assert "Truncated fractional totalUsage value to minutes" not in caplog.text
+    assert ("Truncated fractional totalUsage value to minutes" in caplog.text) is logs_truncation
 
 
 def test_coordinator_data_selects_latest_record_by_start_date() -> None:

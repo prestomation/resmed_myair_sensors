@@ -2,37 +2,39 @@
 
 from types import MappingProxyType
 
+import pytest
+
 from custom_components.resmed_myair.redaction import REDACTED, redact_dict
 
 
-def test_redact_dict_redacts_nested_sensitive_values() -> None:
-    """Sensitive keys are redacted inside nested mappings and lists."""
-    data = {
-        "Username": "person@example.com",
-        "nested": [{"access_token": "token-value"}, {"safe": "value"}],
-        "safe": "visible",
-    }
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        (
+            {
+                "Username": "person@example.com",
+                "nested": [{"access_token": "token-value"}, {"safe": "value"}],
+                "safe": "visible",
+            },
+            {
+                "Username": REDACTED,
+                "nested": [{"access_token": REDACTED}, {"safe": "value"}],
+                "safe": "visible",
+            },
+        ),
+        ({"given_name": "Alice"}, {"given_name": REDACTED}),
+        (
+            {"nested": MappingProxyType({"access_token": "token-value"})},
+            {"nested": {"access_token": REDACTED}},
+        ),
+    ],
+)
+def test_redact_dict_redacts_sensitive_values(data: object, expected: object) -> None:
+    """Sensitive keys are redacted across nested, claim, and immutable mappings."""
+    assert redact_dict(data) == expected
 
-    assert redact_dict(data) == {
-        "Username": REDACTED,
-        "nested": [{"access_token": REDACTED}, {"safe": "value"}],
-        "safe": "visible",
-    }
 
-
-def test_redact_dict_redacts_given_name() -> None:
-    """The myAir `given_name` claim is always redacted."""
-    assert redact_dict({"given_name": "Alice"}) == {"given_name": REDACTED}
-
-
-def test_redact_dict_redacts_nested_immutable_mappings() -> None:
-    """Immutable nested mappings are copied before redaction."""
-    data = {"nested": MappingProxyType({"access_token": "token-value"})}
-
-    assert redact_dict(data) == {"nested": {"access_token": REDACTED}}
-
-
-def test_redact_dict_returns_non_collection_values_unchanged() -> None:
+@pytest.mark.parametrize("value", ["plain", None])
+def test_redact_dict_returns_non_collection_values_unchanged(value: object) -> None:
     """Scalar values pass through the redactor unchanged."""
-    assert redact_dict("plain") == "plain"
-    assert redact_dict(None) is None
+    assert redact_dict(value) is value

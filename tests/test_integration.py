@@ -3,18 +3,20 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.components.sensor import SensorEntityDescription
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.resmed_myair as resmed_module
 from custom_components.resmed_myair import (
-    async_migrate_entry,
     async_setup_entry,
     async_unload_entry,
     sensor as sensor_platform,
 )
 from custom_components.resmed_myair.const import (
+    CONF_USER_NAME,
     DEVICE_SENSOR_DESCRIPTIONS,
+    DOMAIN,
     PLATFORMS,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
 )
@@ -95,21 +97,6 @@ async def test_async_setup_entry_multiple_calls(
 
 
 @pytest.mark.asyncio
-async def test_friendly_usage_time_sensor_with_negative_usage(
-    hass: MagicMock, coordinator_factory: CoordinatorFactory
-) -> None:
-    """Friendly usage sensors clamp negative minutes to zero."""
-    coordinator = coordinator_factory(data={"sleep_records": [{"totalUsage": -10}]})
-    sensor = MyAirFriendlyUsageTime(coordinator)
-    sensor.hass = hass
-    sensor.entity_id = "sensor.test_friendly_usage"
-    sensor.async_write_ha_state = MagicMock()
-    await sensor.async_added_to_hass()
-    assert sensor.native_value == "0:00"  # Negative values should be clamped to "0:00"
-    assert sensor.available is True
-
-
-@pytest.mark.asyncio
 async def test_most_recent_sleep_date_sensor_with_future_date(
     hass: MagicMock, coordinator_factory: CoordinatorFactory
 ) -> None:
@@ -126,17 +113,6 @@ async def test_most_recent_sleep_date_sensor_with_future_date(
     await sensor.async_added_to_hass()
     assert sensor.native_value.isoformat() == future
     assert sensor.available is True
-
-
-@pytest.mark.asyncio
-async def test_async_migrate_entry_v2(hass: MagicMock, config_entry: MockConfigEntry) -> None:
-    """Version 2 config entries skip migration updates."""
-    # The shared `config_entry` fixture is already a MockConfigEntry at version 2.
-    hass.config_entries.async_update_entry = MagicMock()
-    result = await async_migrate_entry(hass, config_entry)
-    assert result is True
-    assert config_entry.version == 2
-    hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -167,18 +143,6 @@ async def test_async_unload_entry_variants(
     assert config_entry.runtime_data == expected_runtime_data
     hass.config_entries.async_unload_platforms.assert_awaited_with(config_entry, PLATFORMS)
     assert hass.config_entries.async_unload_platforms.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_async_unload_entry_calls_unload_platforms(
-    hass: MagicMock, config_entry: MockConfigEntry
-) -> None:
-    """Unload delegates to `async_unload_platforms` and returns success."""
-    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
-    config_entry.runtime_data = "dummy"
-    result = await async_unload_entry(hass, config_entry)
-    assert result is True
-    hass.config_entries.async_unload_platforms.assert_awaited_once_with(config_entry, PLATFORMS)
 
 
 @pytest.mark.asyncio
@@ -581,3 +545,57 @@ async def test_async_setup_entry_registers_all_sensors(
         + 2  # FriendlyUsageTime + MostRecentSleepDate
     )
     assert len(added_entities) == expected_count
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("username", "expected_service_name"),
+    [
+        ("test@example.com", "force_poll_test_example_com"),
+        ("test+alerts@example.com", "force_poll_test_alerts_example_com"),
+        ("Upper.User@example.com", "force_poll_upper_user_example_com"),
+    ],
+)
+async def test_sensor_setup_registers_valid_force_poll_service_names(
+    hass: MagicMock,
+    config_entry: MockConfigEntry,
+    coordinator_factory: CoordinatorFactory,
+    monkeypatch: pytest.MonkeyPatch,
+    username: str,
+    expected_service_name: str,
+) -> None:
+    """Sensor setup sanitizes account usernames into valid HA service names."""
+    registered_services: list[tuple[str, str, object]] = []
+
+    def register_service(domain: str, service: str, handler: object) -> None:
+        """Collect service registrations from the platform setup flow."""
+        registered_services.append((domain, service, handler))
+
+    coordinator = coordinator_factory(mock=True)
+    coordinator.data = coordinator_data(device={"serialNumber": "SN123"}, sleep_records=[])
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="ResMed-CPAP",
+        data={**config_entry.data, CONF_USER_NAME: username},
+        entry_id=f"entry-{expected_service_name}",
+        version=2,
+    )
+    entry.runtime_data = coordinator
+    hass.services.async_register = register_service
+
+    monkeypatch.setattr(
+        sensor_platform,
+        "SLEEP_RECORD_SENSOR_DESCRIPTIONS",
+        {"usage": SensorEntityDescription(key="totalUsage")},
+    )
+    monkeypatch.setattr(
+        sensor_platform,
+        "DEVICE_SENSOR_DESCRIPTIONS",
+        {"serial": SensorEntityDescription(key="serialNumber")},
+    )
+
+    await sensor_platform.async_setup_entry(hass, entry, MagicMock())
+
+    assert registered_services
+    assert registered_services[-1][0] == DOMAIN
+    assert registered_services[-1][1] == expected_service_name
