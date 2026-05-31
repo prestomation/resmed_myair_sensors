@@ -1,9 +1,10 @@
 """Unit tests for sensor entities in the resmed_myair integration."""
 
-import asyncio
+import inspect
 import logging
 from unittest.mock import MagicMock
 
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -15,11 +16,11 @@ from custom_components.resmed_myair.sensor import (
     MyAirSleepRecordSensor,
     async_setup_entry,
 )
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
+from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike
 
 
 @pytest.mark.parametrize(
-    "data,sensor_key,device_class,expected_available",
+    ("data", "sensor_key", "device_class", "expected_available"),
     [
         ({}, "foo", None, False),  # No device
         ({"device": {}}, "foo", None, False),  # KeyError
@@ -33,8 +34,13 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescr
     ],
 )
 def test_device_sensor_all_branches(
-    data, sensor_key, device_class, expected_available, monkeypatch, coordinator_factory
-):
+    data: dict[str, object],
+    sensor_key: str,
+    device_class: SensorDeviceClass | None,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Parametrized tests for MyAirDeviceSensor behavior across branches."""
     # Construct description using the explicit device_class parameter so the test
     # deterministically controls whether the sensor is a timestamp sensor.
@@ -50,7 +56,7 @@ def test_device_sensor_all_branches(
 
 
 @pytest.mark.parametrize(
-    "data,expected_native,expected_available",
+    ("data", "expected_native", "expected_available"),
     [
         ({}, None, False),  # No sleep_records
         ({"sleep_records": []}, None, False),  # Empty sleep_records
@@ -60,8 +66,12 @@ def test_device_sensor_all_branches(
     ],
 )
 def test_friendly_usage_time_all_branches(
-    data, expected_native, expected_available, monkeypatch, coordinator_factory
-):
+    data: dict[str, object],
+    expected_native: object,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Parametrized tests for MyAirFriendlyUsageTime behavior across branches."""
     coordinator = coordinator_factory(data=data)
     sensor = MyAirFriendlyUsageTime(coordinator)
@@ -74,7 +84,7 @@ def test_friendly_usage_time_all_branches(
 
 
 @pytest.mark.parametrize(
-    "data,expected_native,expected_available",
+    ("data", "expected_native", "expected_available"),
     [
         ({}, None, False),  # No sleep_records
         ({"sleep_records": []}, None, False),  # Empty sleep_records
@@ -96,8 +106,12 @@ def test_friendly_usage_time_all_branches(
     ],
 )
 def test_most_recent_sleep_date_all_branches(
-    data, expected_native, expected_available, monkeypatch, coordinator_factory
-):
+    data: dict[str, object],
+    expected_native: object,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Parametrized tests for MyAirMostRecentSleepDate behavior across branches."""
     coordinator = coordinator_factory(data=data)
     sensor = MyAirMostRecentSleepDate(coordinator)
@@ -110,7 +124,7 @@ def test_most_recent_sleep_date_all_branches(
 
 
 @pytest.mark.parametrize(
-    "sleep_records,sensor_key,device_class,expected_value,expected_available",
+    ("sleep_records", "sensor_key", "device_class", "expected_value", "expected_available"),
     [
         (None, "foo", None, None, False),
         ([], "foo", None, None, False),
@@ -121,14 +135,14 @@ def test_most_recent_sleep_date_all_branches(
     ],
 )
 def test_sleep_record_sensor_handle_coordinator_update(
-    sleep_records,
-    sensor_key,
-    device_class,
-    expected_value,
-    expected_available,
-    monkeypatch,
-    coordinator_factory,
-):
+    sleep_records: list[dict[str, object]] | None,
+    sensor_key: str,
+    device_class: SensorDeviceClass | None,
+    expected_value: object,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Parametrized tests for MyAirSleepRecordSensor handling various record formats."""
     # Patch dt_util.parse_date to return a sentinel for test
     if device_class == SensorDeviceClass.DATE:
@@ -152,7 +166,14 @@ def test_sleep_record_sensor_handle_coordinator_update(
 
 
 @pytest.mark.parametrize(
-    "device_data,sensor_key,device_class,expected_native,expected_available,patch_parse_datetime",
+    (
+        "device_data",
+        "sensor_key",
+        "device_class",
+        "expected_native",
+        "expected_available",
+        "patch_parse_datetime",
+    ),
     [
         # No device in coordinator data
         (None, "foo", None, None, False, False),
@@ -181,15 +202,15 @@ def test_sleep_record_sensor_handle_coordinator_update(
     ],
 )
 def test_myair_device_sensor_parametrized(
-    device_data,
-    sensor_key,
-    device_class,
-    expected_native,
-    expected_available,
-    patch_parse_datetime,
-    monkeypatch,
-    coordinator_factory,
-):
+    device_data: dict[str, object] | None,
+    sensor_key: str,
+    device_class: SensorDeviceClass | None,
+    expected_native: object,
+    expected_available: bool,
+    patch_parse_datetime: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Combined parametrized test for MyAirDeviceSensor with optional datetime parsing."""
     # Patch dt_util.parse_datetime if needed
     if patch_parse_datetime:
@@ -212,8 +233,12 @@ def test_myair_device_sensor_parametrized(
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_adds_entities_and_registers_service(
-    monkeypatch, coordinator_factory, hass, config_entry, service_registry_shim
-):
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+    hass: MagicMock,
+    config_entry: MockConfigEntry,
+    service_registry_shim: ServiceRegistryShimLike,
+) -> None:
     """Test that async_setup_entry adds sensor entities and registers service."""
     async_add_entities = MagicMock()
     coordinator = coordinator_factory(mock=True)
@@ -261,7 +286,7 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
     service_entry = service_registry_shim._services["resmed_myair"][expected_service]
     func = service_entry.handlers[0]
     # The registered function should be awaitable
-    assert asyncio.iscoroutinefunction(func)
+    assert inspect.iscoroutinefunction(func)
 
     # Test that calling the registered refresh function calls coordinator.async_refresh
     await func(None)
@@ -269,8 +294,10 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
 
 
 def test_myair_device_sensor_handle_coordinator_update_keyerror(
-    caplog, coordinator_factory, monkeypatch
-):
+    caplog: pytest.LogCaptureFixture,
+    coordinator_factory: CoordinatorFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Ensure MyAirDeviceSensor handles missing keys and logs an error."""
     coordinator = coordinator_factory(mock=True)
     coordinator.data = {"device": {"serialNumber": "SN123"}}

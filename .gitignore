@@ -26,3 +26,5 @@ pythonenv*
 Thumbs.db
 venv.bak/
 venv/
+*.egg-info
+build/

@@ -1,74 +1,64 @@
-name: Release
+name: Update Version and Create Zip on Release
 on:
   workflow_dispatch:
   release:
-    types:
-      - published
-      - edited
+    types: [published, edited]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   update_version_and_create_zip:
+    name: Update Version and Create Zip on Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      TAG_NAME: ${{ github.event.release.tag_name || github.ref_name }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
+      - name: Checkout Repository
+        uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          # Release events must package the release tag instead of a moving
+          # target_commitish branch.
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
 
-      - name: Debug Variables
-        run: |
-            echo "github.event_name: ${{ github.event_name }}"
-            echo "github.ref_name: ${{ github.ref_name }}"
-            echo "github.event.release.tag_name: ${{ github.event.release.tag_name }}"
-            echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
-            echo "github.event.release.target_commitish: ${{ github.event.release.target_commitish }}"
-            echo "github.event.release.prerelease: ${{ github.event.release.prerelease }}"
-            echo "github.event.release.draft: ${{ github.event.release.draft }}"
-
-      - name: Update Version in Manifest
+      - name: Update Release Version Files
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          jq --arg TAG "$TAG_NAME" '.version = $TAG' ./custom_components/resmed_myair/manifest.json > tmp.json && mv tmp.json ./custom_components/resmed_myair/manifest.json
-
-      - name: Update Version in const.py
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        run: |
-          VERSION_LINE="VERSION = \"$TAG_NAME\""
-          sed -i "s/^VERSION *= *.*/$VERSION_LINE/" ./custom_components/resmed_myair/const.py
+          python .github/scripts/update_release_version.py --tag-name "$TAG_NAME"
 
       - name: Commit & Push Version Changes
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
-        uses: actions-js/push@master
+        if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false  }}
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.event.release.target_commitish }}
-          message: 'Updating to version ${{ env.TAG_NAME }} [skip ci]'
+          commit_message: 'Updating to version ${{ github.event.release.tag_name }} [skip ci]'
 
       - name: Update Release with Version Changes Commit
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
+        if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false  }}
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          git tag -f ${{ github.event.release.tag_name }}
-          git push -f origin ${{ github.event.release.tag_name }}
+          git tag -f "$TAG_NAME"
+          git push -f origin "$TAG_NAME"
 
       - name: Create Zip
         run: |
           cd ${{ github.workspace }}/custom_components/resmed_myair
-          zip -r resmed_myair.zip ./ -x "__pycache__/*" "*.pyc" "resmed_myair.zip"
+          zip resmed_myair.zip -r ./
 
       - name: Upload Zip to Release
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        uses: softprops/action-gh-release@v3.0.0
+        uses: softprops/action-gh-release@v3
         with:
           files: ./custom_components/resmed_myair/resmed_myair.zip
           tag_name: ${{ github.event.release.tag_name }}
 
       - name: Add Zip to Action
         if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           name: resmed_myair
           path: ./custom_components/resmed_myair/resmed_myair.zip

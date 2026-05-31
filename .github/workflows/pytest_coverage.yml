@@ -23,7 +23,9 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Debug GitHub Variables
         run: |
@@ -34,25 +36,24 @@ jobs:
             echo "PR labels: ${{ github.event_name == 'pull_request' && toJSON(github.event.pull_request.labels.*.name) || '' }}"
 
       - name: Setup Python 3 (with caching)
-        uses: actions/setup-python@v6.2.0
+        uses: actions/setup-python@v6
         with:
-          python-version: 3.x
+          python-version: 3.14
           cache: 'pip'
           cache-dependency-path: |
-            requirements-pytest.txt
             pyproject.toml
 
       - name: Install pytest Requirements
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-pytest.txt
+          pip install --group pytest
 
       - name: Run pytest with coverage (pytest-cov)
         run: pytest
 
       - name: "Generate coverage Comment (and possibly Post to PR)"
         id: coverage_comment
-        uses: py-cov-action/python-coverage-comment-action@v3.41
+        uses: py-cov-action/python-coverage-comment-action@v3
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MINIMUM_GREEN: 90
@@ -60,7 +61,7 @@ jobs:
 
       - name: Store PR Comment to be Posted
         if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           # If you use a different name, update COMMENT_ARTIFACT_NAME accordingly
           name: python-coverage-comment-action
