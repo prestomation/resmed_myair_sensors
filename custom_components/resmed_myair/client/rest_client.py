@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 from aiohttp import ClientResponse, ClientSession
-import jwt
 
 from .auth import MyAirAuthSession
 from .const import (
@@ -14,6 +13,7 @@ from .const import (
     AUTHN_SUCCESS as _AUTHN_SUCCESS,
     REGION_NA as _REGION_NA,
 )
+from .graphql import MyAirGraphQLClient
 from .helpers import redact_dict
 from .myair_client import MyAirClient, MyAirConfig, ParsingError
 from .regions import EU_CONFIG as _EU_CONFIG, NA_CONFIG as _NA_CONFIG, RegionConfig
@@ -35,8 +35,21 @@ class RESTClient(MyAirClient):
         _LOGGER.debug("[RESTClient init] config: %s", redact_dict(config._asdict()))
         self._config: MyAirConfig = config
         self._session: ClientSession = session
-        self._country_code: str | None = None
         self._auth = MyAirAuthSession(config, session)
+        self._graphql = MyAirGraphQLClient(
+            session=self._session,
+            auth=self._auth,
+            region_config=self._region_config,
+        )
+
+    @property
+    def _country_code(self) -> str | None:
+        """Compatibility alias for GraphQL country code cache."""
+        return self._graphql._country_code  # noqa: SLF001
+
+    @_country_code.setter
+    def _country_code(self, value: str | None) -> None:
+        self._graphql._country_code = value  # noqa: SLF001
 
     @property
     def device_token(self) -> str | None:
@@ -226,73 +239,9 @@ class RESTClient(MyAirClient):
 
     async def _gql_query(
         self, operation_name: str, query: str, initial: bool | None = False
-    ) -> MutableMapping[str, Any]:
-        _LOGGER.debug("[gql_query] operation_name: %s, query: %s", operation_name, query)
-        authz_header: str = f"Bearer {self._auth.access_token}"
-        # _LOGGER.debug(f"[gql_query] authz_header: {authz_header}")
-
-        if not self._country_code and self._auth.id_token:
-            # We trust this JWT because it is myAir giving it to us
-            # So we can pull the middle piece out, which is the payload, and turn it to json
-            try:
-                jwt_data: MutableMapping[str, Any] = jwt.decode(
-                    self._auth.id_token, options={"verify_signature": False}
-                )
-            except Exception as e:
-                _LOGGER.error("Error decoding id_token into jwt_data. %s: %s", type(e).__name__, e)
-                raise ParsingError("Unable to decode id_token into jwt_data") from e
-            _LOGGER.debug("[gql_query] jwt_data: %s", redact_dict(jwt_data))
-
-            # The graphql API only works properly if we provide the expected country code
-            # The rest of the parameters are required, but don't seem to be further validated
-            if "myAirCountryId" not in jwt_data:
-                _LOGGER.error("myAirCountryId not found in jwt_data")
-                raise ParsingError("myAirCountryId not found in jwt_data")
-            self._country_code = jwt_data["myAirCountryId"]
-            _LOGGER.info("Country Code: %s", self._country_code)
-        if not self._country_code:
-            _LOGGER.error("country_code not defined and id_token not present to identify it")
-            raise ParsingError("country_code not defined and id_token not present to identify it")
-        _LOGGER.debug("[gql_query] country_code: %s", self._country_code)
-
-        graphql_url: str = self._region_config.graphql_url
-        headers: dict[str, Any] = {
-            "x-api-key": self._region_config.myair_api_key,
-            "Authorization": authz_header,
-            # There are a bunch of resmed headers sent to this API that seem to be required
-            # Unsure if this is ever validated/can break things if these values change
-            "rmdhandsetid": "02c1c662-c289-41fd-a9ae-196ff15b5166",
-            "rmdlanguage": "en",
-            "rmdhandsetmodel": "Chrome",
-            "rmdhandsetosversion": "127.0.6533.119",
-            "rmdproduct": self._region_config.product,
-            "rmdappversion": "1.0.0",
-            "rmdhandsetplatform": "Web",
-            "rmdcountry": self._country_code,
-            "accept-language": "en-US,en;q=0.9",
-        }
-        json_query: dict[str, Any] = {
-            "operationName": operation_name,
-            "variables": {},
-            "query": query,
-        }
-        _LOGGER.debug("[gql_query] graphql_url: %s", graphql_url)
-        _LOGGER.debug("[gql_query] headers: %s", redact_dict(headers))
-        _LOGGER.debug("[gql_query] json_query: %s", redact_dict(json_query))
-
-        async with self._session.post(
-            graphql_url,
-            headers=headers,
-            json=json_query,
-        ) as records_res:
-            _LOGGER.debug("[gql_query] records_res: %s", records_res)
-            records_dict: MutableMapping[str, Any] = await records_res.json()
-            _LOGGER.debug("[gql_query] records_dict: %s", redact_dict(records_dict))
-            await RESTClient._resmed_response_error_check(
-                "gql_query", records_res, records_dict, initial
-            )
-
-        return records_dict
+    ) -> dict[str, Any]:
+        """Run a GraphQL query through the transport client."""
+        return await self._graphql.query(operation_name, query, initial=bool(initial))
 
     async def get_sleep_records(self, initial: bool | None = False) -> list[Mapping[str, Any]]:
         """Get sleep records from ResMed servers."""

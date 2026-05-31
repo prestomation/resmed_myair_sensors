@@ -7,11 +7,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 from aiohttp import ClientResponse
 from aiohttp.http_exceptions import HttpProcessingError
+import jwt
 from multidict import CIMultiDict
 import pytest
 
 from custom_components.resmed_myair.client import rest_client as rest_client_module
 from custom_components.resmed_myair.client.auth import MyAirAuthSession
+from custom_components.resmed_myair.client.graphql import MyAirGraphQLClient
 from custom_components.resmed_myair.client.myair_client import (
     AuthenticationError,
     IncompleteAccountError,
@@ -62,6 +64,13 @@ def test_rest_client_owns_auth_session(config_na: MyAirConfig, session: MagicMoc
 
     assert isinstance(client._auth, MyAirAuthSession)
     assert client.device_token == config_na.device_token
+
+
+def test_rest_client_owns_graphql_client(config_na: MyAirConfig, session: MagicMock) -> None:
+    """RESTClient composes a dedicated GraphQL client."""
+    client = RESTClient(config_na, session)
+
+    assert isinstance(client._graphql, MyAirGraphQLClient)
 
 
 @pytest.mark.parametrize(
@@ -872,7 +881,7 @@ async def test_gql_query_variants(
     if jwt_behavior == "valid":
         # jwt.decode returns a payload including myAirCountryId
         monkeypatch.setattr(
-            "custom_components.resmed_myair.client.rest_client.jwt.decode",
+            "custom_components.resmed_myair.client.graphql.jwt.decode",
             lambda *a, **k: {"myAirCountryId": expected_country},
         )
         monkeypatch.setattr(
@@ -889,10 +898,10 @@ async def test_gql_query_variants(
     else:
 
         def bad_decode(*a: object, **k: object) -> Never:
-            raise ValueError("bad jwt")
+            raise jwt.PyJWTError("bad jwt")
 
         monkeypatch.setattr(
-            "custom_components.resmed_myair.client.rest_client.jwt.decode",
+            "custom_components.resmed_myair.client.graphql.jwt.decode",
             bad_decode,
         )
         with pytest.raises(ParsingError, match="Unable to decode id_token into jwt_data"):
@@ -905,7 +914,7 @@ async def test_gql_query_variants(
     [
         (
             "idtoken",
-            {"side_effect": Exception("bad jwt")},
+            {"side_effect": jwt.PyJWTError("bad jwt")},
             "Unable to decode id_token into jwt_data",
         ),
         ("idtoken", {"return_value": {}}, "myAirCountryId not found in jwt_data"),
@@ -934,14 +943,14 @@ async def test_gql_query_failure_variants(
                 raise jwt_behavior["side_effect"]
 
             monkeypatch.setattr(
-                "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                "custom_components.resmed_myair.client.graphql.jwt.decode",
                 side,
             )
             with pytest.raises(ParsingError, match=match):
                 await client._gql_query("op", "query")
         else:
             monkeypatch.setattr(
-                "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                "custom_components.resmed_myair.client.graphql.jwt.decode",
                 lambda *a, **k: jwt_behavior.get("return_value", {}),
             )
             with pytest.raises(ParsingError, match=match):
@@ -956,7 +965,7 @@ async def test_gql_query_failure_variants(
 async def test_gql_query_graphql_error(
     config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Ensure gql_query raises AuthenticationError on GraphQL auth errors."""
+    """Ensure gql_query maps GraphQL unauthorized errors."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = None
@@ -968,12 +977,8 @@ async def test_gql_query_graphql_error(
     )
 
     session.post.return_value = make_mock_aiohttp_context_manager(mock_res)
-    monkeypatch.setattr(
-        RESTClient,
-        "_resmed_response_error_check",
-        AsyncMock(side_effect=AuthenticationError("unauthorized")),
-    )
-    with pytest.raises(AuthenticationError, match="unauthorized"):
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+    with pytest.raises(ParsingError, match="unauthorized: 401"):
         await client._gql_query("op", "query")
 
 
