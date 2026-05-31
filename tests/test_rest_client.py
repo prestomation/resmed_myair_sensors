@@ -11,6 +11,7 @@ from multidict import CIMultiDict
 import pytest
 
 from custom_components.resmed_myair.client import rest_client as rest_client_module
+from custom_components.resmed_myair.client.auth import MyAirAuthSession
 from custom_components.resmed_myair.client.myair_client import (
     AuthenticationError,
     IncompleteAccountError,
@@ -53,6 +54,14 @@ def test_get_region_config_returns_eu_settings() -> None:
 def test_get_region_config_fallback_to_eu_for_unknown_region() -> None:
     """Unexpected region values default to EU settings."""
     assert get_region_config("unexpected") == EU_CONFIG
+
+
+def test_rest_client_owns_auth_session(config_na: MyAirConfig, session: MagicMock) -> None:
+    """RESTClient composes a dedicated auth session."""
+    client = RESTClient(config_na, session)
+
+    assert isinstance(client._auth, MyAirAuthSession)
+    assert client.device_token == config_na.device_token
 
 
 @pytest.mark.parametrize(
@@ -619,11 +628,11 @@ async def test_get_access_token_success(
     session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_token_res)
     monkeypatch.setattr(
-        "custom_components.resmed_myair.client.rest_client.urldefrag",
+        "custom_components.resmed_myair.client.auth.urldefrag",
         lambda *a, **k: MagicMock(fragment="code=abc123"),
     )
     monkeypatch.setattr(
-        "custom_components.resmed_myair.client.rest_client.parse_qs",
+        "custom_components.resmed_myair.client.auth.parse_qs",
         lambda *a, **k: {"code": ["the_code"]},
     )
     mock_extract = AsyncMock()
@@ -691,11 +700,11 @@ async def test_get_access_token_raises_on_missing_token_variants(
         session, "post", lambda *args, **kwargs: make_mock_aiohttp_context_manager(mock_token_res)
     )
     monkeypatch.setattr(
-        "custom_components.resmed_myair.client.rest_client.urldefrag",
+        "custom_components.resmed_myair.client.auth.urldefrag",
         lambda *a, **k: MagicMock(fragment="code=abc123"),
     )
     monkeypatch.setattr(
-        "custom_components.resmed_myair.client.rest_client.parse_qs",
+        "custom_components.resmed_myair.client.auth.parse_qs",
         lambda *a, **k: {"code": ["the_code"]},
     )
     monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", AsyncMock())
