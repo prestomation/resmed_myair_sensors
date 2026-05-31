@@ -1,9 +1,7 @@
 """Device coordinator for resmed_myair."""
 
-from collections.abc import Mapping
 from datetime import timedelta
 import logging
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -12,17 +10,17 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .client.myair_client import AuthenticationError, MyAirClient, ParsingError
 from .const import DEFAULT_UPDATE_RATE_MIN
-from .helpers import redact_dict
+from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
+class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
     """DataUpdateCoordinator for myAir."""
 
     myair_client: MyAirClient
-    device: Mapping[str, Any]
-    sleep_records: list[Mapping[str, Any]]
+    device: MyAirDevice | None
+    sleep_records: tuple[MyAirSleepRecord, ...]
 
     def __init__(
         self,
@@ -41,8 +39,8 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(minutes=DEFAULT_UPDATE_RATE_MIN),
         )
 
-    async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from from the myAir client and store it in the coordinator."""
+    async def _async_update_data(self) -> MyAirCoordinatorData:
+        """Fetch data from the myAir client and store it in the coordinator."""
         _LOGGER.info("Updating from myAir")
 
         try:
@@ -53,17 +51,17 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
                 f"Authentication Error while updating. {type(e).__name__}: {e}"
             ) from e
 
-        data: dict[str, Any] = {}
-        try:
-            data["device"] = await self.myair_client.get_user_device_data()
-        except ParsingError:
-            data["device"] = {}
-        _LOGGER.debug("[async_update_data] device: %s", redact_dict(data["device"]))
+        device: MyAirDevice | None = None
+        sleep_records: tuple[MyAirSleepRecord, ...] = ()
 
         try:
-            data["sleep_records"] = await self.myair_client.get_sleep_records()
+            device = await self.myair_client.get_user_device_data()
         except ParsingError:
-            data["sleep_records"] = []
-        _LOGGER.debug("[async_update_data] sleep_records: %s", redact_dict(data["sleep_records"]))
+            _LOGGER.debug("Device data unavailable in myAir update")
 
-        return data
+        try:
+            sleep_records = tuple(await self.myair_client.get_sleep_records())
+        except ParsingError:
+            _LOGGER.debug("Sleep record data unavailable in myAir update")
+
+        return MyAirCoordinatorData(device=device, sleep_records=sleep_records)

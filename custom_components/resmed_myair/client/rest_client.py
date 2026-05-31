@@ -7,6 +7,8 @@ from typing import Any
 
 from aiohttp import ClientResponse, ClientSession
 
+from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
+
 from .auth import MyAirAuthSession
 from .const import (
     AUTH_NEEDS_MFA as _AUTH_NEEDS_MFA,
@@ -243,7 +245,7 @@ class RESTClient(MyAirClient):
         """Run a GraphQL query through the transport client."""
         return await self._graphql.query(operation_name, query, initial=bool(initial))
 
-    async def get_sleep_records(self, initial: bool | None = False) -> list[Mapping[str, Any]]:
+    async def get_sleep_records(self, initial: bool | None = False) -> list[MyAirSleepRecord]:
         """Get sleep records from ResMed servers."""
         today_date: datetime.date = datetime.datetime.now(datetime.UTC).astimezone().date()
         today: str = today_date.isoformat()
@@ -295,9 +297,9 @@ class RESTClient(MyAirClient):
                 "Error getting Patient Sleep Records. Returned records is not a list"
             )
         _LOGGER.debug("[get_sleep_records] records: %s", redact_dict(records))
-        return records
+        return [MyAirSleepRecord.from_api(record) for record in records]
 
-    async def get_user_device_data(self, initial: bool | None = False) -> Mapping[str, Any]:
+    async def get_user_device_data(self, initial: bool | None = False) -> MyAirDevice:
         """Get user device data from ResMed servers."""
         query: str = """
         query getPatientWrapper {
@@ -340,4 +342,4 @@ class RESTClient(MyAirClient):
             _LOGGER.error("Error getting User Device Data. Returned data is not a dict")
             raise ParsingError("Error getting User Device Data. Returned data is not a dict")
         _LOGGER.debug("[get_user_device_data] device: %s", redact_dict(device))
-        return device
+        return MyAirDevice.from_api(device)

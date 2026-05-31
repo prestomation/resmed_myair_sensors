@@ -29,6 +29,7 @@ from custom_components.resmed_myair.client.rest_client import (
     RESTClient,
 )
 from custom_components.resmed_myair.const import REGION_EU
+from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
 from tests.conftest import make_mock_aiohttp_context_manager, make_mock_aiohttp_response
 
 
@@ -1073,7 +1074,16 @@ async def test_data_fetch_success_variants(
     client._country_code = "US"
     monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
     result = await getattr(client, method_name)()
-    assert result == expected
+    if method_name == "get_sleep_records":
+        assert isinstance(result, list)
+        assert isinstance(result[0], MyAirSleepRecord)
+        assert result[0].total_usage_minutes == expected[0]["totalUsage"]  # type: ignore[index]
+        assert result[0].raw == expected[0]
+    else:
+        assert isinstance(result, MyAirDevice)
+        assert result.raw == expected
+        assert result.serial_number == expected.get("serialNumber")
+        assert result.native_value("serialNumber") == expected.get("serialNumber")
 
 
 @pytest.mark.asyncio
@@ -1194,9 +1204,9 @@ async def test_get_user_device_data_masks_variants(
         assert "Error getting User Mask Data" not in caplog.text
 
     if expected_mask:
-        assert result["maskCode"] == expected_mask
+        assert result.raw["maskCode"] == expected_mask
     else:
-        assert "maskCode" not in result
+        assert "maskCode" not in result.raw
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,9 @@
 """Base classes for myAir Client."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
-from typing import Any, NamedTuple
+from typing import NamedTuple
+
+from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
 
 
 class AuthenticationError(Exception):
@@ -37,9 +38,9 @@ class MyAirClient(ABC):
         """Connect to ResMed myAir."""
 
     @abstractmethod
-    async def get_user_device_data(self) -> Mapping[str, Any]:
+    async def get_user_device_data(self) -> MyAirDevice:
         """Get user device data from ResMed servers."""
 
     @abstractmethod
-    async def get_sleep_records(self) -> list[Mapping[str, Any]]:
+    async def get_sleep_records(self) -> list[MyAirSleepRecord]:
         """Get sleep records from ResMed servers."""
