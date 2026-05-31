@@ -111,6 +111,7 @@ def test_most_recent_sleep_date_all_branches(
         # For date parsing, we use a string and monkeypatch dt_util.parse_date in the test body
         ([{"foo": "2024-07-18"}], "foo", SensorDeviceClass.DATE, "2024-07-18", True),
         ([{"foo": "some string"}], "foo", None, "some string", True),
+        ([{"leakPercentile": 12.5}], "leakPercentile", None, 12.5, True),
     ],
 )
 def test_sleep_record_sensor_handle_coordinator_update(
@@ -132,7 +133,12 @@ def test_sleep_record_sensor_handle_coordinator_update(
         )
         expected_value = parsed_date
 
-    desc = SensorEntityDescription(key=sensor_key, device_class=device_class)
+    if sensor_key == "leakPercentile":
+        desc = SLEEP_RECORD_SENSOR_DESCRIPTIONS["CPAP Mask Leak"]
+        assert desc.key == sensor_key
+        assert desc.native_unit_of_measurement == UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+    else:
+        desc = SensorEntityDescription(key=sensor_key, device_class=device_class)
     data = {}
     if sleep_records is not None:
         data["sleep_records"] = sleep_records
