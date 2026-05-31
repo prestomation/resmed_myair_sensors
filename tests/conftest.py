@@ -34,7 +34,15 @@ class CoordinatorLike(Protocol):
     data: MyAirCoordinatorData
 
     def async_add_listener(self, *args: object, **kwargs: object) -> Callable[[], None]:
-        """Register a listener callback and return an unsubscribe callback."""
+        """Accept Home Assistant listener registration on coordinator doubles.
+
+        Args:
+            *args: Listener callback arguments supplied by `CoordinatorEntity`.
+            **kwargs: Listener registration options supplied by Home Assistant.
+
+        Returns:
+            Callable that removes the listener when invoked.
+        """
 
 
 class CoordinatorFactory(Protocol):
@@ -45,7 +53,15 @@ class CoordinatorFactory(Protocol):
         mock: bool = False,
         data: dict[str, object] | MyAirCoordinatorData | None = None,
     ) -> CoordinatorLike | MagicMock:
-        """Return either a dataful coordinator double or a mock coordinator."""
+        """Create the requested coordinator shape for a test.
+
+        Args:
+            mock: Whether the caller needs async refresh methods on a mock object.
+            data: Optional payload for a data-backed coordinator double.
+
+        Returns:
+            Coordinator double matching the requested test scenario.
+        """
 
 
 def coordinator_data(
@@ -129,7 +145,15 @@ class ServiceRegistryShimLike(Protocol):
     _services: dict[str, dict[str, ServiceEntryLike]]
 
     def has_service(self, domain: str, service: str) -> bool:
-        """Return whether the service was registered."""
+        """Check whether setup registered a named service.
+
+        Args:
+            domain: Home Assistant service domain.
+            service: Service name within the domain.
+
+        Returns:
+            Whether the in-memory registry contains that service.
+        """
 
 
 def _ensure_config_entries_helpers(hass: Any) -> None:

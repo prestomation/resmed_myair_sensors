@@ -1,4 +1,4 @@
-"""Constants for ResMed myAir Client."""
+"""Auth status, region, and redaction constants shared by the myAir client."""
 
 AUTHN_SUCCESS = "SUCCESS"
 AUTH_NEEDS_MFA = "MFA_REQUIRED"

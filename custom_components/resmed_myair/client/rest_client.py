@@ -51,7 +51,7 @@ class RESTClient(MyAirClient):
 
     @property
     def _country_code(self) -> str | None:
-        """Expose the GraphQL country-code cache for legacy tests."""
+        """Proxy the AppSync country-code cache owned by the GraphQL helper."""
         return self._graphql._country_code  # noqa: SLF001
 
     @_country_code.setter
@@ -70,17 +70,17 @@ class RESTClient(MyAirClient):
 
     @property
     def _cookies(self) -> dict[str, Any]:
-        """Expose Okta cookies through the legacy private RESTClient attribute."""
+        """Proxy the Okta cookie jar assembled by the auth session."""
         return self._auth.cookies
 
     @property
     def _json_headers(self) -> dict[str, Any]:
-        """Expose JSON auth headers through the legacy private attribute."""
+        """Proxy JSON request headers used by Okta auth endpoints."""
         return self._auth.json_headers
 
     @_json_headers.setter
     def _json_headers(self, value: Mapping[str, Any]) -> None:
-        """Replace JSON auth headers through the legacy private attribute.
+        """Forward JSON header overrides into the auth session.
 
         Args:
             value: Header mapping used for subsequent Okta JSON requests.
@@ -89,12 +89,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _region_config(self) -> RegionConfig:
-        """Expose regional endpoint settings through the legacy attribute."""
+        """Proxy regional endpoint settings owned by the auth session."""
         return self._auth.region_config
 
     @_region_config.setter
     def _region_config(self, value: RegionConfig) -> None:
-        """Replace regional endpoint settings through the legacy attribute.
+        """Forward regional endpoint overrides into the auth session.
 
         Args:
             value: Region configuration used by future auth calls.
@@ -103,12 +103,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _email_factor_id(self) -> str:
-        """Expose the active Okta email factor ID through the legacy attribute."""
+        """Proxy the Okta email factor selected for MFA verification."""
         return self._auth.email_factor_id
 
     @_email_factor_id.setter
     def _email_factor_id(self, value: str) -> None:
-        """Store the active Okta email factor ID through the legacy attribute.
+        """Forward MFA factor updates into the auth session.
 
         Args:
             value: MFA email factor ID to use for verification.
@@ -117,12 +117,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _mfa_url(self) -> str:
-        """Expose the active Okta MFA verification URL through the legacy attribute."""
+        """Proxy the challenge-specific Okta MFA verification URL."""
         return self._auth.mfa_url
 
     @_mfa_url.setter
     def _mfa_url(self, value: str) -> None:
-        """Store the active Okta MFA verification URL through the legacy attribute.
+        """Forward MFA verification endpoint updates into the auth session.
 
         Args:
             value: Fully qualified Okta MFA verification URL.
@@ -131,12 +131,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _cookie_dt(self) -> str | None:
-        """Expose the remembered-device cookie through the legacy attribute."""
+        """Proxy the Okta remembered-device cookie used to reduce MFA prompts."""
         return self._auth.device_token
 
     @_cookie_dt.setter
     def _cookie_dt(self, value: str | None) -> None:
-        """Store the remembered-device cookie through the legacy attribute.
+        """Forward remembered-device cookie updates into the auth session.
 
         Args:
             value: DT cookie value, or ``None`` to clear it.
@@ -145,12 +145,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _cookie_sid(self) -> str | None:
-        """Expose the Okta session cookie through the legacy attribute."""
+        """Proxy the Okta browser-session cookie captured during auth."""
         return self._auth.cookie_sid
 
     @_cookie_sid.setter
     def _cookie_sid(self, value: str | None) -> None:
-        """Store the Okta session cookie through the legacy attribute.
+        """Forward Okta session-cookie updates into the auth session.
 
         Args:
             value: ``sid`` cookie value, or ``None`` to clear it.
@@ -159,12 +159,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _uses_mfa(self) -> bool:
-        """Expose whether Okta required MFA through the legacy attribute."""
+        """Proxy whether the current auth flow is waiting on MFA."""
         return self._auth.uses_mfa
 
     @_uses_mfa.setter
     def _uses_mfa(self, value: bool) -> None:
-        """Store whether Okta required MFA through the legacy attribute.
+        """Forward MFA-required state updates into the auth session.
 
         Args:
             value: ``True`` when the current auth flow is waiting for MFA.
@@ -173,12 +173,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _access_token(self) -> str | None:
-        """Expose the OAuth bearer token through the legacy attribute."""
+        """Proxy the OAuth bearer token consumed by GraphQL and userinfo calls."""
         return self._auth.access_token
 
     @_access_token.setter
     def _access_token(self, value: str | None) -> None:
-        """Store the OAuth bearer token through the legacy attribute.
+        """Forward OAuth bearer-token updates into the auth session.
 
         Args:
             value: Access token, or ``None`` before auth succeeds.
@@ -187,12 +187,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _id_token(self) -> str | None:
-        """Expose the OAuth ID token through the legacy attribute."""
+        """Proxy the OAuth ID token used to derive myAir country headers."""
         return self._auth.id_token
 
     @_id_token.setter
     def _id_token(self, value: str | None) -> None:
-        """Store the OAuth ID token through the legacy attribute.
+        """Forward OAuth ID-token updates into the auth session.
 
         Args:
             value: ID token, or ``None`` before token exchange succeeds.
@@ -201,12 +201,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _state_token(self) -> str | None:
-        """Expose the Okta MFA state token through the legacy attribute."""
+        """Proxy the Okta state token that ties MFA calls to authn."""
         return self._auth.state_token
 
     @_state_token.setter
     def _state_token(self, value: str | None) -> None:
-        """Store the Okta MFA state token through the legacy attribute.
+        """Forward Okta state-token updates into the auth session.
 
         Args:
             value: State token, or ``None`` when no MFA flow is active.
@@ -215,12 +215,12 @@ class RESTClient(MyAirClient):
 
     @property
     def _session_token(self) -> str | None:
-        """Expose the Okta session token through the legacy attribute."""
+        """Proxy the Okta session token exchanged for OAuth credentials."""
         return self._auth.session_token
 
     @_session_token.setter
     def _session_token(self, value: str | None) -> None:
-        """Store the Okta session token through the legacy attribute.
+        """Forward Okta session-token updates into the auth session.
 
         Args:
             value: Session token, or ``None`` before auth succeeds.

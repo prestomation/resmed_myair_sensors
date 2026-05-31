@@ -247,7 +247,7 @@ class MyAirAuthSession:
 
     @property
     def cookies(self) -> dict[str, Any]:
-        """Expose cookies through the legacy RESTClient compatibility surface."""
+        """Expose the current Okta cookies without allowing direct mutation."""
         return self._cookies
 
     def set_error_checker(self, checker: _ErrorCheck) -> None:
@@ -274,7 +274,7 @@ class MyAirAuthSession:
 
     @property
     def json_headers(self) -> dict[str, Any]:
-        """Expose default headers for Okta JSON request payloads."""
+        """Expose the JSON headers sent to Okta auth endpoints."""
         return self._json_headers
 
     @json_headers.setter
@@ -326,7 +326,7 @@ class MyAirAuthSession:
         resp_dict: MutableMapping[str, Any],
         initial: bool | None = False,
     ) -> None:
-        """Run the active response validator for an auth request.
+        """Apply the injected response validator to auth and token calls.
 
         Args:
             step: Human-readable auth step name for error messages.
@@ -670,7 +670,7 @@ class MyAirAuthSession:
         return status
 
     async def authn_check(self) -> str:
-        """Run primary Okta auth through the public helper.
+        """Expose primary Okta auth for RESTClient compatibility tests.
 
         Returns:
             Okta status indicating success or MFA requirement.
@@ -874,7 +874,7 @@ class MyAirAuthSession:
                 self._access_token = access_token
 
     async def get_access_token(self, extract_cookies: _CookieUpdate | None = None) -> None:
-        """Run OAuth token exchange through the public helper.
+        """Expose OAuth token exchange for RESTClient compatibility tests.
 
         Args:
             extract_cookies: Optional cookie extractor used by compatibility tests.
