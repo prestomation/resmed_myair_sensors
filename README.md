@@ -59,6 +59,27 @@ This integration currently only connects to accounts from North America, Europe,
 
 If you want to contribute to this please read the [Contribution guidelines](CONTRIBUTING.md)
 
+## Manual live smoke test
+
+Developers can run a local smoke test against the live myAir API without Home Assistant:
+
+```bash
+./.venv/bin/python scripts/live_smoke_test.py
+```
+
+The script prompts for credentials when they are not provided. For repeatable local runs, create a `live_smoke_test.env` file:
+
+```env
+MYAIR_USERNAME="user@example.com"
+MYAIR_PASSWORD="password"
+MYAIR_REGION="NA"
+# Optional values:
+# MYAIR_DEVICE_TOKEN="remembered-device-token"
+# MYAIR_MFA_CODE="123456"
+```
+
+By default, output is written to `live_smoke_test_output.json` with the same fields shown in the sensor list above. Add `--raw` to include raw myAir payload values for local inspection. Known GraphQL types and fields are documented in `scripts/graphql_schema.json`.
+
 If you want to support the development of this component, please don't donate to me but instead donate to the Home Assistant development team.
 
 [commits-shield]: https://img.shields.io/github/last-commit/prestomation/resmed_myair_sensors?style=for-the-badge
