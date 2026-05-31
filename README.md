@@ -1,5 +1,5 @@
 # resmed_myair
-[![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=integration%20usage&suffix=%20installs&cacheSeconds=15600&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json&query=%24.resmed_myair.total)](https://analytics.home-assistant.io/custom_integrations.json)
+[![Integration Usage][integration-usage-shield]][integration-usage]
 
 [![GitHub Downloads][downloads-shield]][releases]
 [![GitHub Latest Downloads][downloads-latest-shield]][releases]
@@ -55,33 +55,27 @@ This integration was reversed engineered from the myAir website. There are no gu
 
 This integration currently only connects to accounts from North America, Europe, and Australia. If you are in Asia and have access to the ResMed myAir website in your country (<https://myair.resmed.com>), please open an issue and offer yourself as a test subject.
 
-## Contributions are welcome!
-
-If you want to contribute to this please read the [Contribution guidelines](CONTRIBUTING.md)
-
 ## Manual live smoke test
 
 Developers can run a local smoke test against the live myAir API without Home Assistant:
 
 ```bash
-./.venv/bin/python scripts/live_smoke_test.py
+./scripts/live_smoke_test
 ```
 
-The script prompts for credentials when they are not provided. For repeatable local runs, create a `live_smoke_test.env` file:
-
-```env
-MYAIR_USERNAME="user@example.com"
-MYAIR_PASSWORD="password"
-MYAIR_REGION="NA"
-# Optional values:
-# MYAIR_DEVICE_TOKEN="remembered-device-token"
-# MYAIR_MFA_CODE="123456"
-```
+The script prompts for credentials when they are not provided. For repeatable local runs, create a `live_smoke_test.env` file using `live_smoke_test.env.example`.
 
 By default, output is written to `live_smoke_test_output.json` with the same fields shown in the sensor list above. Add `--raw` to include raw myAir payload values for local inspection. Known GraphQL types and fields are documented in `scripts/graphql_schema.json`.
 
+## Contributions are welcome!
+
+If you want to contribute to this please read the [Contribution guidelines](CONTRIBUTING.md)
+
 If you want to support the development of this component, please don't donate to me but instead donate to the Home Assistant development team.
 
+
+[integration-usage-shield]: https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=integration%20usage&suffix=%20installs&cacheSeconds=15600&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json&query=%24.resmed_myair.total&style=for-the-badge
+[integration-usage]: https://analytics.home-assistant.io/custom_integrations.json
 [commits-shield]: https://img.shields.io/github/last-commit/prestomation/resmed_myair_sensors?style=for-the-badge
 [commits]: https://github.com/prestomation/resmed_myair_sensors/commits/main
 [hacs]: https://github.com/custom-components/hacs
