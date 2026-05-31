@@ -124,6 +124,35 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         name = device.name or "myAir"
         return f"{manufacturer}-{name}"
 
+    async def _async_abort_incomplete_account(
+        self, step: str, error: IncompleteAccountError
+    ) -> ConfigFlowResult:
+        """Abort incomplete-account flows with optional email verification detail."""
+        if self._client:
+            try:
+                if not (await self._client.is_email_verified()):
+                    _LOGGER.error(
+                        "Account Setup Incomplete at %s. Email Address not verified. %s: %s",
+                        step,
+                        type(error).__name__,
+                        error,
+                    )
+                    return self.async_abort(reason="incomplete_account_verify_email")
+            except EMAIL_VERIFICATION_ERRORS as email_error:
+                _LOGGER.debug(
+                    "Unable to check email verification at %s. %s: %s",
+                    step,
+                    type(email_error).__name__,
+                    email_error,
+                )
+        _LOGGER.error(
+            "Account Setup Incomplete at %s. %s: %s",
+            step,
+            type(error).__name__,
+            error,
+        )
+        return self.async_abort(reason="incomplete_account")
+
     async def async_step_user(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -160,28 +189,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.error("Connection Error at async_step_user. %s: %s", type(e).__name__, e)
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
-                if self._client:
-                    try:
-                        if not (await self._client.is_email_verified()):
-                            _LOGGER.error(
-                                "Account Setup Incomplete at async_step_user. "
-                                "Email Address not verified. %s: %s",
-                                type(e).__name__,
-                                e,
-                            )
-                            return self.async_abort(reason="incomplete_account_verify_email")
-                    except EMAIL_VERIFICATION_ERRORS as email_error:
-                        _LOGGER.debug(
-                            "Unable to check email verification at async_step_user. %s: %s",
-                            type(email_error).__name__,
-                            email_error,
-                        )
-                _LOGGER.error(
-                    "Account Setup Incomplete at async_step_user. %s: %s",
-                    type(e).__name__,
-                    e,
-                )
-                return self.async_abort(reason="incomplete_account")
+                return await self._async_abort_incomplete_account("async_step_user", e)
 
         _LOGGER.info("Setting up ResMed myAir Integration Version: %s", VERSION)
         return self.async_show_form(
@@ -212,7 +220,6 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         user_input = user_input or {}
         if user_input and isinstance(self._client, RESTClient):
-            # _LOGGER.debug("[async_step_verify_mfa] user_input: %s", redact_dict(user_input))
             self._data.update(user_input)
             try:
                 status, device = await self._async_verify_mfa_and_get_device()
@@ -235,23 +242,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.error("Connection Error at verify_mfa. %s: %s", type(e).__name__, e)
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
-                try:
-                    if not (await self._client.is_email_verified()):
-                        _LOGGER.error(
-                            "Account Setup Incomplete at verify_mfa. "
-                            "Email Address not verified. %s: %s",
-                            type(e).__name__,
-                            e,
-                        )
-                        return self.async_abort(reason="incomplete_account_verify_email")
-                except EMAIL_VERIFICATION_ERRORS as email_error:
-                    _LOGGER.debug(
-                        "Unable to check email verification at verify_mfa. %s: %s",
-                        type(email_error).__name__,
-                        email_error,
-                    )
-                _LOGGER.error("Account Setup Incomplete at verify_mfa. %s: %s", type(e).__name__, e)
-                return self.async_abort(reason="incomplete_account")
+                return await self._async_abort_incomplete_account("verify_mfa", e)
 
         _LOGGER.info("Showing Verify MFA Form")
         return self.async_show_form(
@@ -301,8 +292,6 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         raise ParsingError("Unable to get Serial Number from Device Data")
                     serial_number: str = device.serial_number
                     _LOGGER.info("Found device with serial number %s", serial_number)
-                    # await self.async_set_unique_id(serial_number)
-                    # self._abort_if_unique_id_configured()
                     self._store_device_token()
                     _LOGGER.debug("[async_step_reauth_confirm] data: %s", redact_dict(self._data))
 
@@ -319,28 +308,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.error("Connection Error at reauth_confirm. %s: %s", type(e).__name__, e)
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
-                if self._client:
-                    try:
-                        if not (await self._client.is_email_verified()):
-                            _LOGGER.error(
-                                "Account Setup Incomplete at reauth_confirm. "
-                                "Email Address not verified. %s: %s",
-                                type(e).__name__,
-                                e,
-                            )
-                            return self.async_abort(reason="incomplete_account_verify_email")
-                    except EMAIL_VERIFICATION_ERRORS as email_error:
-                        _LOGGER.debug(
-                            "Unable to check email verification at reauth_confirm. %s: %s",
-                            type(email_error).__name__,
-                            email_error,
-                        )
-                _LOGGER.error(
-                    "Account Setup Incomplete at reauth_confirm. %s: %s",
-                    type(e).__name__,
-                    e,
-                )
-                return self.async_abort(reason="incomplete_account")
+                return await self._async_abort_incomplete_account("reauth_confirm", e)
 
         _LOGGER.debug("[async_step_reauth_confirm] initial data: %s", redact_dict(self._data))
         _LOGGER.info("Showing Reauth Confirm Form")
@@ -396,27 +364,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.error("Connection Error at reauth_verify_mfa. %s: %s", type(e).__name__, e)
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
-                try:
-                    if not (await self._client.is_email_verified()):
-                        _LOGGER.error(
-                            "Account Setup Incomplete at reauth_verify_mfa. "
-                            "Email Address not verified. %s: %s",
-                            type(e).__name__,
-                            e,
-                        )
-                        return self.async_abort(reason="incomplete_account_verify_email")
-                except EMAIL_VERIFICATION_ERRORS as email_error:
-                    _LOGGER.debug(
-                        "Unable to check email verification at reauth_verify_mfa. %s: %s",
-                        type(email_error).__name__,
-                        email_error,
-                    )
-                _LOGGER.error(
-                    "Account Setup Incomplete at reauth_verify_mfa. %s: %s",
-                    type(e).__name__,
-                    e,
-                )
-                return self.async_abort(reason="incomplete_account")
+                return await self._async_abort_incomplete_account("reauth_verify_mfa", e)
 
         _LOGGER.info("Showing Reauth Verify MFA Form")
         return self.async_show_form(

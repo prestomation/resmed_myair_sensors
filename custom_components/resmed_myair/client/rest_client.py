@@ -343,7 +343,7 @@ class RESTClient(MyAirClient):
         mask_code: str | None = None
         try:
             mask_code = records_dict["data"]["getPatientWrapper"]["masks"][0]["maskCode"]
-        except Exception as e:  # noqa: BLE001
+        except (KeyError, IndexError, TypeError) as e:
             _LOGGER.warning("Error getting User Mask Data. %s: %s", type(e).__name__, e)
         else:
             if mask_code:
