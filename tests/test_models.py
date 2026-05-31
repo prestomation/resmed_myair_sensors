@@ -1,5 +1,6 @@
 """Model-level tests covering typed ResMed myAir payload behavior."""
 
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 import logging
@@ -73,18 +74,69 @@ def test_coordinator_data_exposes_latest_and_most_recent_used_date() -> None:
     assert data.most_recent_sleep_date == date(2024, 7, 18)
 
 
-@pytest.mark.parametrize("raw_payload", [{}, None])
-def test_device_fields_default_to_empty_or_none_for_missing_values(
+@pytest.mark.parametrize(
+    ("factory", "raw_payload", "expected_values"),
+    [
+        pytest.param(
+            MyAirDevice.from_api,
+            {},
+            {
+                "raw": {},
+                "serial_number": "",
+                "manufacturer": None,
+                "model": None,
+                "name": None,
+            },
+            id="device-empty",
+        ),
+        pytest.param(
+            MyAirDevice.from_api,
+            None,
+            {
+                "raw": {},
+                "serial_number": "",
+                "manufacturer": None,
+                "model": None,
+                "name": None,
+            },
+            id="device-none",
+        ),
+        pytest.param(
+            MyAirSleepRecord.from_api,
+            {},
+            {
+                "raw": {},
+                "start_date": None,
+                "total_usage_minutes": None,
+                "friendly_usage_time": None,
+                "has_usage": False,
+            },
+            id="sleep-record-empty",
+        ),
+        pytest.param(
+            MyAirSleepRecord.from_api,
+            None,
+            {
+                "raw": {},
+                "start_date": None,
+                "total_usage_minutes": None,
+                "friendly_usage_time": None,
+                "has_usage": False,
+            },
+            id="sleep-record-none",
+        ),
+    ],
+)
+def test_models_with_missing_payloads_use_safe_defaults(
+    factory: Callable[[dict[str, object] | None], object],
     raw_payload: dict[str, object] | None,
+    expected_values: dict[str, object],
 ) -> None:
-    """Empty device payloads collapse to empty or `None` values."""
-    device = MyAirDevice.from_api(raw_payload)
+    """Empty model payloads collapse to safe empty or `None` values."""
+    model = factory(raw_payload)
 
-    assert device.raw == {}
-    assert device.serial_number == ""
-    assert device.manufacturer is None
-    assert device.model is None
-    assert device.name is None
+    for attribute, expected_value in expected_values.items():
+        assert getattr(model, attribute) == expected_value
 
 
 def test_device_ignores_non_string_serial_number() -> None:
@@ -107,20 +159,6 @@ def test_device_fields_with_non_string_optional_values_are_none() -> None:
     assert device.manufacturer is None
     assert device.model is None
     assert device.name is None
-
-
-@pytest.mark.parametrize("raw_payload", [{}, None])
-def test_sleep_record_with_missing_fields_defaults(
-    raw_payload: dict[str, object] | None,
-) -> None:
-    """Empty sleep-record payloads fall back to safe defaults."""
-    record = MyAirSleepRecord.from_api(raw_payload)
-
-    assert record.raw == {}
-    assert record.start_date is None
-    assert record.total_usage_minutes is None
-    assert record.friendly_usage_time is None
-    assert record.has_usage is False
 
 
 @pytest.mark.parametrize("raw_start_date", [123, "not-a-date"])
