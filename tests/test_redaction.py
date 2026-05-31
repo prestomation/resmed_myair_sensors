@@ -18,6 +18,11 @@ def test_redact_dict_redacts_nested_sensitive_values() -> None:
     }
 
 
+def test_redact_dict_redacts_given_name() -> None:
+    """The myAir given_name claim is redacted."""
+    assert redact_dict({"given_name": "Alice"}) == {"given_name": REDACTED}
+
+
 def test_redact_dict_returns_non_collection_values_unchanged() -> None:
     """Scalar values are returned unchanged."""
     assert redact_dict("plain") == "plain"

@@ -5,23 +5,31 @@ from typing import Any
 
 import pytest
 
+from custom_components.resmed_myair import redaction
+
 COMMON_CASES = [
     # No redaction needed
     ({"foo": "bar"}, {"foo": "bar"}),
     # Redact a single key
-    ({"username": "bob"}, {"username": "<REDACTED>"}),
+    ({"test_username": "bob"}, {"test_username": "<REDACTED>"}),
     # Redact nested dict
-    ({"outer": {"password": "abc"}}, {"outer": {"password": "<REDACTED>"}}),
+    ({"outer": {"test_password": "abc"}}, {"outer": {"test_password": "<REDACTED>"}}),
     # Redact in list of dicts
-    ([{"token": "abc"}, {"foo": "bar"}], [{"token": "<REDACTED>"}, {"foo": "bar"}]),
+    (
+        [{"test_token": "abc"}, {"foo": "bar"}],
+        [{"test_token": "<REDACTED>"}, {"foo": "bar"}],
+    ),
     # Redact in nested list
-    ({"list": [{"username": "bob"}]}, {"list": [{"username": "<REDACTED>"}]}),
+    (
+        {"list": [{"test_username": "bob"}]},
+        {"list": [{"test_username": "<REDACTED>"}]},
+    ),
     # Ignore None and empty string
-    ({"username": None, "password": ""}, {"username": None, "password": ""}),
+    ({"test_username": None, "test_password": ""}, {"test_username": None, "test_password": ""}),
     # Redact deeply nested
     (
-        {"a": {"b": {"password": "abc"}}},
-        {"a": {"b": {"password": "<REDACTED>"}}},
+        {"a": {"b": {"test_password": "abc"}}},
+        {"a": {"b": {"test_password": "<REDACTED>"}}},
     ),
     # Non-dict/list input
     ("notadict", "notadict"),
@@ -64,13 +72,16 @@ def _replace_placeholder(obj: Any, placeholder: str, replacement: Any) -> Any:
 def test_redact_dict_equivalence(monkeypatch: pytest.MonkeyPatch, module_path: str) -> None:
     """Run the common redact_dict test vectors against both implementations.
 
-    The test monkeypatches KEYS_TO_REDACT for the module under test and swaps
-    the '<REDACTED>' sentinel in the expected outputs with the module's
+    The test monkeypatches the shared redaction module KEYS_TO_REDACT and
+    swaps the '<REDACTED>' sentinel in the expected outputs with the module's
     REDACTED constant.
     """
     module = importlib.import_module(module_path)
-    # Ensure both modules redact the same keys for testing
-    monkeypatch.setattr(module, "KEYS_TO_REDACT", {"username", "password", "token"}, raising=False)
+    monkeypatch.setattr(
+        redaction,
+        "KEYS_TO_REDACT",
+        {"test_username", "test_password", "test_token"},
+    )
 
     redact = module.redact_dict
     redacted_const = module.REDACTED
@@ -84,8 +95,21 @@ def test_redact_dict_equivalence(monkeypatch: pytest.MonkeyPatch, module_path: s
 def test_redact_dict_empty_and_trivial(monkeypatch: pytest.MonkeyPatch, module_path: str) -> None:
     """Ensure redact_dict handles empty/trivial inputs for both implementations."""
     module = importlib.import_module(module_path)
-    monkeypatch.setattr(module, "KEYS_TO_REDACT", {"username", "password", "token"}, raising=False)
+    monkeypatch.setattr(
+        redaction,
+        "KEYS_TO_REDACT",
+        {"test_username", "test_password", "test_token"},
+    )
     redact = module.redact_dict
 
     for inp, exp in EMPTY_TRIVIAL:
         assert redact(inp) == exp
+
+
+@pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
+def test_helpers_reexport_shared_redactor_and_constants(module_path: str) -> None:
+    """Both helper import paths expose the shared redactor and redaction constant."""
+    module = importlib.import_module(module_path)
+
+    assert module.redact_dict is redaction.redact_dict
+    assert module.REDACTED == redaction.REDACTED
