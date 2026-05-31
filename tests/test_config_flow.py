@@ -548,53 +548,39 @@ async def test_async_step_user_device_missing_serial_number(
     assert result["errors"]["base"] == "authentication_error"
 
 
+@pytest.mark.parametrize(
+    ("step_name", "expected_step_id", "needs_entry"),
+    [
+        ("async_step_verify_mfa", "verify_mfa", False),
+        ("async_step_reauth_verify_mfa", "reauth_verify_mfa", True),
+    ],
+)
 @pytest.mark.asyncio
-async def test_async_step_verify_mfa_parsing_error(
-    monkeypatch: pytest.MonkeyPatch, hass: MagicMock, myair_client: MagicMock
-) -> None:
-    """Parsing errors keep MFA verification on the form with an error."""
-    flow = MyAirConfigFlow()
-    flow.hass = hass
-    flow._data = {}
-    flow._client = myair_client
-    user_input = {CONF_VERIFICATION_CODE: "654321"}
-
-    # Patch get_mfa_device to raise ParsingError
-    monkeypatch.setattr(
-        "custom_components.resmed_myair.config_flow.get_mfa_device",
-        AsyncMock(side_effect=ParsingError("bad parse")),
-    )
-
-    result = await flow.async_step_verify_mfa(user_input)
-    assert result["type"] == "form"
-    assert result["step_id"] == "verify_mfa"
-    assert result["errors"]["base"] == "mfa_error"
-
-
-@pytest.mark.asyncio
-async def test_async_step_reauth_verify_mfa_parsing_error(
+async def test_async_step_verify_mfa_parsing_error_variants(
+    flow: MyAirConfigFlow,
     monkeypatch: pytest.MonkeyPatch,
-    hass: MagicMock,
     config_entry: MockConfigEntry,
     myair_client: MagicMock,
+    step_name: str,
+    expected_step_id: str,
+    needs_entry: bool,
 ) -> None:
-    """Parsing errors keep reauth MFA on the form with an error."""
-    flow = MyAirConfigFlow()
-    flow.hass = hass
+    """Parsing errors keep MFA verification on the active form."""
     flow._data = {}
-    flow._entry = config_entry
     flow._client = myair_client
-    user_input = {CONF_VERIFICATION_CODE: "654321"}
+    if needs_entry:
+        flow._entry = config_entry
 
-    # Patch get_mfa_device to raise ParsingError
     monkeypatch.setattr(
-        "custom_components.resmed_myair.config_flow.get_mfa_device",
+        config_flow,
+        "get_mfa_device",
         AsyncMock(side_effect=ParsingError("bad parse")),
     )
 
-    result = await flow.async_step_reauth_verify_mfa(user_input)
+    result = await getattr(flow, step_name)({CONF_VERIFICATION_CODE: "654321"})
+
     assert result["type"] == "form"
-    assert result["step_id"] == "reauth_verify_mfa"
+    assert result["step_id"] == expected_step_id
     assert result["errors"]["base"] == "mfa_error"
 
 

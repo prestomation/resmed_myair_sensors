@@ -34,9 +34,6 @@ COMMON_CASES = [
     # Non-dict/list input
     ("notadict", "notadict"),
     (None, None),
-]
-
-EMPTY_TRIVIAL = [
     ({}, {}),
     ([], []),
     ([{}], [{}]),
@@ -74,7 +71,10 @@ def _replace_placeholder(obj: Any, placeholder: str, replacement: Any) -> Any:
 
 
 @pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
-def test_redact_dict_equivalence(monkeypatch: pytest.MonkeyPatch, module_path: str) -> None:
+@pytest.mark.parametrize(("inp", "exp"), COMMON_CASES)
+def test_redact_dict_equivalence(
+    monkeypatch: pytest.MonkeyPatch, module_path: str, inp: Any, exp: Any
+) -> None:
     """Both helper modules redact the same nested values and sentinels."""
     module = importlib.import_module(module_path)
     monkeypatch.setattr(
@@ -86,24 +86,8 @@ def test_redact_dict_equivalence(monkeypatch: pytest.MonkeyPatch, module_path: s
     redact = module.redact_dict
     redacted_const = module.REDACTED
 
-    for inp, exp in COMMON_CASES:
-        expected = _replace_placeholder(exp, "<REDACTED>", redacted_const)
-        assert redact(inp) == expected
-
-
-@pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
-def test_redact_dict_empty_and_trivial(monkeypatch: pytest.MonkeyPatch, module_path: str) -> None:
-    """Both helper modules leave empty and trivial containers unchanged."""
-    module = importlib.import_module(module_path)
-    monkeypatch.setattr(
-        redaction,
-        "KEYS_TO_REDACT",
-        {"test_username", "test_password", "test_token"},
-    )
-    redact = module.redact_dict
-
-    for inp, exp in EMPTY_TRIVIAL:
-        assert redact(inp) == exp
+    expected = _replace_placeholder(exp, "<REDACTED>", redacted_const)
+    assert redact(inp) == expected
 
 
 @pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
