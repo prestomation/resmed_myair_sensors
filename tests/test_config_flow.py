@@ -144,12 +144,15 @@ async def test_async_step_verify_mfa_error(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("step_name", "pre_setup", "expected_step_id"),
+    ("step_name", "pre_setup", "expected_step_id", "source"),
     [
-        ("async_step_user", False, "user"),
-        ("async_step_verify_mfa", True, "verify_mfa"),
-        ("async_step_reauth_confirm", True, "reauth_confirm"),
-        ("async_step_reauth_verify_mfa", True, "reauth_verify_mfa"),
+        ("async_step_user", False, "user", None),
+        ("async_step_verify_mfa", True, "verify_mfa", None),
+        ("async_step_reauth_confirm", True, "reauth_confirm", None),
+        ("async_step_reauth_verify_mfa", True, "reauth_verify_mfa", None),
+        ("async_step_reconfigure", False, "reconfigure", SOURCE_RECONFIGURE),
+        ("async_step_reconfigure", True, "reconfigure", SOURCE_RECONFIGURE),
+        ("async_step_reconfigure_verify_mfa", True, "reconfigure_verify_mfa", SOURCE_RECONFIGURE),
     ],
 )
 async def test_async_step_forms_display_parametrized(
@@ -157,9 +160,14 @@ async def test_async_step_forms_display_parametrized(
     step_name: str,
     pre_setup: bool,
     expected_step_id: str,
+    source: str | None,
     myair_client: MagicMock,
+    config_entry: MockConfigEntry,
 ) -> None:
     """User and MFA steps both render their forms when called without input."""
+    if source == SOURCE_RECONFIGURE:
+        flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+        flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
     if pre_setup:
         flow._client = myair_client
         flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass"}
@@ -168,6 +176,22 @@ async def test_async_step_forms_display_parametrized(
     assert result["type"] == "form"
     assert result["step_id"] == expected_step_id
     assert "errors" in result
+
+
+@pytest.mark.asyncio
+async def test_config_flow_private_auth_helpers_handle_missing_state(
+    flow: MyAirConfigFlow,
+) -> None:
+    """Auth helper methods handle missing transient client state safely."""
+    flow._client = None
+    flow._data = {}
+
+    with pytest.raises(AuthenticationError):
+        await flow._async_verify_mfa_and_get_device()
+
+    flow._store_device_token()
+
+    assert CONF_DEVICE_TOKEN not in flow._data
 
 
 @pytest.mark.asyncio
@@ -592,22 +616,28 @@ async def test_get_device_passes_device_token(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("step_name", "expected_step_id"),
+    ("step_name", "expected_step_id", "source"),
     [
-        ("async_step_verify_mfa", "verify_mfa"),
-        ("async_step_reauth_verify_mfa", "reauth_verify_mfa"),
+        ("async_step_verify_mfa", "verify_mfa", None),
+        ("async_step_reauth_verify_mfa", "reauth_verify_mfa", None),
+        ("async_step_reconfigure_verify_mfa", "reconfigure_verify_mfa", SOURCE_RECONFIGURE),
     ],
 )
 async def test_async_step_verify_mfa_status_variants(
     flow: MyAirConfigFlow,
     step_name: str,
     expected_step_id: str,
+    source: str | None,
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
+    config_entry: MockConfigEntry,
 ) -> None:
     """Non-success MFA statuses keep the flow on the correct error form."""
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user"}
+    if source == SOURCE_RECONFIGURE:
+        flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+        flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
     user_input = {CONF_VERIFICATION_CODE: "badcode"}
     monkeypatch.setattr(
         config_flow,
@@ -1051,10 +1081,16 @@ async def test_async_step_user_not_device_or_not_authn_success(
 
 
 @pytest.mark.parametrize(
-    ("step_name", "expected_step_id", "needs_entry"),
+    ("step_name", "expected_step_id", "source", "needs_entry"),
     [
-        ("async_step_verify_mfa", "verify_mfa", False),
-        ("async_step_reauth_verify_mfa", "reauth_verify_mfa", True),
+        ("async_step_verify_mfa", "verify_mfa", None, False),
+        ("async_step_reauth_verify_mfa", "reauth_verify_mfa", None, True),
+        (
+            "async_step_reconfigure_verify_mfa",
+            "reconfigure_verify_mfa",
+            SOURCE_RECONFIGURE,
+            True,
+        ),
     ],
 )
 @pytest.mark.asyncio
@@ -1065,6 +1101,7 @@ async def test_async_step_verify_mfa_parsing_error_variants(
     myair_client: MagicMock,
     step_name: str,
     expected_step_id: str,
+    source: str | None,
     needs_entry: bool,
 ) -> None:
     """Parsing errors keep MFA verification on the active form."""
@@ -1072,6 +1109,9 @@ async def test_async_step_verify_mfa_parsing_error_variants(
     flow._client = myair_client
     if needs_entry:
         flow._entry = config_entry
+    if source == SOURCE_RECONFIGURE:
+        flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+        flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
 
     monkeypatch.setattr(
         config_flow,
@@ -1102,7 +1142,7 @@ async def test_async_step_reauth_no_entry(hass: MagicMock) -> None:
 
 
 @pytest.mark.parametrize(
-    ("step_name", "user_input", "flow_data", "expected_step_id", "needs_entry"),
+    ("step_name", "user_input", "flow_data", "expected_step_id", "expected_error", "needs_entry"),
     [
         (
             "async_step_user",
@@ -1113,6 +1153,7 @@ async def test_async_step_reauth_no_entry(hass: MagicMock) -> None:
             },
             {},
             "user",
+            "authentication_error",
             False,
         ),
         (
@@ -1128,6 +1169,40 @@ async def test_async_step_reauth_no_entry(hass: MagicMock) -> None:
                 CONF_DEVICE_TOKEN: "token",
             },
             "reauth_confirm",
+            "authentication_error",
+            True,
+        ),
+        (
+            "async_step_verify_mfa",
+            {CONF_VERIFICATION_CODE: "654321"},
+            {},
+            "verify_mfa",
+            "mfa_error",
+            False,
+        ),
+        (
+            "async_step_reconfigure",
+            {
+                CONF_USER_NAME: "user",
+                CONF_PASSWORD: "pw",
+                CONF_REGION: REGION_EU,
+            },
+            {},
+            "reconfigure",
+            "authentication_error",
+            True,
+        ),
+        (
+            "async_step_reconfigure_verify_mfa",
+            {CONF_VERIFICATION_CODE: "654321"},
+            {
+                CONF_USER_NAME: "user",
+                CONF_PASSWORD: "pw",
+                CONF_REGION: REGION_EU,
+                CONF_DEVICE_TOKEN: "token",
+            },
+            "reconfigure_verify_mfa",
+            "mfa_error",
             True,
         ),
     ],
@@ -1141,24 +1216,36 @@ async def test_async_step_device_missing_serial_number_variants(
     user_input: dict[str, str],
     flow_data: dict[str, str],
     expected_step_id: str,
+    expected_error: str,
     needs_entry: bool,
 ) -> None:
     """Missing device serial numbers keep the active auth form open."""
     flow._data = flow_data
     if needs_entry:
         flow._entry = config_entry
+    if step_name.startswith("async_step_reconfigure"):
+        flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+        flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
     device = MyAirDevice.from_api({"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"})
-    monkeypatch.setattr(
-        config_flow,
-        "get_device",
-        AsyncMock(return_value=(AUTHN_SUCCESS, device, MagicMock(spec=RESTClient))),
-    )
+    if "verify_mfa" in step_name:
+        flow._client = MagicMock(spec=RESTClient)
+        monkeypatch.setattr(
+            config_flow,
+            "get_mfa_device",
+            AsyncMock(return_value=(AUTHN_SUCCESS, device)),
+        )
+    else:
+        monkeypatch.setattr(
+            config_flow,
+            "get_device",
+            AsyncMock(return_value=(AUTHN_SUCCESS, device, MagicMock(spec=RESTClient))),
+        )
 
     result = await getattr(flow, step_name)(user_input)
 
     assert result["type"] == "form"
     assert result["step_id"] == expected_step_id
-    assert result["errors"]["base"] == "authentication_error"
+    assert result["errors"]["base"] == expected_error
 
 
 @pytest.mark.asyncio
