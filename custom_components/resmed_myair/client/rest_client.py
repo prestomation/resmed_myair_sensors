@@ -16,7 +16,7 @@ from aiohttp.http_exceptions import HttpProcessingError
 import jwt
 from multidict import CIMultiDict
 
-from .const import AUTH_NEEDS_MFA, AUTHN_SUCCESS, REGION_NA
+from .const import AUTH_NEEDS_MFA, AUTHN_SUCCESS
 from .helpers import redact_dict
 from .myair_client import (
     AuthenticationError,
@@ -25,67 +25,9 @@ from .myair_client import (
     MyAirConfig,
     ParsingError,
 )
+from .regions import RegionConfig, get_region_config
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-EU_CONFIG: Mapping[str, Any] = {
-    # The name used in various queries
-    "product": "myAir EU",
-    # The regionalized URL for Okta authentication queries
-    "okta_url": "id.resmed.eu",
-    # This is the ID that refers to the Email MFA Factor
-    "email_factor_id": "emfg9cmjqxEPr52cT417",
-    # This is the server ID that is designated by Okta for myAir used in authentication urls
-    "auth_server_id": "aus2uznux2sYKTsEg417",
-    # This is the ID that is designated by Okta for myAir that appears in
-    # request bodies during login
-    "authorize_client_id": "0oa2uz04d2Pks2NgR417",
-    # Used as the x-api-key header for the AppSync GraphQL API
-    "myair_api_key": "da2-o66oo6xdnfh5hlfuw5yw5g2dtm",
-    # The AppSync URL that accepts the access token to return Sleep Records
-    "graphql_url": "https://graphql.hyperdrive.resmed.eu/graphql",
-    # Redirect url for browser to go to once authentication is complete.
-    # Must be the same as what is defined by Okta
-    "oauth_redirect_url": "https://myair.resmed.eu",
-}
-
-NA_CONFIG: Mapping[str, Any] = {
-    # The name used in various queries
-    "product": "myAir",
-    # The regionalized URL for Okta authentication queries
-    "okta_url": "resmed-ext-1.okta.com",
-    # This is the ID that refers to the Email MFA Factor. Not currently setup/used in NA
-    "email_factor_id": "xxx",
-    # This is the server ID that is designated by Okta for myAir used in authentication urls
-    "auth_server_id": "aus4ccsxvnidQgLmA297",
-    # This is the ID that is designated by Okta for myAir that appears in request bodies
-    # during login
-    "authorize_client_id": "0oa4ccq1v413ypROi297",
-    # Used as the x-api-key header for the AppSync GraphQL API
-    "myair_api_key": "da2-cenztfjrezhwphdqtwtbpqvzui",
-    # The AppSync URL that accepts the access token to return Sleep Records
-    "graphql_url": "https://graphql.myair-prd.dht.live/graphql",
-    # Redirect url for browser to go to once authentication is complete.
-    # Must be the same as what is defined by Okta
-    "oauth_redirect_url": "https://myair.resmed.com",
-}
-
-OAUTH_URLS: Mapping[str, Any] = {
-    # The Initial Auth Okta Endpoint where the username/password goes.
-    # If MFA not needed, will give sessionToken. If MFA, will give stateToken
-    "authn_url": "https://{okta_url}/api/v1/authn",
-    # The url to trigger and verify the Email MFA passcode. Uses stateToken from authn.
-    # Gives sessionToken once verified
-    "mfa_url": "https://{okta_url}/api/v1/authn/factors/{email_factor_id}/verify?rememberDevice=true",
-    # Authorization endpoint to send sessionToken to in order to get 'code'.
-    "authorize_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/authorize",
-    # The endpoint that the 'code' is sent to get an access token
-    "token_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/token",
-    # Checks the access token to see if it is still active or not
-    "introspect_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/introspect",
-    # Uses the access token to return ResMed user info
-    "userinfo_url": "https://{okta_url}/oauth2/{auth_server_id}/v1/userinfo",
-}
 
 
 class RESTClient(MyAirClient):
@@ -108,15 +50,9 @@ class RESTClient(MyAirClient):
         self._cookie_dt: str | None = self._config.device_token
         self._cookie_sid: str | None = None
         self._uses_mfa: bool = False
-        if self._config.region == REGION_NA:
-            self._region_config: Mapping[str, Any] = NA_CONFIG
-        else:
-            self._region_config = EU_CONFIG
-        self._email_factor_id: str = self._region_config["email_factor_id"]
-        self._mfa_url: str = OAUTH_URLS["mfa_url"].format(
-            okta_url=self._region_config["okta_url"],
-            email_factor_id=self._email_factor_id,
-        )
+        self._region_config: RegionConfig = get_region_config(self._config.region)
+        self._email_factor_id: str = self._region_config.email_factor_id
+        self._mfa_url: str = self._region_config.mfa_url(self._email_factor_id)
 
     @property
     def device_token(self) -> str | None:
@@ -164,10 +100,7 @@ class RESTClient(MyAirClient):
 
     async def is_email_verified(self) -> bool:
         """Check if email address is verified."""
-        userinfo_url: str = OAUTH_URLS["userinfo_url"].format(
-            okta_url=self._region_config["okta_url"],
-            auth_server_id=self._region_config["auth_server_id"],
-        )
+        userinfo_url: str = self._region_config.userinfo_url
 
         headers: dict[str, Any] = {
             "Authorization": f"Bearer {self._access_token}",
@@ -218,10 +151,7 @@ class RESTClient(MyAirClient):
         _LOGGER.debug("[extract_and_update_cookies] updated cookies: %s", self._cookies)
 
     async def _get_initial_dt(self) -> None:
-        initial_dt_url: str = OAUTH_URLS["authorize_url"].format(
-            okta_url=self._region_config["okta_url"],
-            auth_server_id=self._region_config["auth_server_id"],
-        )
+        initial_dt_url: str = self._region_config.authorize_url
         _LOGGER.debug("[get_initial_dt] initial_dt_url: %s", initial_dt_url)
         _LOGGER.debug("[get_initial_dt] headers: %s", redact_dict(self._json_headers))
 
@@ -237,10 +167,7 @@ class RESTClient(MyAirClient):
         await self._extract_and_update_cookies(initial_dt_res.headers.getall("set-cookie", []))
 
     async def _is_access_token_active(self) -> bool:
-        introspect_url: str = OAUTH_URLS["introspect_url"].format(
-            okta_url=self._region_config["okta_url"],
-            auth_server_id=self._region_config["auth_server_id"],
-        )
+        introspect_url: str = self._region_config.introspect_url
 
         headers: dict[str, Any] = {
             "Accept": "application/json",
@@ -248,7 +175,7 @@ class RESTClient(MyAirClient):
         }
 
         introspect_query: dict[str, Any] = {
-            "client_id": self._region_config["authorize_client_id"],
+            "client_id": self._region_config.authorize_client_id,
             "token_type_hint": "access_token",
             "token": self._access_token,
         }
@@ -316,7 +243,7 @@ class RESTClient(MyAirClient):
             )
 
     async def _authn_check(self) -> str:
-        authn_url: str = OAUTH_URLS["authn_url"].format(okta_url=self._region_config["okta_url"])
+        authn_url: str = self._region_config.authn_url
         json_query: dict[str, Any] = {
             "username": self._config.username,
             "password": self._config.password,
@@ -345,15 +272,12 @@ class RESTClient(MyAirClient):
             try:
                 self._email_factor_id = authn_dict["_embedded"]["factors"][0]["id"]
             except KeyError, TypeError:
-                self._email_factor_id = self._region_config["email_factor_id"]
+                self._email_factor_id = self._region_config.email_factor_id
             _LOGGER.debug("[authn_check] email_factor_id: %s", self._email_factor_id)
             try:
                 self._mfa_url = f"{authn_dict['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"  # noqa: E501
             except KeyError, TypeError:
-                self._mfa_url = OAUTH_URLS["mfa_url"].format(
-                    okta_url=self._region_config["okta_url"],
-                    email_factor_id=self._email_factor_id,
-                )
+                self._mfa_url = self._region_config.mfa_url(self._email_factor_id)
             _LOGGER.debug("[authn_check] mfa_url: %s", self._mfa_url)
             _LOGGER.info("Initial Auth Completed. Needs MFA")
         elif status == AUTHN_SUCCESS:
@@ -433,17 +357,14 @@ class RESTClient(MyAirClient):
         _LOGGER.debug("[get_access_token] code_challenge: %s", code_challenge)
 
         # We use that sessionToken and exchange for an oauth code, using PKCE
-        authorize_url: str = OAUTH_URLS["authorize_url"].format(
-            okta_url=self._region_config["okta_url"],
-            auth_server_id=self._region_config["auth_server_id"],
-        )
+        authorize_url: str = self._region_config.authorize_url
         params_query: dict[str, Any] = {
-            "client_id": self._region_config["authorize_client_id"],
+            "client_id": self._region_config.authorize_client_id,
             # For PKCE
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "prompt": "none",
-            "redirect_uri": self._region_config["oauth_redirect_url"],
+            "redirect_uri": self._region_config.oauth_redirect_url,
             "response_mode": "fragment",
             "response_type": "code",
             "sessionToken": self._session_token,
@@ -478,8 +399,8 @@ class RESTClient(MyAirClient):
         # requests defaults to forms, which is what /token needs,
         # so we don't use our api_session from above
         token_query: dict[str, Any] = {
-            "client_id": self._region_config["authorize_client_id"],
-            "redirect_uri": self._region_config["oauth_redirect_url"],
+            "client_id": self._region_config.authorize_client_id,
+            "redirect_uri": self._region_config.oauth_redirect_url,
             "grant_type": "authorization_code",
             "code_verifier": code_verifier,
             "code": code,
@@ -488,10 +409,7 @@ class RESTClient(MyAirClient):
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        token_url: str = OAUTH_URLS["token_url"].format(
-            okta_url=self._region_config["okta_url"],
-            auth_server_id=self._region_config["auth_server_id"],
-        )
+        token_url: str = self._region_config.token_url
         _LOGGER.debug("[get_access_token token] token_url: %s", token_url)
         _LOGGER.debug("[get_access_token token] headers: %s", redact_dict(headers))
         _LOGGER.debug("[get_access_token token] token_query: %s", redact_dict(token_query))
@@ -550,9 +468,9 @@ class RESTClient(MyAirClient):
             raise ParsingError("country_code not defined and id_token not present to identify it")
         _LOGGER.debug("[gql_query] country_code: %s", self._country_code)
 
-        graphql_url: str = self._region_config["graphql_url"]
+        graphql_url: str = self._region_config.graphql_url
         headers: dict[str, Any] = {
-            "x-api-key": self._region_config["myair_api_key"],
+            "x-api-key": self._region_config.myair_api_key,
             "Authorization": authz_header,
             # There are a bunch of resmed headers sent to this API that seem to be required
             # Unsure if this is ever validated/can break things if these values change
@@ -560,7 +478,7 @@ class RESTClient(MyAirClient):
             "rmdlanguage": "en",
             "rmdhandsetmodel": "Chrome",
             "rmdhandsetosversion": "127.0.6533.119",
-            "rmdproduct": self._region_config["product"],
+            "rmdproduct": self._region_config.product,
             "rmdappversion": "1.0.0",
             "rmdhandsetplatform": "Web",
             "rmdcountry": self._country_code,

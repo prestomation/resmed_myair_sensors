@@ -16,6 +16,7 @@ from custom_components.resmed_myair.client.myair_client import (
     IncompleteAccountError,
     MyAirConfig,
 )
+from custom_components.resmed_myair.client.regions import RegionConfig, get_region_config
 from custom_components.resmed_myair.client.rest_client import (
     AUTH_NEEDS_MFA,
     AUTHN_SUCCESS,
@@ -29,17 +30,37 @@ from custom_components.resmed_myair.const import REGION_EU
 from tests.conftest import make_mock_aiohttp_context_manager, make_mock_aiohttp_response
 
 
+def test_get_region_config_returns_na_settings() -> None:
+    """NA region lookup returns the existing ResMed endpoints."""
+    config = get_region_config(REGION_NA)
+
+    assert isinstance(config, RegionConfig)
+    assert config.product == "myAir"
+    assert config.oauth_redirect_url == "https://myair.resmed.com"
+    assert config.authn_url == "https://resmed-ext-1.okta.com/api/v1/authn"
+
+
+def test_get_region_config_returns_eu_settings() -> None:
+    """EU region lookup returns the existing ResMed endpoints."""
+    config = get_region_config(REGION_EU)
+
+    assert isinstance(config, RegionConfig)
+    assert config.product == "myAir EU"
+    assert config.oauth_redirect_url == "https://myair.resmed.eu"
+    assert config.authn_url == "https://id.resmed.eu/api/v1/authn"
+
+
 @pytest.mark.parametrize(
     ("region", "expected_config"), [(REGION_NA, NA_CONFIG), (REGION_EU, EU_CONFIG)]
 )
 def test_rest_client_init_region(
-    region: str, expected_config: dict[str, str], session: MagicMock
+    region: str, expected_config: RegionConfig, session: MagicMock
 ) -> None:
     """Test RESTClient initialization for both NA and EU regions."""
     config = MyAirConfig(username="user", password="pass", region=region, device_token="token")
     client = RESTClient(config, session)
     assert client._region_config == expected_config
-    assert client._email_factor_id == expected_config["email_factor_id"]
+    assert client._email_factor_id == expected_config.email_factor_id
     assert client._mfa_url.startswith("https://")
 
 
@@ -1106,9 +1127,9 @@ async def test_authn_check_email_factor_id_exceptions(
     mock_response = make_mock_aiohttp_response(json_value=authn_dict)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
 
-    # Should NOT raise, but should set _email_factor_id to region_config["email_factor_id"]
+    # Should NOT raise, but should set _email_factor_id to region_config.email_factor_id
     result = await client._authn_check()
-    assert client._email_factor_id == client._region_config["email_factor_id"]
+    assert client._email_factor_id == client._region_config.email_factor_id
     assert result == "MFA_REQUIRED"
 
 
