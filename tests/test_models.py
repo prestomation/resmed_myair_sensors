@@ -1,4 +1,4 @@
-"""Tests for typed ResMed myAir domain models."""
+"""Model-level tests covering typed ResMed myAir payload behavior."""
 
 from datetime import date
 from decimal import Decimal
@@ -14,7 +14,7 @@ from custom_components.resmed_myair.models import (
 
 
 def test_device_preserves_raw_values_and_device_info_fields() -> None:
-    """Device model exposes stable fields while preserving raw API data."""
+    """Device parsing preserves raw fields used for entity identity and labels."""
     device = MyAirDevice.from_api(
         {
             "serialNumber": "123",
@@ -35,7 +35,7 @@ def test_device_preserves_raw_values_and_device_info_fields() -> None:
 
 
 def test_sleep_record_parses_usage_and_start_date() -> None:
-    """Sleep record model exposes typed convenience values."""
+    """Sleep records expose typed convenience values for usage and dates."""
     record = MyAirSleepRecord.from_api(
         {
             "startDate": "2024-07-18",
@@ -51,7 +51,7 @@ def test_sleep_record_parses_usage_and_start_date() -> None:
 
 
 def test_negative_usage_is_clamped_for_friendly_display() -> None:
-    """Negative usage values display as zero usage."""
+    """Negative usage values are clamped to zero for display helpers."""
     record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": -5})
 
     assert record.total_usage_minutes == -5
@@ -59,7 +59,7 @@ def test_negative_usage_is_clamped_for_friendly_display() -> None:
 
 
 def test_coordinator_data_exposes_latest_and_most_recent_used_date() -> None:
-    """Coordinator data exposes the latest record and most recent used date."""
+    """Coordinator data derives the latest record and most recent used date."""
     data = MyAirCoordinatorData(
         device=MyAirDevice.from_api({"serialNumber": "123"}),
         sleep_records=(
@@ -74,7 +74,7 @@ def test_coordinator_data_exposes_latest_and_most_recent_used_date() -> None:
 
 
 def test_device_fields_default_to_empty_or_none_for_missing_values() -> None:
-    """Missing keys should not crash model construction."""
+    """Missing device keys collapse to empty or `None` values."""
     device = MyAirDevice.from_api({})
 
     assert device.raw == {}
@@ -85,14 +85,14 @@ def test_device_fields_default_to_empty_or_none_for_missing_values() -> None:
 
 
 def test_device_ignores_non_string_serial_number() -> None:
-    """Non-string serial numbers should not be coerced to text."""
+    """Non-string serial numbers are ignored instead of coerced to text."""
     device = MyAirDevice.from_api({"serialNumber": None})
 
     assert device.serial_number == ""
 
 
 def test_device_fields_with_non_string_optional_values_are_none() -> None:
-    """Non-string optional fields should become None."""
+    """Non-string optional device fields normalize to `None`."""
     device = MyAirDevice.from_api(
         {
             "fgDeviceManufacturerName": 123,
@@ -107,7 +107,7 @@ def test_device_fields_with_non_string_optional_values_are_none() -> None:
 
 
 def test_sleep_record_with_missing_fields_defaults() -> None:
-    """Missing usage and date values should be safe defaults."""
+    """Missing sleep-record fields fall back to safe defaults."""
     record = MyAirSleepRecord.from_api({})
 
     assert record.start_date is None
@@ -117,7 +117,7 @@ def test_sleep_record_with_missing_fields_defaults() -> None:
 
 
 def test_sleep_record_with_non_string_start_date_has_none_start_date() -> None:
-    """Non-string startDate values should not be parsed."""
+    """Non-string `startDate` values are skipped during parsing."""
     record = MyAirSleepRecord.from_api({"startDate": 123, "totalUsage": 30})
 
     assert record.start_date is None
@@ -127,7 +127,7 @@ def test_sleep_record_with_non_string_start_date_has_none_start_date() -> None:
 
 
 def test_sleep_record_with_invalid_start_date_has_none_start_date() -> None:
-    """Invalid startDate strings should not crash model construction."""
+    """Invalid `startDate` strings leave the parsed date unset."""
     record = MyAirSleepRecord.from_api({"startDate": "not-a-date", "totalUsage": 30})
 
     assert record.start_date is None
@@ -135,7 +135,7 @@ def test_sleep_record_with_invalid_start_date_has_none_start_date() -> None:
 
 
 def test_device_from_api_accepts_none() -> None:
-    """from_api accepts None and produces a safe empty device."""
+    """`from_api(None)` returns an empty, safe device model."""
     device = MyAirDevice.from_api(None)
 
     assert device.raw == {}
@@ -146,7 +146,7 @@ def test_device_from_api_accepts_none() -> None:
 
 
 def test_sleep_record_from_api_accepts_none() -> None:
-    """from_api accepts None and produces a safe empty record."""
+    """`from_api(None)` returns an empty, safe sleep-record model."""
     record = MyAirSleepRecord.from_api(None)
 
     assert record.raw == {}
@@ -157,7 +157,7 @@ def test_sleep_record_from_api_accepts_none() -> None:
 
 
 def test_most_recent_sleep_date_skips_zero_usage_records() -> None:
-    """Most recent sleep date should ignore records with zero usage."""
+    """Zero-usage sleep records do not affect the most recent date."""
     data = MyAirCoordinatorData(
         device=None,
         sleep_records=(
@@ -172,7 +172,7 @@ def test_most_recent_sleep_date_skips_zero_usage_records() -> None:
 
 
 def test_sleep_record_with_non_int_usage_is_none() -> None:
-    """Non-int usage values should not be treated as usage minutes."""
+    """Non-integer usage values are ignored instead of coerced."""
     record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": True})
 
     assert record.total_usage_minutes is None
@@ -184,7 +184,7 @@ def test_sleep_record_with_non_int_usage_is_none() -> None:
 def test_sleep_record_coerces_numeric_usage_values(
     raw_usage: float | Decimal | str, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Numeric API usage values should be coerced to integer minutes."""
+    """Numeric usage values are coerced to whole minutes."""
     with caplog.at_level(logging.INFO):
         record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
 
@@ -198,7 +198,7 @@ def test_sleep_record_coerces_numeric_usage_values(
 def test_sleep_record_does_not_log_for_integral_numeric_usage(
     raw_usage: float | Decimal | str, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Integral numeric API usage values should not log truncation."""
+    """Integral numeric usage values skip truncation logging."""
     with caplog.at_level(logging.INFO):
         record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
 
@@ -207,7 +207,7 @@ def test_sleep_record_does_not_log_for_integral_numeric_usage(
 
 
 def test_coordinator_data_selects_latest_record_by_start_date() -> None:
-    """Coordinator data should not rely on API sleep record order."""
+    """Latest sleep data is selected by date rather than list order."""
     data = MyAirCoordinatorData(
         sleep_records=(
             MyAirSleepRecord.from_api({"startDate": "2024-07-20", "totalUsage": 0}),
@@ -222,7 +222,7 @@ def test_coordinator_data_selects_latest_record_by_start_date() -> None:
 
 
 def test_coordinator_data_defaults_to_empty() -> None:
-    """Coordinator data should construct when payload members are omitted."""
+    """Coordinator data still constructs when payload members are omitted."""
     data = MyAirCoordinatorData()
 
     assert data.device is None

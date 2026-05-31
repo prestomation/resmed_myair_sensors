@@ -1,4 +1,4 @@
-"""Unit tests for the REST client used by the resmed_myair integration."""
+"""REST client tests that protect auth, GraphQL, and parsing behavior."""
 
 import datetime
 import logging
@@ -34,7 +34,7 @@ from tests.conftest import make_mock_aiohttp_context_manager, make_mock_aiohttp_
 
 
 def test_get_region_config_returns_na_settings() -> None:
-    """NA region lookup returns the existing ResMed endpoints."""
+    """NA region lookups return the expected ResMed endpoint set."""
     config = get_region_config(REGION_NA)
 
     assert isinstance(config, RegionConfig)
@@ -44,7 +44,7 @@ def test_get_region_config_returns_na_settings() -> None:
 
 
 def test_get_region_config_returns_eu_settings() -> None:
-    """EU region lookup returns the existing ResMed endpoints."""
+    """EU region lookups return the expected ResMed endpoint set."""
     config = get_region_config(REGION_EU)
 
     assert isinstance(config, RegionConfig)
@@ -54,12 +54,12 @@ def test_get_region_config_returns_eu_settings() -> None:
 
 
 def test_get_region_config_fallback_to_eu_for_unknown_region() -> None:
-    """Unexpected region values default to EU settings."""
+    """Unknown region values fall back to the EU configuration."""
     assert get_region_config("unexpected") == EU_CONFIG
 
 
 def test_rest_client_owns_auth_session(config_na: MyAirConfig, session: MagicMock) -> None:
-    """RESTClient composes a dedicated auth session."""
+    """RESTClient builds a dedicated auth session wrapper."""
     client = RESTClient(config_na, session)
 
     assert isinstance(client._auth, MyAirAuthSession)
@@ -67,7 +67,7 @@ def test_rest_client_owns_auth_session(config_na: MyAirConfig, session: MagicMoc
 
 
 def test_rest_client_owns_graphql_client(config_na: MyAirConfig, session: MagicMock) -> None:
-    """RESTClient composes a dedicated GraphQL client."""
+    """RESTClient builds a dedicated GraphQL client wrapper."""
     client = RESTClient(config_na, session)
 
     assert isinstance(client._graphql, MyAirGraphQLClient)
@@ -79,7 +79,7 @@ def test_rest_client_owns_graphql_client(config_na: MyAirConfig, session: MagicM
 def test_rest_client_init_region(
     region: str, expected_config: RegionConfig, session: MagicMock
 ) -> None:
-    """Test RESTClient initialization for both NA and EU regions."""
+    """RESTClient initialization selects the expected regional settings."""
     config = MyAirConfig(username="user", password="pass", region=region, device_token="token")
     client = RESTClient(config, session)
     assert client._region_config == expected_config
@@ -89,7 +89,7 @@ def test_rest_client_init_region(
 
 @pytest.mark.parametrize("case", ["device_token", "cookies"])
 def test_properties_variants(case: str, config_na: MyAirConfig, session: MagicMock) -> None:
-    """Parametrized: small property checks for device_token and _cookies."""
+    """Device-token and cookie properties mirror the client state."""
     client = RESTClient(config_na, session)
     if case == "device_token":
         assert client.device_token == "token"
@@ -139,7 +139,7 @@ async def test_extract_and_update_cookies_variants(
     config_na: MyAirConfig,
     session: MagicMock,
 ) -> None:
-    """Parametrized test for _extract_and_update_cookies covering all branches, including warning."""
+    """Cookie extraction updates state, handles casing, and logs rotations safely."""
     # MyAirConfig is a NamedTuple (immutable) so use _replace to change device_token
     config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
@@ -194,7 +194,7 @@ async def test_extract_and_update_cookies_variants(
 async def test_resmed_response_error_check_variants(
     status: int, resp_dict: dict[str, object], expected_exception: type[BaseException]
 ) -> None:
-    """Parametrized tests for various error responses in _resmed_response_error_check."""
+    """Response error parsing maps auth and incomplete-account failures correctly."""
     response = MagicMock(spec=ClientResponse)
     response.status = status
     response.headers = CIMultiDict()
@@ -250,7 +250,7 @@ async def test_authn_check_variants(
     expect_mfa_url_prefix: str | None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized tests for _authn_check success and MFA_REQUIRED paths."""
+    """Auth checks handle success and MFA-required payloads."""
     client = RESTClient(config_na, session)
     mock_response = make_mock_aiohttp_response(json_value=json_value)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
@@ -276,7 +276,7 @@ async def test_authn_check_invalid_status_raises(
     json_value: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: _authn_check should raise AuthenticationError for invalid status payloads."""
+    """Invalid auth status payloads raise `AuthenticationError`."""
     client = RESTClient(config_na, session)
     mock_response = make_mock_aiohttp_response(json_value=json_value)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
@@ -301,7 +301,7 @@ async def test_verify_mfa_and_get_access_token_variants(
     expected_status: str | None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: verify_mfa_and_get_access_token success and failure paths."""
+    """MFA verification either returns the status or raises on failure."""
     client = RESTClient(config_na, session)
     # use monkeypatch to replace instance methods
     client_verify = AsyncMock(return_value=verify_return)
@@ -321,7 +321,7 @@ async def test_verify_mfa_and_get_access_token_variants(
 async def test_connect_access_token_active_variants(
     config_na: MyAirConfig, session: MagicMock, cookie_dt: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Parametrized: connect returns AUTHN_SUCCESS when access token is active (different cookie values)."""
+    """Active access tokens short-circuit connect to `AUTHN_SUCCESS`."""
     client = RESTClient(config_na, session)
     client._cookie_dt = cookie_dt
     client._access_token = "token"
@@ -337,7 +337,7 @@ async def test_connect_access_token_active_variants(
 async def test_connect_authn_success(
     config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test connect calls _authn_check and _get_access_token on success."""
+    """Connect performs auth checks before requesting a new access token."""
     client = RESTClient(config_na, session)
     client._cookie_dt = "dt"
     client._access_token = None
@@ -367,7 +367,7 @@ async def test_connect_needs_mfa_parametrized(
     expect_raises: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: connect behavior when MFA is required for initial True/False."""
+    """Connect triggers MFA only on the initial auth path that requires it."""
     client = RESTClient(config_na, session)
     client._cookie_dt = "dt"
     client._access_token = None
@@ -405,7 +405,7 @@ async def test_connect_initial_dt_and_warning_variants(
     expect_warn: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: when _cookie_dt is None the client should call _get_initial_dt; when _uses_mfa is True it logs a warning."""
+    """Connect fetches an initial DT cookie and warns when MFA is active."""
     client = RESTClient(config_na, session)
     client._cookie_dt = None
     client._uses_mfa = uses_mfa
@@ -442,7 +442,7 @@ async def test_connect_status_needs_mfa_parametrized(
     expect_raises: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: connect behavior when _authn_check returns AUTH_NEEDS_MFA for initial True/False."""
+    """Connect handles `AUTH_NEEDS_MFA` consistently across initial and refresh paths."""
     client = RESTClient(config_na, session)
     client._cookie_dt = "cookie"
     client._access_token = None
@@ -467,7 +467,7 @@ async def test_connect_status_needs_mfa_parametrized(
 
 @pytest.mark.asyncio
 async def test_resmed_response_error_check_gql_query_not_initial_raises_parsing_error() -> None:
-    """Test that ParsingError is raised if step == 'gql_query' and not initial and unauthorized error."""
+    """Unauthorized GraphQL errors during refresh raise `ParsingError`."""
     # Prepare a fake response and error dict
     response = MagicMock(spec=ClientResponse)
     response.status = 401
@@ -484,7 +484,7 @@ async def test_resmed_response_error_check_gql_query_not_initial_raises_parsing_
 
 @pytest.mark.asyncio
 async def test_resmed_response_error_check_no_errors_key() -> None:
-    """Test _resmed_response_error_check does nothing if 'errors' not in resp_dict."""
+    """Responses without an `errors` key pass through the checker unchanged."""
     response = MagicMock(spec=ClientResponse)
     response.status = 200
     response.headers = {}
@@ -523,7 +523,7 @@ async def test_authn_check_raises_variants(
     match: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: _authn_check raises AuthenticationError for missing stateToken or sessionToken cases."""
+    """Auth payloads missing required tokens raise `AuthenticationError`."""
     client = RESTClient(config_na, session)
 
     mock_response = make_mock_aiohttp_response(json_value=json_value)
@@ -559,7 +559,7 @@ async def test_mfa_methods_success_variants(
     expected: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: covers _trigger_mfa and _verify_mfa success paths."""
+    """MFA trigger and verification helpers succeed on valid payloads."""
     client = RESTClient(config_na, session)
     client._state_token = "dummy_state_token"
     client._mfa_url = "https://example.com/mfa"
@@ -728,7 +728,7 @@ async def test_verify_mfa_raises_variants(
     match: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: Test _verify_mfa raises AuthenticationError for several failure responses."""
+    """Invalid MFA verification responses raise `AuthenticationError`."""
     client = RESTClient(config_na, session)
     client._state_token = "dummy_state_token"
     client._mfa_url = "https://example.com/mfa"
@@ -748,7 +748,7 @@ async def test_verify_mfa_raises_variants(
 async def test_get_access_token_success(
     config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test _get_access_token sets tokens on success."""
+    """Successful token exchange stores the access and ID tokens."""
     client = RESTClient(config_na, session)
     client._session_token = "dummy_session_token"
     client._json_headers = {"Content-Type": "application/json"}
@@ -791,7 +791,7 @@ async def test_get_access_token_success(
 async def test_get_access_token_raises_on_missing_location(
     config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test _get_access_token raises ParsingError if location header is missing."""
+    """Missing authorization redirect locations raise `ParsingError`."""
     client = RESTClient(config_na, session)
     client._session_token = "dummy_session_token"
     client._json_headers = {"Content-Type": "application/json"}
@@ -809,7 +809,7 @@ async def test_get_access_token_raises_on_missing_location(
 async def test_get_access_token_raises_on_missing_authorization_code(
     config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test _get_access_token raises ParsingError if the redirect has no code."""
+    """Redirects without an authorization code raise `ParsingError`."""
     client = RESTClient(config_na, session)
     client._session_token = "dummy_session_token"
     client._json_headers = {"Content-Type": "application/json"}
@@ -848,7 +848,7 @@ async def test_get_access_token_raises_on_missing_token_variants(
     match_msg: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: Test _get_access_token raises ParsingError when token response lacks required keys."""
+    """Token responses missing required keys raise `ParsingError`."""
     client = RESTClient(config_na, session)
     client._session_token = "dummy_session_token"
     client._json_headers = {"Content-Type": "application/json"}
@@ -900,7 +900,7 @@ async def test_gql_query_variants(
     expected_country: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: gql_query success (extract country from id_token) and jwt decode error cases."""
+    """GraphQL queries decode country data and surface JWT failures."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = "idtoken"
@@ -926,6 +926,15 @@ async def test_gql_query_variants(
     else:
 
         def bad_decode(*a: object, **k: object) -> Never:
+            """Simulate a JWT decoder failure while preserving monkeypatch signature.
+
+            Args:
+                *a: Positional arguments passed by the GraphQL client.
+                **k: Keyword arguments passed by the GraphQL client.
+
+            Raises:
+                ValueError: Always raised to drive the parsing-error branch.
+            """
             raise ValueError("bad jwt")
 
         monkeypatch.setattr(
@@ -957,7 +966,7 @@ async def test_gql_query_failure_variants(
     match: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: _gql_query failure modes for JWT decoding, missing key, and missing id_token."""
+    """GraphQL query failures cover JWT decode, missing country, and missing ID token."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = id_token
@@ -968,6 +977,15 @@ async def test_gql_query_failure_variants(
         if "side_effect" in jwt_behavior:
 
             def side(*a: object, **k: object) -> Never:
+                """Raise the configured JWT decode error for this parameter set.
+
+                Args:
+                    *a: Positional arguments passed by the GraphQL client.
+                    **k: Keyword arguments passed by the GraphQL client.
+
+                Raises:
+                    Exception: The specific side effect supplied by the test case.
+                """
                 raise jwt_behavior["side_effect"]
 
             monkeypatch.setattr(
@@ -991,7 +1009,7 @@ async def test_gql_query_failure_variants(
 
 @pytest.mark.asyncio
 async def test_gql_query_graphql_error(config_na: MyAirConfig, session: MagicMock) -> None:
-    """Ensure gql_query maps GraphQL unauthorized errors."""
+    """GraphQL unauthorized responses map to `ParsingError`."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = None
@@ -1093,7 +1111,7 @@ async def test_data_fetch_success_variants(
     expected: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: success paths for data-fetching helpers (sleep records and device data)."""
+    """Data fetch helpers return typed models for sleep records and device data."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -1115,7 +1133,7 @@ async def test_data_fetch_success_variants(
 async def test_get_sleep_records_uses_local_date_range(
     config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Ensure sleep record queries use the local date window."""
+    """Sleep-record queries use the local month window."""
 
     class FixedDateTime(datetime.datetime):
         """DateTime class with deterministic now() for query-window assertions."""
@@ -1157,7 +1175,7 @@ async def test_get_sleep_records_failure_variants(
     match_msg: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: get_sleep_records raises ParsingError for missing keys and non-list items."""
+    """Sleep-record fetches raise `ParsingError` for malformed payloads."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -1172,7 +1190,7 @@ async def test_get_sleep_records_raises_parsing_error_for_non_mapping_items(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sleep record list entries must be mappings before model parsing."""
+    """Sleep-record list items must be mappings before model parsing."""
     client = RESTClient(config_na, session)
     mock_response = {"data": {"getPatientWrapper": {"sleepRecords": {"items": [123]}}}}
     monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
@@ -1199,7 +1217,7 @@ async def test_get_user_device_data_failure_variants(
     match_msg: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: get_user_device_data raises ParsingError for missing keys and invalid response types."""
+    """Device-data fetches raise `ParsingError` for malformed payloads."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -1226,7 +1244,7 @@ async def test_get_user_device_data_masks_variants(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Parametrized tests for masks behavior in get_user_device_data."""
+    """Device-data mask handling preserves valid masks and warns on misses."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._country_code = "US"
@@ -1264,7 +1282,7 @@ async def test_get_initial_dt_variants(
     expected_extract_arg: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized checks for _get_initial_dt with different cookie headers."""
+    """Initial DT extraction handles present and missing cookie headers."""
     client = RESTClient(config_na, session)
     mock_headers = MagicMock()
     mock_headers.getall = MagicMock(return_value=cookie_headers)
@@ -1281,7 +1299,7 @@ async def test_get_initial_dt_variants(
 
 @pytest.mark.asyncio
 async def test_resmed_response_error_check_not_bad_request() -> None:
-    """Test _resmed_response_error_check does NOT raise IncompleteAccountError if errorType is not 'badRequest' or errorCode not in set."""
+    """Non-matching response errors do not become incomplete-account failures."""
     # Prepare a fake response and error dict
     resp_dict = {
         "errors": [{"errorInfo": {"errorType": "someOtherType", "errorCode": "someOtherCode"}}]
@@ -1319,7 +1337,7 @@ async def test_resmed_response_error_check_not_bad_request() -> None:
 async def test_authn_check_email_factor_id_exceptions(
     authn_dict: object, session: MagicMock, config_na: MyAirConfig
 ) -> None:
-    """Test RESTClient._authn_check falls back to region_config['email_factor_id'] on KeyError/TypeError."""
+    """Auth checks fall back to the region email-factor ID on lookup errors."""
     # MyAirConfig is a NamedTuple (immutable) so use _replace to change device_token
     config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
@@ -1351,7 +1369,7 @@ async def test_get_access_token_token_change_and_logging(
     expect_change: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: test token equality vs new token and logging behavior for _get_access_token."""
+    """Token rotation logging distinguishes unchanged and updated access tokens."""
     # MyAirConfig is a NamedTuple (immutable) so create a modified copy
     config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
@@ -1407,7 +1425,7 @@ async def test_status_helpers_variants(
     expected: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized test covering small boolean helper methods that hit the auth endpoints."""
+    """Small auth endpoint helpers return the expected boolean states."""
     client = RESTClient(config_na, session)
     client._access_token = "token"
     mock_res = make_mock_aiohttp_response(json_value=response_json, headers={})
@@ -1434,7 +1452,7 @@ async def test_status_helpers_variants(
 async def test_resmed_response_error_check_parsing_variants(
     resp_dict: dict[str, object], expected_substring: object
 ) -> None:
-    """Parametrized: check various parsing fallbacks in _resmed_response_error_check."""
+    """Response-error parsing falls back cleanly across malformed payloads."""
     response = MagicMock(spec=ClientResponse)
     response.status = 400
     response.headers = CIMultiDict()

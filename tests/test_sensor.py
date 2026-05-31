@@ -1,4 +1,4 @@
-"""Unit tests for sensor entities in the resmed_myair integration."""
+"""Sensor-entity tests that protect availability and value translation."""
 
 import inspect
 import logging
@@ -41,7 +41,7 @@ def test_device_sensor_all_branches(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Parametrized tests for MyAirDeviceSensor behavior across branches."""
+    """Device sensors honor key lookup, timestamp parsing, and availability."""
     # Construct description using the explicit device_class parameter so the test
     # deterministically controls whether the sensor is a timestamp sensor.
     if device_class is None:
@@ -72,7 +72,7 @@ def test_friendly_usage_time_all_branches(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Parametrized tests for MyAirFriendlyUsageTime behavior across branches."""
+    """Friendly usage sensors format minutes and handle missing records."""
     coordinator = coordinator_factory(data=data)
     sensor = MyAirFriendlyUsageTime(coordinator)
     monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
@@ -112,7 +112,7 @@ def test_most_recent_sleep_date_all_branches(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Parametrized tests for MyAirMostRecentSleepDate behavior across branches."""
+    """Most-recent sleep date sensors select the latest usable record."""
     coordinator = coordinator_factory(data=data)
     sensor = MyAirMostRecentSleepDate(coordinator)
     monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
@@ -143,7 +143,7 @@ def test_sleep_record_sensor_handle_coordinator_update(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Parametrized tests for MyAirSleepRecordSensor handling various record formats."""
+    """Sleep-record sensors parse raw values and optional dates correctly."""
     # Patch dt_util.parse_date to return a sentinel for test
     if device_class == SensorDeviceClass.DATE:
         parsed_date = object()
@@ -169,7 +169,7 @@ def test_sleep_record_sensor_is_available_when_raw_key_value_is_none(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Ensure raw sleep sensors stay available when the raw key exists with a null value."""
+    """Raw sleep-record keys with null values still count as available data."""
     coordinator = coordinator_factory(data={"sleep_records": [{"foo": None}]})
     sensor = MyAirSleepRecordSensor("Test", SensorEntityDescription(key="foo"), coordinator)
     monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
@@ -226,7 +226,7 @@ def test_myair_device_sensor_parametrized(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Combined parametrized test for MyAirDeviceSensor with optional datetime parsing."""
+    """Device sensors parse datetimes only when the entity class requires it."""
     # Patch dt_util.parse_datetime if needed
     if patch_parse_datetime:
         monkeypatch.setattr(
@@ -250,7 +250,7 @@ def test_device_sensor_is_available_when_raw_key_value_is_none(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Ensure raw device sensors stay available when the raw key exists with a null value."""
+    """Raw device keys with null values still count as available data."""
     coordinator = coordinator_factory(data={"device": {"foo": None}})
     sensor = MyAirDeviceSensor("Test", SensorEntityDescription(key="foo"), coordinator)
     monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
@@ -269,7 +269,7 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
     config_entry: MockConfigEntry,
     service_registry_shim: ServiceRegistryShimLike,
 ) -> None:
-    """Test that async_setup_entry adds sensor entities and registers service."""
+    """Setup adds sensor entities and registers the force-poll service."""
     async_add_entities = MagicMock()
     coordinator = coordinator_factory(mock=True)
     # This test will create its own local MockConfigEntry (below) because
@@ -328,7 +328,7 @@ def test_myair_device_sensor_handle_coordinator_update_keyerror(
     coordinator_factory: CoordinatorFactory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ensure MyAirDeviceSensor handles missing keys and logs an error."""
+    """Missing device keys leave the sensor unavailable and log the failure."""
     coordinator = coordinator_factory(mock=True)
     coordinator.data = coordinator_data(device={"serialNumber": "SN123"})
     desc = SensorEntityDescription(key="missing_key")

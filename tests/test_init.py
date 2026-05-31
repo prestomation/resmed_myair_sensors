@@ -1,4 +1,4 @@
-"""Tests for package initialization logic, including migration helpers."""
+"""Package-initialization tests that protect config-entry migration behavior."""
 
 from unittest.mock import MagicMock
 
@@ -11,7 +11,7 @@ from custom_components.resmed_myair.const import CONF_REGION, REGION_NA
 
 @pytest.mark.asyncio
 async def test_async_migrate_entry_version_1(hass: MagicMock) -> None:
-    """Migrate from version 1 should add CONF_REGION and update entry."""
+    """Version 1 entries gain the region field during migration."""
     # Create a MockConfigEntry at version 1 to exercise migration logic
     entry = MockConfigEntry(
         domain="resmed_myair", title="ResMed-CPAP", data={"foo": "bar"}, version=1
@@ -33,7 +33,7 @@ async def test_async_migrate_entry_version_1(hass: MagicMock) -> None:
 
 @pytest.mark.asyncio
 async def test_async_migrate_entry_version_2_noop(hass: MagicMock) -> None:
-    """Migrate from version 2 should be a no-op and not call async_update_entry."""
+    """Version 2 entries remain unchanged and skip config-entry updates."""
     entry = MockConfigEntry(
         domain="resmed_myair", title="ResMed-CPAP", data={"foo": "bar"}, version=2
     )

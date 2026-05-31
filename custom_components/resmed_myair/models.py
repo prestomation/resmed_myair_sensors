@@ -13,7 +13,15 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def _to_usage_minutes(raw_usage: Any) -> int | None:
-    """Convert API usage value to an integer minute count."""
+    """Normalize myAir ``totalUsage`` values into whole minutes.
+
+    Args:
+        raw_usage: API value that may arrive as an int, decimal-like string, float,
+            or malformed scalar.
+
+    Returns:
+        Whole usage minutes, or ``None`` when the payload cannot represent usage.
+    """
     if isinstance(raw_usage, bool):
         return None
     if isinstance(raw_usage, int):
@@ -34,7 +42,14 @@ def _to_usage_minutes(raw_usage: Any) -> int | None:
 
 
 def _format_usage_time(total_usage_minutes: int | None) -> str | None:
-    """Format usage minutes into friendly `H:MM` text."""
+    """Render usage minutes in the text format users expect in HA.
+
+    Args:
+        total_usage_minutes: Normalized CPAP usage minutes.
+
+    Returns:
+        ``H:MM`` text, or ``None`` when usage is unavailable.
+    """
     if total_usage_minutes is None:
         return None
 
@@ -43,14 +58,28 @@ def _format_usage_time(total_usage_minutes: int | None) -> str | None:
 
 
 def _to_optional_str(raw: Any) -> str | None:
-    """Return a normalized optional string value from arbitrary API payload data."""
+    """Keep string API fields while discarding unexpected payload types.
+
+    Args:
+        raw: Raw field value from a myAir payload.
+
+    Returns:
+        The string value, or ``None`` for missing and non-string values.
+    """
     if not isinstance(raw, str):
         return None
     return raw
 
 
 def _to_optional_date(raw: Any) -> date | None:
-    """Return a normalized optional date value from arbitrary API payload data."""
+    """Parse ISO date fields while tolerating malformed myAir payloads.
+
+    Args:
+        raw: Raw date field from a myAir payload.
+
+    Returns:
+        Parsed date, or ``None`` when the field is missing or invalid.
+    """
     if not isinstance(raw, str):
         return None
     try:
@@ -61,7 +90,7 @@ def _to_optional_date(raw: Any) -> date | None:
 
 @dataclass(frozen=True, slots=True)
 class MyAirDevice:
-    """Normalized typed representation of a device payload."""
+    """Typed view of the assigned flow-generator payload and its raw source."""
 
     raw: dict[str, Any]
     serial_number: str
@@ -71,7 +100,14 @@ class MyAirDevice:
 
     @classmethod
     def from_api(cls, data: Mapping[str, Any] | None) -> Self:
-        """Create a typed device from raw API payload data."""
+        """Build device metadata from a raw GraphQL device mapping.
+
+        Args:
+            data: Raw myAir device payload, or ``None`` when the API omitted it.
+
+        Returns:
+            Typed device with normalized serial, manufacturer, model, and name fields.
+        """
         raw = dict(data or {})
         serial_number = raw.get("serialNumber", "")
         if not isinstance(serial_number, str):
@@ -85,13 +121,20 @@ class MyAirDevice:
         )
 
     def native_value(self, key: str) -> Any | None:
-        """Return the raw payload value for a key or ``None``."""
+        """Read a sensor value from the original device payload.
+
+        Args:
+            key: GraphQL field name used by the sensor description.
+
+        Returns:
+            Raw payload value, or ``None`` when the key is absent.
+        """
         return self.raw.get(key)
 
 
 @dataclass(frozen=True, slots=True)
 class MyAirSleepRecord:
-    """Normalized typed representation of a sleep record payload."""
+    """Typed view of a nightly sleep record and its derived usage fields."""
 
     raw: dict[str, Any]
     start_date: date | None
@@ -101,7 +144,14 @@ class MyAirSleepRecord:
 
     @classmethod
     def from_api(cls, data: Mapping[str, Any] | None) -> Self:
-        """Create a typed sleep record from raw API payload data."""
+        """Build a sleep record from a raw GraphQL record mapping.
+
+        Args:
+            data: Raw myAir sleep-record payload, or ``None`` when unavailable.
+
+        Returns:
+            Typed record with parsed date, normalized minutes, and friendly usage text.
+        """
         raw = dict(data or {})
         total_usage_minutes = _to_usage_minutes(raw.get("totalUsage"))
         has_usage = total_usage_minutes is not None and total_usage_minutes > 0
@@ -114,27 +164,42 @@ class MyAirSleepRecord:
         )
 
     def native_value(self, key: str) -> Any | None:
-        """Return the raw payload value for a key or ``None``."""
+        """Read a sensor value from the original sleep-record payload.
+
+        Args:
+            key: GraphQL field name used by the sensor description.
+
+        Returns:
+            Raw payload value, or ``None`` when the key is absent.
+        """
         return self.raw.get(key)
 
 
 @dataclass(frozen=True, slots=True)
 class MyAirCoordinatorData:
-    """Typed coordinator payload wrapper for Home Assistant integration state."""
+    """Immutable snapshot of the latest myAir device and sleep data."""
 
     device: MyAirDevice | None = None
     sleep_records: tuple[MyAirSleepRecord, ...] = ()
 
     @property
     def latest_sleep_record(self) -> MyAirSleepRecord | None:
-        """Return the latest available sleep record if any."""
+        """Select the newest sleep record by start date.
+
+        Returns:
+            Most recent record, or ``None`` when the coordinator has no records.
+        """
         if not self.sleep_records:
             return None
         return max(self.sleep_records, key=lambda record: record.start_date or date.min)
 
     @property
     def most_recent_sleep_date(self) -> date | None:
-        """Return the most recent date that has recorded usage."""
+        """Find the newest sleep date with non-zero CPAP usage.
+
+        Returns:
+            Date of the most recent usage-bearing record, or ``None`` if none qualify.
+        """
         records_with_usage = [
             record for record in self.sleep_records if record.start_date and record.has_usage
         ]

@@ -1,4 +1,4 @@
-"""Constants for Home Assistant ResMed myAir Integration."""
+"""Home Assistant entity, config-entry, and redaction constants for myAir."""
 
 from collections.abc import Mapping
 

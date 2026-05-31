@@ -1,4 +1,4 @@
-"""Tests for the release workflow guardrails."""
+"""Release-workflow tests that protect versioning and tag-update behavior."""
 
 from importlib import util
 import json
@@ -16,7 +16,7 @@ WORKFLOW_SCRIPT_PATH = ".github/scripts/update_release_version.py"
 
 @pytest.fixture
 def release_version_script() -> ModuleType:
-    """Load the release version update script as a test module."""
+    """Load the checked-in release version script as an importable module."""
     spec = util.spec_from_file_location("update_release_version", SCRIPT_PATH)
     assert spec is not None
     assert spec.loader is not None
@@ -34,7 +34,7 @@ def release_version_script() -> ModuleType:
 
 
 def test_edited_release_checkout_uses_release_tag() -> None:
-    """Edited releases should package the existing release tag."""
+    """Edited release runs continue from the published release tag."""
     workflow = WORKFLOW_PATH.read_text()
 
     assert (
@@ -43,7 +43,7 @@ def test_edited_release_checkout_uses_release_tag() -> None:
 
 
 def test_release_workflow_serializes_tag_updates() -> None:
-    """Release runs that update tags should not overlap."""
+    """Tag-updating release runs serialize via workflow concurrency."""
     workflow = WORKFLOW_PATH.read_text()
 
     assert "concurrency:" in workflow
@@ -52,7 +52,7 @@ def test_release_workflow_serializes_tag_updates() -> None:
 
 
 def test_published_release_checkout_uses_release_tag() -> None:
-    """Published releases should package the tag created for the release."""
+    """Published release builds check out the tag created for that release."""
     workflow = WORKFLOW_PATH.read_text()
     checkout_step = "- name: Checkout Repository"
     update_version_step = "- name: Update Release Version Files"
@@ -68,7 +68,7 @@ def test_published_release_checkout_uses_release_tag() -> None:
 
 
 def test_release_shell_steps_use_tag_environment_variable() -> None:
-    """Shell commands should quote the release tag from the environment."""
+    """Shell steps quote the release tag before moving or pushing it."""
     workflow = WORKFLOW_PATH.read_text()
     shell_step_names = [
         "Update Release Version Files",
@@ -92,7 +92,7 @@ def test_release_shell_steps_use_tag_environment_variable() -> None:
 
 
 def test_release_workflow_runs_checked_in_version_update_script() -> None:
-    """Release workflow should delegate version file updates to the script."""
+    """Release workflow delegates version-file edits to the checked-in script."""
     workflow = WORKFLOW_PATH.read_text()
     step_label = "- name: Update Release Version Files"
 
@@ -112,7 +112,7 @@ def test_release_version_script_updates_manifest_and_const(
     tmp_path: Path,
     release_version_script: ModuleType,
 ) -> None:
-    """Version update script should update both release metadata files."""
+    """The version update script rewrites both manifest and const metadata."""
     manifest_path = tmp_path / "manifest.json"
     const_path = tmp_path / "const.py"
     manifest_path.write_text(json.dumps({"domain": "resmed_myair", "version": "v0.1.0"}))
@@ -133,7 +133,7 @@ def test_release_version_script_rejects_missing_const_version(
     tmp_path: Path,
     release_version_script: ModuleType,
 ) -> None:
-    """Version update script should fail when const.py lacks a VERSION assignment."""
+    """The version update script rejects const.py files without `VERSION`."""
     manifest_path = tmp_path / "manifest.json"
     const_path = tmp_path / "const.py"
     manifest_path.write_text(json.dumps({"domain": "resmed_myair", "version": "v0.1.0"}))
@@ -148,7 +148,7 @@ def test_release_version_script_rejects_missing_const_version(
 
 
 def test_edited_release_does_not_force_move_tag() -> None:
-    """Edited releases should not commit version changes or force-move tags."""
+    """Edited releases skip version commits and avoid force-moving tags."""
     workflow = WORKFLOW_PATH.read_text()
 
     guarded_steps = [

@@ -1,4 +1,4 @@
-"""Tests for the pytest coverage workflow guardrails."""
+"""Pytest-coverage workflow tests that protect checkout safety settings."""
 
 from pathlib import Path
 
@@ -7,7 +7,7 @@ WORKFLOW_PATH = REPO_ROOT / ".github/workflows/pytest_coverage.yml"
 
 
 def test_checkout_does_not_persist_credentials() -> None:
-    """Checkout should not leave pull request credentials in the git config."""
+    """Workflow checkout disables persisted git credentials."""
     workflow = WORKFLOW_PATH.read_text()
     checkout_step = "- name: Checkout Repository"
     next_step = "- name: Debug GitHub Variables"

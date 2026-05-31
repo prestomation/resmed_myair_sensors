@@ -1,4 +1,4 @@
-"""Tests for the integration config flow behavior and edge cases."""
+"""Config-flow tests that protect setup, MFA, and reauth state transitions."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -30,7 +30,7 @@ from custom_components.resmed_myair.models import MyAirDevice
 
 @pytest.fixture
 def flow(hass: MagicMock) -> MyAirConfigFlow:
-    """Fixture for MyAirConfigFlow instance."""
+    """Return a configured `MyAirConfigFlow` bound to the test Home Assistant."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow.context = {}
@@ -41,7 +41,7 @@ def flow(hass: MagicMock) -> MyAirConfigFlow:
 async def test_async_step_user_success(
     flow: MyAirConfigFlow, myair_client: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test successful user step."""
+    """A successful user step creates an entry with the discovered device."""
     user_input: dict[str, str] = {
         CONF_USER_NAME: "user",
         CONF_PASSWORD: "pass",
@@ -72,7 +72,7 @@ async def test_async_step_user_success(
 async def test_async_step_user_auth_error(
     flow: MyAirConfigFlow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test user step with authentication error."""
+    """Authentication failures keep the user step on the form with an error."""
     user_input: dict[str, str] = {
         CONF_USER_NAME: "user",
         CONF_PASSWORD: "badpass",
@@ -93,7 +93,7 @@ async def test_async_step_user_auth_error(
 async def test_async_step_verify_mfa_user_input_and_client(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock, myair_client: MagicMock
 ) -> None:
-    """Verify MFA step with valid user input leads to create_entry."""
+    """Valid MFA input completes setup and persists the device token."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -137,7 +137,7 @@ async def test_async_step_verify_mfa_error(
     monkeypatch: pytest.MonkeyPatch,
     is_restclient: bool,
 ) -> None:
-    """Test MFA verification step with error for RESTClient and non-RESTClient clients."""
+    """MFA failures map to the correct form error for client types."""
     # Use a real RESTClient instance for one case, and a non-spec MagicMock for the other
     flow._client = myair_client if is_restclient else MagicMock()
     flow._data = {CONF_USER_NAME: "user"}
@@ -161,7 +161,7 @@ async def test_async_step_verify_mfa_error(
 
 @pytest.mark.asyncio
 async def test_async_step_user_form_display(flow: MyAirConfigFlow) -> None:
-    """Test that the user form is shown when no input is provided."""
+    """Missing user input keeps the user step on its form."""
     result = await flow.async_step_user()
     assert result["type"] == "form"
     assert result["step_id"] == "user"
@@ -172,7 +172,7 @@ async def test_async_step_user_form_display(flow: MyAirConfigFlow) -> None:
 async def test_async_step_verify_mfa_form_display(
     flow: MyAirConfigFlow, myair_client: MagicMock
 ) -> None:
-    """Test that the MFA form is shown when no input is provided."""
+    """Missing MFA input keeps the verification step on its form."""
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user"}
     result = await flow.async_step_verify_mfa()
@@ -196,7 +196,7 @@ async def test_async_step_forms_display_parametrized(
     expected_step_id: str,
     myair_client: MagicMock,
 ) -> None:
-    """Parametrized: form display checks for multiple steps."""
+    """User and MFA steps both render their forms when called without input."""
     if pre_setup:
         flow._client = myair_client
         flow._data = {CONF_USER_NAME: "user"}
@@ -211,7 +211,7 @@ async def test_async_step_forms_display_parametrized(
 async def test_async_step_verify_mfa_incomplete_account(
     flow: MyAirConfigFlow, myair_client: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test MFA step aborts if account is incomplete."""
+    """Incomplete accounts abort MFA verification after the email check."""
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user"}
     user_input: dict[str, str] = {CONF_VERIFICATION_CODE: "123456"}
@@ -229,7 +229,7 @@ async def test_async_step_verify_mfa_incomplete_account(
 
 @pytest.mark.asyncio
 async def test_async_step_reauth_confirm_form_display(flow: MyAirConfigFlow) -> None:
-    """Test that the reauth confirm form is shown when no input is provided."""
+    """Missing reauth input keeps the confirm step on its form."""
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass"}
     result = await flow.async_step_reauth_confirm()
     assert result["type"] == "form"
@@ -241,7 +241,7 @@ async def test_async_step_reauth_confirm_form_display(flow: MyAirConfigFlow) -> 
 async def test_async_step_reauth_verify_mfa_form_display(
     flow: MyAirConfigFlow, myair_client: MagicMock
 ) -> None:
-    """Test that the reauth verify MFA form is shown when no input is provided."""
+    """Missing reauth MFA input keeps verification on its form."""
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user"}
     result = await flow.async_step_reauth_verify_mfa()
@@ -257,7 +257,7 @@ async def test_async_step_reauth_success(
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test reauth step completes successfully."""
+    """Successful reauth updates the stored credentials and completes."""
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA}
     device = MyAirDevice.from_api(
         {
@@ -290,7 +290,7 @@ async def test_async_step_reauth_success(
 async def test_async_step_reauth_confirm_mfa(
     flow: MyAirConfigFlow, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test reauth confirm step triggers MFA if needed."""
+    """Reauth confirm triggers MFA when the account still requires it."""
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA}
     flow._entry = config_entry
     monkeypatch.setattr(
@@ -336,7 +336,7 @@ async def test_async_step_reauth_incomplete_account_parametrized(
     config_entry: MockConfigEntry,
     myair_client: MagicMock,
 ) -> None:
-    """Parametrized test covering incomplete-account behavior for reauth steps.
+    """Reauth steps abort or surface MFA prompts for incomplete accounts.
 
     Depending on the step, the flow uses either `get_device` or `get_mfa_device`.
     This single test exercises both `async_step_reauth_confirm` and
@@ -398,7 +398,7 @@ async def test_async_step_reauth_verify_mfa_success(
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test reauth verify MFA step completes successfully."""
+    """Successful reauth MFA verification updates the stored credentials."""
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass"}
     flow._entry = config_entry
@@ -429,7 +429,7 @@ async def test_async_step_reauth_verify_mfa_error(
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test reauth verify MFA step with error."""
+    """Reauth MFA failures return the form with an MFA error."""
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass"}
     flow._entry = config_entry
@@ -468,7 +468,7 @@ async def test_async_step_reauth_verify_mfa_incomplete_account_parametrized(
     config_entry: MockConfigEntry,
     myair_client: MagicMock,
 ) -> None:
-    """Parametrized: Test async_step_reauth_verify_mfa aborts or shows form for incomplete account in all branches."""
+    """Reauth MFA branches either abort or keep the form for incomplete accounts."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {
@@ -534,7 +534,7 @@ async def test_get_device_variants(
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test get_device behavior across connection and device data variants."""
+    """`get_device` handles connection outcomes and device payload variants."""
     mock_client = myair_client
     if isinstance(connect_return, Exception):
         mock_client.connect = AsyncMock(side_effect=connect_return)
@@ -600,7 +600,7 @@ async def test_get_mfa_device_variants(
     raises: type[BaseException] | None,
     myair_client: MagicMock,
 ) -> None:
-    """Test get_mfa_device behavior across MFA and device-data branches."""
+    """`get_mfa_device` handles MFA outcomes and follow-up device fetches."""
     mock_client = myair_client
     if verify_side_effect:
         mock_client.verify_mfa_and_get_access_token = AsyncMock(side_effect=verify_side_effect)
@@ -633,7 +633,7 @@ async def test_get_mfa_device_variants(
 async def test_get_device_passes_device_token(
     hass: MagicMock, myair_client: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test get_device passes device_token to MyAirConfig."""
+    """`get_device` forwards the device token into `MyAirConfig`."""
     mock_client = myair_client
     mock_client.connect = AsyncMock(return_value=AUTHN_SUCCESS)
     mock_client.get_user_device_data = AsyncMock(return_value=MyAirDevice.from_api({}))
@@ -652,7 +652,7 @@ async def test_get_device_passes_device_token(
 async def test_async_step_verify_mfa_success(
     flow: MyAirConfigFlow, myair_client: RESTClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test successful MFA verification step creates entry with correct data."""
+    """Successful MFA verification creates the entry with the persisted token."""
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user"}
     user_input: dict[str, str] = {CONF_VERIFICATION_CODE: "123456"}
@@ -691,7 +691,7 @@ async def test_async_step_verify_mfa_status_variants(
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parametrized: verify that when MFA status is not AUTHN_SUCCESS the flow shows the correct form and error."""
+    """Non-success MFA statuses keep the flow on the correct error form."""
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user"}
     user_input = {CONF_VERIFICATION_CODE: "badcode"}
@@ -713,7 +713,7 @@ async def test_async_step_verify_mfa_status_variants(
 async def test_async_step_verify_mfa_auth_error_exception(
     flow: MyAirConfigFlow, myair_client: RESTClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test async_step_verify_mfa shows form with error on AuthenticationError."""
+    """Authentication errors keep MFA verification on the form."""
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user"}
     user_input = {CONF_VERIFICATION_CODE: "badcode"}
@@ -733,7 +733,7 @@ async def test_async_step_verify_mfa_auth_error_exception(
 async def test_async_step_verify_mfa_no_user_input_shows_form(
     flow: MyAirConfigFlow,
 ) -> None:
-    """Test async_step_verify_mfa shows form if no user_input is provided."""
+    """Missing MFA input keeps verification on the form."""
     # Intentionally use a non-spec MagicMock here so the flow treats the
     # client as NOT an instance of RESTClient (forces the non-RESTClient path).
     flow._client = MagicMock()
@@ -748,7 +748,7 @@ async def test_async_step_verify_mfa_no_user_input_shows_form(
 async def test_async_step_reauth_calls_confirm(
     hass: MagicMock, config_entry: MockConfigEntry
 ) -> None:
-    """Ensure reauth entry route calls the reauth confirm step and populates data."""
+    """The reauth entry route loads entry data before calling confirm."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow.context = {"entry_id": "123"}
@@ -772,7 +772,7 @@ async def test_async_step_reauth_calls_confirm(
 async def test_async_step_user_not_device_or_not_authn_success(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock
 ) -> None:
-    """Test async_step_user when NOT (device and status == AUTHN_SUCCESS)."""
+    """A non-success device lookup advances the flow to MFA verification."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -800,7 +800,7 @@ async def test_async_step_user_not_device_or_not_authn_success(
 async def test_async_step_user_device_missing_serial_number(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock
 ) -> None:
-    """Test async_step_user shows form with error if 'serialNumber' not in device."""
+    """Missing device serial numbers keep the user step on its form."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -828,7 +828,7 @@ async def test_async_step_user_device_missing_serial_number(
 async def test_async_step_verify_mfa_parsing_error(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock, myair_client: MagicMock
 ) -> None:
-    """Test async_step_verify_mfa handles ParsingError and shows form with error."""
+    """Parsing errors keep MFA verification on the form with an error."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -854,7 +854,7 @@ async def test_async_step_reauth_verify_mfa_user_input_and_restclient(
     config_entry: MockConfigEntry,
     myair_client: MagicMock,
 ) -> None:
-    """Test async_step_reauth_verify_mfa covers if user_input and isinstance(self._client, RESTClient)."""
+    """Reauth MFA completion persists the device token for REST clients."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -896,7 +896,7 @@ async def test_async_step_reauth_verify_mfa_parsing_error(
     config_entry: MockConfigEntry,
     myair_client: MagicMock,
 ) -> None:
-    """Test async_step_reauth_verify_mfa handles ParsingError and shows form with error."""
+    """Parsing errors keep reauth MFA on the form with an error."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -920,7 +920,7 @@ async def test_async_step_reauth_verify_mfa_parsing_error(
 async def test_async_step_verify_mfa_incomplete_account_new(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock, myair_client: MagicMock
 ) -> None:
-    """Test async_step_verify_mfa handles IncompleteAccountError and aborts."""
+    """Incomplete-account MFA failures abort after the email check."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -946,7 +946,7 @@ async def test_async_step_verify_mfa_incomplete_account_new(
 
 @pytest.mark.asyncio
 async def test_async_step_reauth_no_entry(hass: MagicMock) -> None:
-    """Test async_step_reauth raises UnknownEntry if entry is not found."""
+    """Reauth aborts when the referenced config entry no longer exists."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     # Simulate async_get_entry returning None
@@ -962,7 +962,7 @@ async def test_async_step_reauth_no_entry(hass: MagicMock) -> None:
 async def test_async_step_reauth_confirm_missing_serial_number(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock, config_entry: MockConfigEntry
 ) -> None:
-    """Test async_step_reauth_confirm shows form with error if 'serialNumber' not in device."""
+    """Missing device serial numbers keep reauth confirm on its form."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {
@@ -1007,7 +1007,7 @@ async def test_async_step_reauth_confirm_exceptions(
     hass: MagicMock,
     config_entry: MockConfigEntry,
 ) -> None:
-    """Parametrized: reauth confirm maps client exceptions to form errors/abort reasons."""
+    """Reauth confirm maps client exceptions to the expected error path."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {
@@ -1041,7 +1041,7 @@ async def test_async_step_reauth_confirm_exceptions(
 async def test_async_step_verify_mfa_incomplete_account_email_check_exception(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock, myair_client: MagicMock
 ) -> None:
-    """Test async_step_verify_mfa IncompleteAccountError with ParsingError in is_email_verified."""
+    """Parsing errors in the email check preserve the incomplete-account abort."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -1080,7 +1080,7 @@ async def test_async_step_user_incomplete_account_parametrized(
     hass: MagicMock,
     myair_client: MagicMock,
 ) -> None:
-    """Parametrized: Test async_step_user aborts for incomplete account in all branches."""
+    """User-step incomplete-account branches all converge on aborts."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {CONF_USER_NAME: "user"}
@@ -1124,7 +1124,7 @@ async def test_async_step_user_incomplete_account_email_check_transport_error(
     myair_client: MagicMock,
     email_error: Exception,
 ) -> None:
-    """Transient email-verification transport failures should preserve the abort."""
+    """Transient email-check transport failures still preserve the abort."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {CONF_USER_NAME: "user"}
@@ -1148,7 +1148,7 @@ async def test_async_step_user_incomplete_account_email_check_transport_error(
 async def test_async_step_verify_mfa_incomplete_account_email_verified(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock, myair_client: MagicMock
 ) -> None:
-    """Test async_step_verify_mfa IncompleteAccountError with is_email_verified True (NOT branch)."""
+    """Verified email state still aborts incomplete-account MFA attempts."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {CONF_USER_NAME: "user"}
@@ -1175,7 +1175,7 @@ async def test_async_step_verify_mfa_incomplete_account_email_verified(
 async def test_async_step_verify_mfa_status_not_authn_success(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock, myair_client: MagicMock
 ) -> None:
-    """Test async_step_verify_mfa when status is NOT AUTHN_SUCCESS (should show form with mfa_error)."""
+    """Non-success MFA statuses keep verification on the error form."""
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {CONF_USER_NAME: "user"}

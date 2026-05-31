@@ -1,4 +1,4 @@
-"""Parametrized tests for both client and integration helpers."""
+"""Shared redaction tests that exercise both helper import paths."""
 
 import importlib
 from typing import Any
@@ -52,10 +52,15 @@ MODULE_IDS = [p.replace("custom_components.resmed_myair.", "") for p in MODULE_P
 
 
 def _replace_placeholder(obj: Any, placeholder: str, replacement: Any) -> Any:
-    """Recursively replace placeholder strings in expected structures.
+    """Recursively replace placeholder values in nested expected structures.
 
-    This allows writing expected values with a sentinel and then substituting
-    the actual module REDACTED constant at test time.
+    Args:
+        obj: Nested object graph to traverse.
+        placeholder: Sentinel string to replace.
+        replacement: Value to substitute for the sentinel.
+
+    Returns:
+        A structure with matching placeholder strings replaced in place.
     """
     if isinstance(obj, str):
         return replacement if obj == placeholder else obj
@@ -70,12 +75,7 @@ def _replace_placeholder(obj: Any, placeholder: str, replacement: Any) -> Any:
 
 @pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
 def test_redact_dict_equivalence(monkeypatch: pytest.MonkeyPatch, module_path: str) -> None:
-    """Run the common redact_dict test vectors against both implementations.
-
-    The test monkeypatches the shared redaction module KEYS_TO_REDACT and
-    swaps the '<REDACTED>' sentinel in the expected outputs with the module's
-    REDACTED constant.
-    """
+    """Both helper modules redact the same nested values and sentinels."""
     module = importlib.import_module(module_path)
     monkeypatch.setattr(
         redaction,
@@ -93,7 +93,7 @@ def test_redact_dict_equivalence(monkeypatch: pytest.MonkeyPatch, module_path: s
 
 @pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
 def test_redact_dict_empty_and_trivial(monkeypatch: pytest.MonkeyPatch, module_path: str) -> None:
-    """Ensure redact_dict handles empty/trivial inputs for both implementations."""
+    """Both helper modules leave empty and trivial containers unchanged."""
     module = importlib.import_module(module_path)
     monkeypatch.setattr(
         redaction,
@@ -108,7 +108,7 @@ def test_redact_dict_empty_and_trivial(monkeypatch: pytest.MonkeyPatch, module_p
 
 @pytest.mark.parametrize("module_path", MODULE_PATHS, ids=MODULE_IDS)
 def test_helpers_reexport_shared_redactor_and_constants(module_path: str) -> None:
-    """Both helper import paths expose the shared redactor and redaction constant."""
+    """Both helper import paths re-export the shared redactor constant."""
     module = importlib.import_module(module_path)
 
     assert module.redact_dict is redaction.redact_dict

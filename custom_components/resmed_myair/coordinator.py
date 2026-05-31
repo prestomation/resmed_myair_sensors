@@ -16,7 +16,7 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
-    """DataUpdateCoordinator for myAir."""
+    """Fetch and cache the typed myAir payload consumed by sensor entities."""
 
     myair_client: MyAirClient
 
@@ -26,7 +26,13 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         config_entry: ConfigEntry,
         myair_client: MyAirClient,
     ) -> None:
-        """Initialize DataUpdateCoordinator for ResMed myAir."""
+        """Configure periodic myAir polling for a config entry.
+
+        Args:
+            hass: Home Assistant instance running the coordinator.
+            config_entry: myAir config entry associated with this coordinator.
+            myair_client: Client used to authenticate and fetch myAir data.
+        """
         _LOGGER.info("Initializing DataUpdateCoordinator for ResMed myAir")
         self.myair_client = myair_client
         super().__init__(
@@ -38,7 +44,14 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         )
 
     async def _async_update_data(self) -> MyAirCoordinatorData:
-        """Fetch data from the myAir client and store it in the coordinator."""
+        """Refresh auth, device metadata, and recent sleep records.
+
+        Returns:
+            Typed coordinator payload containing any data available from myAir.
+
+        Raises:
+            ConfigEntryAuthFailed: When myAir authentication must be repaired by reauth.
+        """
         _LOGGER.info("Updating from myAir")
 
         try:

@@ -67,10 +67,10 @@ def _safe_auth_log_payload(data: Any) -> Any:
 
 
 class MyAirAuthSession:
-    """Encapsulate authentication/session concerns for the myAir REST flow."""
+    """Maintain Okta, OAuth, cookie, and token state for the myAir REST flow."""
 
     def __init__(self, config: MyAirConfig, session: ClientSession) -> None:
-        """Initialize auth session state.
+        """Prepare regional endpoints and mutable credential state for login.
 
         Args:
             config: Parsed user config.
@@ -97,52 +97,77 @@ class MyAirAuthSession:
 
     @property
     def access_token(self) -> str | None:
-        """Return the active access token."""
+        """Expose the bearer token used for AppSync and userinfo requests."""
         return self._access_token
 
     @access_token.setter
     def access_token(self, value: str | None) -> None:
+        """Replace the bearer token after an OAuth exchange or test setup.
+
+        Args:
+            value: New access token, or ``None`` to clear cached auth state.
+        """
         self._access_token = value
 
     @property
     def id_token(self) -> str | None:
-        """Return the active id token."""
+        """Expose the ID token that contains myAir region claims."""
         return self._id_token
 
     @id_token.setter
     def id_token(self, value: str | None) -> None:
+        """Replace the ID token used to derive GraphQL country headers.
+
+        Args:
+            value: New ID token, or ``None`` when token exchange has not completed.
+        """
         self._id_token = value
 
     @property
     def state_token(self) -> str | None:
-        """Return the current state token."""
+        """Expose the Okta state token needed to continue MFA verification."""
         return self._state_token
 
     @state_token.setter
     def state_token(self, value: str | None) -> None:
+        """Store the Okta state token returned by primary authentication.
+
+        Args:
+            value: State token from Okta authn, or ``None`` to reset MFA state.
+        """
         self._state_token = value
 
     @property
     def session_token(self) -> str | None:
-        """Return the current session token."""
+        """Expose the Okta session token exchanged for OAuth tokens."""
         return self._session_token
 
     @session_token.setter
     def session_token(self, value: str | None) -> None:
+        """Store the Okta session token produced by password or MFA auth.
+
+        Args:
+            value: Session token from Okta, or ``None`` before auth succeeds.
+        """
         self._session_token = value
 
     @property
     def device_token(self) -> str | None:
-        """Return the DT cookie value."""
+        """Expose the remembered-device DT cookie used to reduce MFA prompts."""
         return self._cookie_dt
 
     @device_token.setter
     def device_token(self, value: str | None) -> None:
+        """Persist the remembered-device DT cookie from Okta responses.
+
+        Args:
+            value: DT cookie value, or ``None`` when no remembered device is available.
+        """
         self._cookie_dt = value
 
     @property
     def _cookies(self) -> dict[str, Any]:
-        """Build cookie map with DT and sid entries."""
+        """Build the auth cookie map expected by Okta requests."""
         cookies: dict[str, Any] = {}
         if self._cookie_dt:
             cookies["DT"] = self._cookie_dt
@@ -152,83 +177,127 @@ class MyAirAuthSession:
 
     @property
     def region_config(self) -> RegionConfig:
-        """Access region settings."""
+        """Expose endpoint and client IDs for the configured myAir region."""
         return self._region_config
 
     @region_config.setter
     def region_config(self, value: RegionConfig) -> None:
+        """Override regional endpoint settings for compatibility tests.
+
+        Args:
+            value: Region configuration to use for subsequent auth requests.
+        """
         self._region_config = value
 
     @property
     def email_factor_id(self) -> str:
-        """Access MFA email factor id."""
+        """Expose the Okta email factor used when triggering MFA."""
         return self._email_factor_id
 
     @email_factor_id.setter
     def email_factor_id(self, value: str) -> None:
+        """Store the MFA factor discovered from Okta authn metadata.
+
+        Args:
+            value: Email factor ID to use for MFA verification requests.
+        """
         self._email_factor_id = value
 
     @property
     def mfa_url(self) -> str:
-        """Access MFA verification URL."""
+        """Expose the Okta endpoint for the active MFA challenge."""
         return self._mfa_url
 
     @mfa_url.setter
     def mfa_url(self, value: str) -> None:
+        """Store the verification URL advertised by the current MFA challenge.
+
+        Args:
+            value: Fully qualified Okta factor verification URL.
+        """
         self._mfa_url = value
 
     @property
     def cookie_sid(self) -> str | None:
-        """Access sid cookie."""
+        """Expose the Okta session cookie captured during auth redirects."""
         return self._cookie_sid
 
     @cookie_sid.setter
     def cookie_sid(self, value: str | None) -> None:
+        """Store the Okta ``sid`` cookie for subsequent auth calls.
+
+        Args:
+            value: Session cookie value, or ``None`` when unavailable.
+        """
         self._cookie_sid = value
 
     @property
     def uses_mfa(self) -> bool:
-        """Access whether MFA is currently required."""
+        """Expose whether the current account required MFA during authn."""
         return self._uses_mfa
 
     @uses_mfa.setter
     def uses_mfa(self, value: bool) -> None:
+        """Record whether the active auth flow is waiting for MFA.
+
+        Args:
+            value: ``True`` when Okta returned ``MFA_REQUIRED``.
+        """
         self._uses_mfa = value
 
     @property
     def cookies(self) -> dict[str, Any]:
-        """Compatibility cookie map."""
+        """Expose the current Okta cookies without allowing direct mutation."""
         return self._cookies
 
     def set_error_checker(self, checker: _ErrorCheck) -> None:
-        """Set the error-check callback used by auth REST calls."""
+        """Inject the response validator used by RESTClient compatibility wrappers.
+
+        Args:
+            checker: Coroutine that maps ResMed response payloads to typed exceptions.
+        """
         self._resmed_error_checker = checker
 
     @property
     def country_code(self) -> str | None:
-        """Return the last resolved country code from token decoding."""
+        """Expose the cached myAir country code decoded from the ID token."""
         return self._country_code
 
     @country_code.setter
     def country_code(self, value: str | None) -> None:
+        """Cache the GraphQL country code derived from token claims.
+
+        Args:
+            value: myAir country code, or ``None`` to force token decoding later.
+        """
         self._country_code = value
 
     @property
     def json_headers(self) -> dict[str, Any]:
-        """Access request headers used for JSON payloads."""
+        """Expose the JSON headers sent to Okta auth endpoints."""
         return self._json_headers
 
     @json_headers.setter
     def json_headers(self, value: Mapping[str, Any]) -> None:
+        """Replace JSON headers while preserving an owned mutable copy.
+
+        Args:
+            value: Header mapping used for subsequent JSON requests.
+        """
         self._json_headers = dict(value)
 
     @property
     def cookie_dt(self) -> str | None:
-        """Expose DT cookie for compatibility."""
+        """Expose the remembered-device cookie under the legacy attribute name."""
         return self._cookie_dt
 
     @cookie_dt.setter
     def cookie_dt(self, value: str | None) -> None:
+        """Set the remembered-device cookie through the legacy attribute name.
+
+        Args:
+            value: DT cookie value, or ``None`` when clearing auth state.
+        """
         self._cookie_dt = value
 
     @staticmethod
@@ -238,7 +307,14 @@ class MyAirAuthSession:
         resp_dict: MutableMapping[str, Any],
         initial: bool | None = False,
     ) -> None:
-        """Public alias for shared response error handling."""
+        """Validate a ResMed response without requiring a session instance.
+
+        Args:
+            step: Human-readable auth or GraphQL step name for diagnostics.
+            response: aiohttp response object that supplied the payload.
+            resp_dict: Decoded response payload to inspect.
+            initial: Whether the failing call was part of the initial config flow.
+        """
         return await MyAirAuthSession._resmed_response_error_check(
             step, response, resp_dict, initial
         )
@@ -250,7 +326,14 @@ class MyAirAuthSession:
         resp_dict: MutableMapping[str, Any],
         initial: bool | None = False,
     ) -> None:
-        """Run configured error check implementation."""
+        """Apply the injected response validator to auth and token calls.
+
+        Args:
+            step: Human-readable auth step name for error messages.
+            response: aiohttp response object being validated.
+            resp_dict: Decoded response payload from ResMed or Okta.
+            initial: Whether the call belongs to initial setup.
+        """
         await self._resmed_error_checker(step, response, resp_dict, initial)
 
     async def connect(
@@ -263,7 +346,20 @@ class MyAirAuthSession:
         trigger_mfa: _AsyncNoArgs | None = None,
         get_access_token: _AsyncNoArgs | None = None,
     ) -> str:
-        """Run the initial auth/connect logic."""
+        """Authenticate or reuse existing credentials for a myAir session.
+
+        Args:
+            initial: Whether this is the first config-flow attempt, when MFA may be
+                triggered instead of reported as a reauth failure.
+            get_initial_dt: Optional cookie bootstrap implementation for tests.
+            is_access_token_active: Optional token introspection implementation.
+            authn_check: Optional primary Okta auth implementation.
+            trigger_mfa: Optional MFA trigger implementation.
+            get_access_token: Optional OAuth token exchange implementation.
+
+        Returns:
+            Okta auth status, such as ``SUCCESS`` or ``MFA_REQUIRED``.
+        """
         _get_initial_dt = get_initial_dt or self._get_initial_dt
         _is_access_token_active = is_access_token_active or self._is_access_token_active
         _authn_check = authn_check or self._authn_check
@@ -295,7 +391,16 @@ class MyAirAuthSession:
         verify_mfa: _AsyncAuthVerify | None = None,
         get_access_token: _AsyncNoArgs | None = None,
     ) -> str:
-        """Confirm valid MFA and obtain access token."""
+        """Complete an MFA challenge and exchange the resulting session token.
+
+        Args:
+            verification_code: Email MFA code entered by the user.
+            verify_mfa: Optional MFA verification implementation for tests.
+            get_access_token: Optional OAuth exchange implementation for tests.
+
+        Returns:
+            Okta success status after MFA verification.
+        """
         _verify_mfa = verify_mfa or self._verify_mfa
         _get_access_token = get_access_token or self._get_access_token
         status: str = await _verify_mfa(verification_code)
@@ -306,7 +411,11 @@ class MyAirAuthSession:
         return status
 
     async def is_email_verified(self) -> bool:
-        """Check if email address is marked as verified."""
+        """Check Okta userinfo for the account email-verification flag.
+
+        Returns:
+            ``True`` when Okta reports the email address has been verified.
+        """
         userinfo_url: str = self._region_config.userinfo_url
         headers: dict[str, Any] = {
             "Authorization": f"Bearer {self._access_token}",
@@ -331,7 +440,11 @@ class MyAirAuthSession:
         return False
 
     async def _extract_and_update_cookies(self, cookie_headers: list) -> None:
-        """Parse DT and sid cookies from Set-Cookie values."""
+        """Parse remembered-device and session cookies from response headers.
+
+        Args:
+            cookie_headers: Raw ``Set-Cookie`` header values from Okta responses.
+        """
         cookies: dict[str, Any] = {}
         for header in cookie_headers:
             cookie = SimpleCookie(header)
@@ -361,11 +474,19 @@ class MyAirAuthSession:
         )
 
     async def extract_and_update_cookies(self, cookie_headers: list) -> None:
-        """Public compatibility delegate for cookie extraction."""
+        """Update auth cookies through the legacy RESTClient helper.
+
+        Args:
+            cookie_headers: Raw ``Set-Cookie`` header values from Okta responses.
+        """
         await self._extract_and_update_cookies(cookie_headers)
 
     async def _get_initial_dt(self, extract_cookies: _CookieUpdate | None = None) -> None:
-        """Fetch initial authorize response to capture DT cookie."""
+        """Prime the auth session with the remembered-device cookie.
+
+        Args:
+            extract_cookies: Optional cookie extractor used by compatibility tests.
+        """
         _extract_cookies = extract_cookies or self._extract_and_update_cookies
         initial_dt_url: str = self._region_config.authorize_url
         _LOGGER.debug("[get_initial_dt] initial_dt_url: %s", initial_dt_url)
@@ -383,11 +504,19 @@ class MyAirAuthSession:
         await _extract_cookies(initial_dt_res.headers.getall("set-cookie", []))
 
     async def get_initial_dt(self, extract_cookies: _CookieUpdate | None = None) -> None:
-        """Public compatibility delegate for initial DT retrieval."""
+        """Prime the remembered-device cookie through the public helper.
+
+        Args:
+            extract_cookies: Optional cookie extractor used by compatibility tests.
+        """
         await self._get_initial_dt(extract_cookies)
 
     async def _is_access_token_active(self) -> bool:
-        """Check whether current access token still reports active."""
+        """Ask Okta introspection whether the cached access token is reusable.
+
+        Returns:
+            ``True`` when Okta marks the cached access token active.
+        """
         introspect_url: str = self._region_config.introspect_url
         headers: dict[str, Any] = {
             "Accept": "application/json",
@@ -420,7 +549,11 @@ class MyAirAuthSession:
         return False
 
     async def is_access_token_active(self) -> bool:
-        """Public compatibility delegate for access-token activity check."""
+        """Check cached access-token validity through the public helper.
+
+        Returns:
+            ``True`` when the access token can be reused.
+        """
         return await self._is_access_token_active()
 
     @staticmethod
@@ -430,7 +563,20 @@ class MyAirAuthSession:
         resp_dict: MutableMapping[str, Any],
         initial: bool | None = False,
     ) -> None:
-        """Raise typed exceptions for ResMed error responses."""
+        """Map ResMed and Okta error payloads to integration exceptions.
+
+        Args:
+            step: Human-readable auth or GraphQL step name for diagnostics.
+            response: aiohttp response object associated with the payload.
+            resp_dict: Decoded response payload to inspect.
+            initial: Whether a GraphQL unauthorized response occurred during setup.
+
+        Raises:
+            AuthenticationError: When credentials or auth state are rejected.
+            IncompleteAccountError: When myAir reports account setup is incomplete.
+            ParsingError: When a non-initial GraphQL request becomes unauthorized.
+            HttpProcessingError: When a structured error exists but has no typed mapping.
+        """
         if "errors" in resp_dict:
             try:
                 if "errorInfo" in resp_dict["errors"][0]:
@@ -466,7 +612,14 @@ class MyAirAuthSession:
             )
 
     async def _authn_check(self) -> str:
-        """Validate primary username/password credentials with Okta."""
+        """Submit username and password to Okta and capture next auth state.
+
+        Returns:
+            Okta status indicating success or that MFA is required.
+
+        Raises:
+            AuthenticationError: When the authn payload is missing required state.
+        """
         authn_url: str = self._region_config.authn_url
         json_query: dict[str, Any] = {
             "username": self._config.username,
@@ -517,11 +670,15 @@ class MyAirAuthSession:
         return status
 
     async def authn_check(self) -> str:
-        """Public compatibility delegate for authn check."""
+        """Expose primary Okta auth for RESTClient compatibility tests.
+
+        Returns:
+            Okta status indicating success or MFA requirement.
+        """
         return await self._authn_check()
 
     async def _trigger_mfa(self) -> None:
-        """Trigger the MFA email flow."""
+        """Ask Okta to send the email MFA challenge for the current state token."""
         json_query: dict[str, Any] = {"passCode": "", "stateToken": self._state_token}
         _LOGGER.debug("[trigger_mfa] mfa_url: %s", self._mfa_url)
         _LOGGER.debug("[trigger_mfa] headers: %s", redact_dict(self._json_headers))
@@ -543,11 +700,21 @@ class MyAirAuthSession:
         _LOGGER.info("Triggered MFA Email")
 
     async def trigger_mfa(self) -> None:
-        """Public compatibility delegate for MFA trigger."""
+        """Send the email MFA challenge through the public helper."""
         await self._trigger_mfa()
 
     async def _verify_mfa(self, verification_code: str) -> str:
-        """Verify MFA code and update session token."""
+        """Submit an email MFA code and store the returned session token.
+
+        Args:
+            verification_code: MFA code supplied by the user.
+
+        Returns:
+            Okta status after code verification.
+
+        Raises:
+            AuthenticationError: When Okta omits expected status or session data.
+        """
         json_query: dict[str, Any] = {
             "passCode": verification_code,
             "stateToken": self._state_token,
@@ -583,14 +750,28 @@ class MyAirAuthSession:
         return status
 
     async def verify_mfa(self, verification_code: str) -> str:
-        """Public compatibility delegate for MFA verification."""
+        """Verify an email MFA code through the public helper.
+
+        Args:
+            verification_code: MFA code supplied by the user.
+
+        Returns:
+            Okta status after code verification.
+        """
         return await self._verify_mfa(verification_code)
 
     async def _get_access_token(
         self,
         extract_cookies: _CookieUpdate | None = None,
     ) -> None:
-        """Exchange session token for an access and id token."""
+        """Exchange the Okta session token for OAuth access and ID tokens.
+
+        Args:
+            extract_cookies: Optional cookie extractor used by compatibility tests.
+
+        Raises:
+            ParsingError: When Okta redirects or token payloads omit required fields.
+        """
         _extract_cookies = extract_cookies or self._extract_and_update_cookies
         # myAir uses Authorization Code with PKCE, so we generate our verifier here
         code_verifier: str = base64.urlsafe_b64encode(os.urandom(40)).decode("utf-8")
@@ -693,5 +874,9 @@ class MyAirAuthSession:
                 self._access_token = access_token
 
     async def get_access_token(self, extract_cookies: _CookieUpdate | None = None) -> None:
-        """Public compatibility delegate for token exchange."""
+        """Expose OAuth token exchange for RESTClient compatibility tests.
+
+        Args:
+            extract_cookies: Optional cookie extractor used by compatibility tests.
+        """
         await self._get_access_token(extract_cookies)
