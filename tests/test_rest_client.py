@@ -107,6 +107,7 @@ def test_rest_client_init_region(
 @pytest.mark.parametrize(
     ("property_name", "new_value"),
     [
+        ("_country_code", "US"),
         ("_json_headers", {"Accept": "application/json"}),
         ("_region_config", EU_CONFIG),
         ("_email_factor_id", "email-factor-id"),
