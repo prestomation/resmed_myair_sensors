@@ -32,20 +32,38 @@ _ErrorCheck = Callable[
 ]
 _CookieUpdate = Callable[[list], Awaitable[None]]
 _AUTH_LOG_SECRET_KEYS: frozenset[str] = frozenset(
-    {"code", "code_verifier", "passCode", "sessionToken", "stateToken"}
+    {
+        "Authorization",
+        "access_token",
+        "code",
+        "code_verifier",
+        "id_token",
+        "passCode",
+        "sessionToken",
+        "stateToken",
+        "token",
+    }
 )
 
 
-def _safe_auth_log_payload(data: Mapping[str, Any]) -> dict[str, Any]:
+def _safe_auth_log_payload(data: Any) -> Any:
     """Remove auth-flow-only secret keys before debug logging.
 
     Args:
         data: Payload that may contain Okta or OAuth credentials.
 
     Returns:
-        A shallow copy with known secret-bearing fields omitted.
+        A copy with known secret-bearing fields omitted recursively.
     """
-    return {key: value for key, value in data.items() if key not in _AUTH_LOG_SECRET_KEYS}
+    if isinstance(data, Mapping):
+        return {
+            key: _safe_auth_log_payload(value)
+            for key, value in data.items()
+            if key not in _AUTH_LOG_SECRET_KEYS
+        }
+    if isinstance(data, list):
+        return [_safe_auth_log_payload(value) for value in data]
+    return data
 
 
 class MyAirAuthSession:
@@ -517,7 +535,10 @@ class MyAirAuthSession:
         ) as trigger_mfa_res:
             _LOGGER.debug("[trigger_mfa] trigger_mfa_res: %s", trigger_mfa_res)
             trigger_mfa_dict: MutableMapping[str, Any] = await trigger_mfa_res.json()
-            _LOGGER.debug("[trigger_mfa] trigger_mfa_dict: %s", redact_dict(trigger_mfa_dict))
+            _LOGGER.debug(
+                "[trigger_mfa] trigger_mfa_dict: %s",
+                _safe_auth_log_payload(trigger_mfa_dict),
+            )
             await self._run_error_check("trigger_mfa", trigger_mfa_res, trigger_mfa_dict)
         _LOGGER.info("Triggered MFA Email")
 

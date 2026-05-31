@@ -622,6 +622,49 @@ async def test_verify_mfa_debug_logs_do_not_expose_mfa_secrets(
 
 
 @pytest.mark.asyncio
+async def test_trigger_mfa_debug_logs_do_not_expose_auth_flow_secrets(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MFA trigger debug logging avoids state, session, and passcode values."""
+    client = RESTClient(config_na, session)
+    client._state_token = "dummy_state_token"
+    client._mfa_url = "https://example.com/mfa"
+    mock_response = make_mock_aiohttp_response(
+        json_value={
+            "status": "MFA_CHALLENGE_SENT",
+            "stateToken": "response_state_token",
+            "sessionToken": "response_session_token",
+            "_embedded": {"verification": {"passCode": "nested_pass_code"}},
+        }
+    )
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
+    error_check = AsyncMock()
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", error_check)
+
+    with caplog.at_level(logging.DEBUG):
+        await client._trigger_mfa()
+
+    mock_response.json.assert_awaited_once()
+    error_check.assert_awaited_once_with(
+        "trigger_mfa",
+        mock_response,
+        {
+            "status": "MFA_CHALLENGE_SENT",
+            "stateToken": "response_state_token",
+            "sessionToken": "response_session_token",
+            "_embedded": {"verification": {"passCode": "nested_pass_code"}},
+        },
+        False,
+    )
+    assert "response_state_token" not in caplog.text
+    assert "response_session_token" not in caplog.text
+    assert "nested_pass_code" not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_get_access_token_debug_logs_do_not_expose_oauth_secrets(
     config_na: MyAirConfig,
     session: MagicMock,
