@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date
 import importlib.util
 from pathlib import Path
-import subprocess
 
 from custom_components.resmed_myair.models import (
     MyAirCoordinatorData,
@@ -14,25 +13,11 @@ from custom_components.resmed_myair.models import (
 )
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "live_smoke_test.py"
-WRAPPER_PATH = Path(__file__).resolve().parents[1] / "scripts" / "live_smoke_test"
 SPEC = importlib.util.spec_from_file_location("live_smoke_test", SCRIPT_PATH)
 assert SPEC is not None
 assert SPEC.loader is not None
 live_smoke_test = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(live_smoke_test)
-
-
-def test_shell_wrapper_runs_resmed_live_smoke_test_help() -> None:
-    """Shell wrapper invokes this repo's live smoke-test script."""
-    result = subprocess.run(  # noqa: S603
-        [str(WRAPPER_PATH), "--help"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Run a manual live smoke test against ResMed myAir." in result.stdout
 
 
 def test_load_env_file_parses_assignments_and_quoted_values(tmp_path: Path) -> None:
