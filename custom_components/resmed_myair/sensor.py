@@ -3,14 +3,14 @@
 from datetime import date
 import logging
 import re
-from typing import Any, Final, cast
+from typing import Any, Final
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -116,7 +116,7 @@ async def async_setup_entry(
     hass.services.async_register(DOMAIN, f"force_poll_{sanitized_username}", refresh)
 
 
-class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
+class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntity):
     """Common entity identity and coordinator plumbing for myAir sensors."""
 
     def __init__(
@@ -132,7 +132,7 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
             sensor_desc: Description containing the API key and HA metadata.
             coordinator: Data coordinator that supplies device and sleep payloads.
         """
-        super().__init__(cast("DataUpdateCoordinator[dict[str, Any]]", coordinator))
+        super().__init__(coordinator)
         self.sensor_key: Final[str] = sensor_desc.key
         self.coordinator: MyAirDataUpdateCoordinator = coordinator
         device_data: MyAirDevice | None = _coordinator_data(coordinator).device
