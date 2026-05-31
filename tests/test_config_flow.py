@@ -51,6 +51,89 @@ def flow(hass: MagicMock) -> MyAirConfigFlow:
     return flow
 
 
+def _credential_data(
+    username: str,
+    password: str,
+    region: str,
+    device_token: str | None = None,
+) -> dict[str, str]:
+    """Return config-entry credential data for tests.
+
+    Args:
+        username: myAir account username.
+        password: myAir account password.
+        region: myAir region code.
+        device_token: Optional remembered-device token.
+
+    Returns:
+        Credential data shaped like a config-entry payload.
+    """
+    data = {
+        CONF_USER_NAME: username,
+        CONF_PASSWORD: password,
+        CONF_REGION: region,
+    }
+    if device_token is not None:
+        data[CONF_DEVICE_TOKEN] = device_token
+    return data
+
+
+def _reconfigure_entry(
+    unique_id: str | None = "SN123",
+    *,
+    entry_id: str = "mock_entry_id",
+    title: str = "ResMed-CPAP",
+    username: str = "old@example.com",
+) -> MockConfigEntry:
+    """Return a config entry shaped for reconfigure flow tests.
+
+    Args:
+        unique_id: Existing config-entry unique ID, or `None` for legacy entries.
+        entry_id: Config-entry ID to expose through flow context.
+        title: Config-entry title.
+        username: Stored account username.
+
+    Returns:
+        Mock config entry with myAir credential data.
+    """
+    return MockConfigEntry(
+        domain="resmed_myair",
+        title=title,
+        data=_credential_data(username, "old-password", REGION_NA, "old-token"),
+        entry_id=entry_id,
+        unique_id=unique_id,
+        version=2,
+    )
+
+
+def _prepare_reconfigure_flow(
+    flow: MyAirConfigFlow,
+    config_entry: MockConfigEntry,
+    myair_client: MagicMock,
+    *,
+    existing_unique_id_entry: MockConfigEntry | None = None,
+    flow_data: dict[str, str] | None = None,
+) -> None:
+    """Wire a config flow to an entry for reconfigure tests.
+
+    Args:
+        flow: Config flow under test.
+        config_entry: Entry returned by Home Assistant's known-entry lookup.
+        myair_client: REST client double held by the flow.
+        existing_unique_id_entry: Optional entry returned for duplicate unique ID lookup.
+        flow_data: Optional transient flow data to preload.
+    """
+    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+    flow._client = myair_client
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow.hass.config_entries.async_entry_for_domain_unique_id = MagicMock(
+        return_value=existing_unique_id_entry
+    )
+    flow.hass.config_entries.async_schedule_reload = MagicMock()
+    if flow_data is not None:
+        flow._data = flow_data
+
+
 @pytest.mark.parametrize("language", TRANSLATION_LANGUAGES)
 def test_config_flow_abort_reasons_have_translations(language: str) -> None:
     """All config-flow abort reasons have localized strings."""
@@ -677,24 +760,12 @@ async def test_async_step_reauth_calls_confirm(
 
 @pytest.mark.asyncio
 async def test_async_step_reconfigure_success_updates_entry_and_schedules_reload(
-    hass: MagicMock,
+    flow: MyAirConfigFlow,
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Reconfigure validates the same device before updating setup data."""
-    config_entry = MockConfigEntry(
-        domain="resmed_myair",
-        title="ResMed-CPAP",
-        data={
-            CONF_USER_NAME: "old@example.com",
-            CONF_PASSWORD: "old-password",
-            CONF_REGION: REGION_NA,
-            CONF_DEVICE_TOKEN: "old-token",
-        },
-        entry_id="mock_entry_id",
-        unique_id="SN123",
-        version=2,
-    )
+    config_entry = _reconfigure_entry()
     device = MyAirDevice.from_api(
         {
             "serialNumber": "SN123",
@@ -708,11 +779,7 @@ async def test_async_step_reconfigure_success_updates_entry_and_schedules_reload
         "get_device",
         AsyncMock(return_value=(AUTHN_SUCCESS, device, myair_client)),
     )
-    hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
-    hass.config_entries.async_schedule_reload = MagicMock()
-    flow = MyAirConfigFlow()
-    flow.hass = hass
-    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+    _prepare_reconfigure_flow(flow, config_entry, myair_client)
 
     result = await flow.async_step_reconfigure(
         {
@@ -727,22 +794,19 @@ async def test_async_step_reconfigure_success_updates_entry_and_schedules_reload
     get_device_mock = config_flow.get_device
     assert isinstance(get_device_mock, AsyncMock)
     get_device_mock.assert_awaited_once_with(
-        hass,
+        flow.hass,
         "new@example.com",
         "new-password",
         REGION_EU,
         "old-token",
     )
-    hass.config_entries.async_get_known_entry.assert_any_call("mock_entry_id")
-    _, kwargs = hass.config_entries.async_update_entry.call_args
+    flow.hass.config_entries.async_get_known_entry.assert_any_call("mock_entry_id")
+    _, kwargs = flow.hass.config_entries.async_update_entry.call_args
     assert kwargs["entry"] is config_entry
-    assert kwargs["data"] == {
-        CONF_USER_NAME: "new@example.com",
-        CONF_PASSWORD: "new-password",
-        CONF_REGION: REGION_EU,
-        CONF_DEVICE_TOKEN: "new-token",
-    }
-    hass.config_entries.async_schedule_reload.assert_called_once_with("mock_entry_id")
+    assert kwargs["data"] == _credential_data(
+        "new@example.com", "new-password", REGION_EU, "new-token"
+    )
+    flow.hass.config_entries.async_schedule_reload.assert_called_once_with("mock_entry_id")
 
 
 @pytest.mark.asyncio
@@ -774,32 +838,14 @@ async def test_async_step_reconfigure_backfills_legacy_entry_unique_id(
     user_input: dict[str, str],
 ) -> None:
     """Reconfigure repairs legacy entries that have no unique ID."""
-    config_entry = MockConfigEntry(
-        domain="resmed_myair",
-        title="ResMed-CPAP",
-        data={
-            CONF_USER_NAME: "old@example.com",
-            CONF_PASSWORD: "old-password",
-            CONF_REGION: REGION_NA,
-            CONF_DEVICE_TOKEN: "old-token",
-        },
-        entry_id="mock_entry_id",
-        unique_id=None,
-        version=2,
+    flow_data = (
+        _credential_data("new@example.com", "new-password", REGION_EU, "old-token")
+        if step_name == "async_step_reconfigure_verify_mfa"
+        else None
     )
-    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
-    flow._client = myair_client
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
-    flow.hass.config_entries.async_entry_for_domain_unique_id = MagicMock(return_value=None)
-    flow.hass.config_entries.async_schedule_reload = MagicMock()
+    config_entry = _reconfigure_entry(unique_id=None)
+    _prepare_reconfigure_flow(flow, config_entry, myair_client, flow_data=flow_data)
     myair_client.device_token = "updated-token"
-    if step_name == "async_step_reconfigure_verify_mfa":
-        flow._data = {
-            CONF_USER_NAME: "new@example.com",
-            CONF_PASSWORD: "new-password",
-            CONF_REGION: REGION_EU,
-            CONF_DEVICE_TOKEN: "old-token",
-        }
     device = MyAirDevice.from_api(
         {
             "serialNumber": "SN123",
@@ -820,12 +866,9 @@ async def test_async_step_reconfigure_backfills_legacy_entry_unique_id(
     assert result["reason"] == "reconfigure_successful"
     _, kwargs = flow.hass.config_entries.async_update_entry.call_args
     assert kwargs["entry"] is config_entry
-    assert kwargs["data"] == {
-        CONF_USER_NAME: "new@example.com",
-        CONF_PASSWORD: "new-password",
-        CONF_REGION: REGION_EU,
-        CONF_DEVICE_TOKEN: "updated-token",
-    }
+    assert kwargs["data"] == _credential_data(
+        "new@example.com", "new-password", REGION_EU, "updated-token"
+    )
     assert kwargs["unique_id"] == "SN123"
     flow.hass.config_entries.async_schedule_reload.assert_called_once_with("mock_entry_id")
 
@@ -859,29 +902,13 @@ async def test_async_step_reconfigure_aborts_on_unverified_device_identity(
     user_input: dict[str, str],
 ) -> None:
     """Reconfigure refuses to update an entry when device identity changes."""
-    config_entry = MockConfigEntry(
-        domain="resmed_myair",
-        title="ResMed-CPAP",
-        data={
-            CONF_USER_NAME: "old@example.com",
-            CONF_PASSWORD: "old-password",
-            CONF_REGION: REGION_NA,
-            CONF_DEVICE_TOKEN: "old-token",
-        },
-        entry_id="mock_entry_id",
-        unique_id="SN123",
-        version=2,
+    flow_data = (
+        _credential_data("new@example.com", "new-password", REGION_EU, "old-token")
+        if step_name == "async_step_reconfigure_verify_mfa"
+        else None
     )
-    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
-    flow._client = myair_client
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
-    if step_name == "async_step_reconfigure_verify_mfa":
-        flow._data = {
-            CONF_USER_NAME: "new@example.com",
-            CONF_PASSWORD: "new-password",
-            CONF_REGION: REGION_EU,
-            CONF_DEVICE_TOKEN: "old-token",
-        }
+    config_entry = _reconfigure_entry()
+    _prepare_reconfigure_flow(flow, config_entry, myair_client, flow_data=flow_data)
     mismatched_device = MyAirDevice.from_api(
         {
             "serialNumber": "SN999",
@@ -910,32 +937,21 @@ async def test_async_step_reconfigure_legacy_backfill_aborts_on_duplicate_unique
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Legacy reconfigure refuses to backfill a serial used by another entry."""
-    legacy_entry = MockConfigEntry(
-        domain="resmed_myair",
-        title="Legacy ResMed-CPAP",
-        data={
-            CONF_USER_NAME: "old@example.com",
-            CONF_PASSWORD: "old-password",
-            CONF_REGION: REGION_NA,
-            CONF_DEVICE_TOKEN: "old-token",
-        },
-        entry_id="legacy_entry",
+    legacy_entry = _reconfigure_entry(
         unique_id=None,
-        version=2,
+        entry_id="legacy_entry",
+        title="Legacy ResMed-CPAP",
     )
-    existing_entry = MockConfigEntry(
-        domain="resmed_myair",
-        title="Existing ResMed-CPAP",
-        data={CONF_USER_NAME: "existing@example.com"},
+    existing_entry = _reconfigure_entry(
         entry_id="existing_entry",
-        unique_id="SN123",
-        version=2,
+        title="Existing ResMed-CPAP",
+        username="existing@example.com",
     )
-    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": legacy_entry.entry_id}
-    flow._client = myair_client
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=legacy_entry)
-    flow.hass.config_entries.async_entry_for_domain_unique_id = MagicMock(
-        return_value=existing_entry
+    _prepare_reconfigure_flow(
+        flow,
+        legacy_entry,
+        myair_client,
+        existing_unique_id_entry=existing_entry,
     )
     myair_client.device_token = "updated-token"
     device = MyAirDevice.from_api(
@@ -1017,30 +1033,14 @@ async def test_async_step_reconfigure_incomplete_account_abort_variants(
     expected_abort_reason: str,
 ) -> None:
     """Reconfigure steps preserve incomplete-account abort handling."""
-    config_entry = MockConfigEntry(
-        domain="resmed_myair",
-        title="ResMed-CPAP",
-        data={
-            CONF_USER_NAME: "old@example.com",
-            CONF_PASSWORD: "old-password",
-            CONF_REGION: REGION_NA,
-            CONF_DEVICE_TOKEN: "old-token",
-        },
-        entry_id="mock_entry_id",
-        unique_id="SN123",
-        version=2,
+    flow_data = (
+        _credential_data("new@example.com", "new-password", REGION_EU, "old-token")
+        if step_name == "async_step_reconfigure_verify_mfa"
+        else None
     )
-    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
-    flow._client = myair_client
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    config_entry = _reconfigure_entry()
+    _prepare_reconfigure_flow(flow, config_entry, myair_client, flow_data=flow_data)
     flow._client.is_email_verified = AsyncMock(return_value=is_email_verified)
-    if step_name == "async_step_reconfigure_verify_mfa":
-        flow._data = {
-            CONF_USER_NAME: "new@example.com",
-            CONF_PASSWORD: "new-password",
-            CONF_REGION: REGION_EU,
-            CONF_DEVICE_TOKEN: "old-token",
-        }
     monkeypatch.setattr(
         config_flow,
         helper_name,
