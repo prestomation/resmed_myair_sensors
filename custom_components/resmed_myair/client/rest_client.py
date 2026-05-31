@@ -47,7 +47,7 @@ def _required_mapping(value: Any, message: str) -> Mapping[str, Any]:
     return value
 
 
-def _required_sequence(value: Any, message: str) -> list[Any]:
+def _required_list(value: Any, message: str) -> list[Any]:
     """Validate that a decoded GraphQL payload member is a JSON array.
 
     Args:
@@ -449,7 +449,7 @@ class RESTClient(MyAirClient):
         sleep_records = _required_mapping(
             patient_wrapper.get("sleepRecords"), "Error getting Patient Sleep Records"
         )
-        records = _required_sequence(
+        records = _required_list(
             sleep_records.get("items"),
             "Error getting Patient Sleep Records. Returned records is not a list",
         )
@@ -503,12 +503,14 @@ class RESTClient(MyAirClient):
         patient_wrapper = _required_mapping(
             data.get("getPatientWrapper"), "Error getting User Device Data"
         )
-        devices = _required_sequence(
-            patient_wrapper.get("fgDevices"), "Error getting User Device Data"
-        )
+        devices = _required_list(patient_wrapper.get("fgDevices"), "Error getting User Device Data")
         if not devices:
             raise ParsingError("Error getting User Device Data")
-        device = devices[0]
+        device = dict(
+            _required_mapping(
+                devices[0], "Error getting User Device Data. Returned data is not a dict"
+            )
+        )
         mask_code: str | None = None
         try:
             mask_code = patient_wrapper["masks"][0]["maskCode"]
@@ -517,8 +519,5 @@ class RESTClient(MyAirClient):
         else:
             if mask_code:
                 device["maskCode"] = mask_code
-        if not isinstance(device, dict):
-            _LOGGER.error("Error getting User Device Data. Returned data is not a dict")
-            raise ParsingError("Error getting User Device Data. Returned data is not a dict")
         _LOGGER.debug("[get_user_device_data] device: %s", redact_dict(device))
         return MyAirDevice.from_api(device)

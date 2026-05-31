@@ -1227,6 +1227,17 @@ async def test_get_sleep_records_raises_parsing_error_for_non_mapping_items(
             {"data": {"getPatientWrapper": {"fgDevices": ["notadict"]}}},
             "Returned data is not a dict",
         ),
+        (
+            {
+                "data": {
+                    "getPatientWrapper": {
+                        "fgDevices": ["notadict"],
+                        "masks": [{"maskCode": "MASK123"}],
+                    }
+                }
+            },
+            "Returned data is not a dict",
+        ),
     ],
 )
 async def test_get_user_device_data_failure_variants(
