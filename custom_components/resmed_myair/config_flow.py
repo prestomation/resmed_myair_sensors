@@ -164,6 +164,30 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         name = device.name or "myAir"
         return f"{manufacturer}-{name}"
 
+    def _abort_if_reauth_device_mismatch(self, device: MyAirDevice) -> ConfigFlowResult | None:
+        """Abort reauth when credentials belong to a different configured device.
+
+        Args:
+            device: Typed myAir device returned by the API.
+
+        Returns:
+            Abort result when the serial number does not match the entry being repaired,
+            otherwise `None`.
+
+        Raises:
+            ParsingError: When device data does not include a serial number.
+        """
+        if not device.serial_number:
+            raise ParsingError("Unable to get Serial Number from Device Data")
+        if self._entry.unique_id and device.serial_number != self._entry.unique_id:
+            _LOGGER.error(
+                "Reauth device serial number %s does not match existing entry unique ID %s",
+                device.serial_number,
+                self._entry.unique_id,
+            )
+            return self.async_abort(reason="wrong_account")
+        return None
+
     async def _async_abort_incomplete_account(
         self, step: str, error: IncompleteAccountError
     ) -> ConfigFlowResult:
@@ -374,8 +398,8 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
                 if device and status == AUTHN_SUCCESS:
                     _LOGGER.debug("[async_step_reauth_confirm] device: %s", redact_dict(device.raw))
-                    if not device.serial_number:
-                        raise ParsingError("Unable to get Serial Number from Device Data")
+                    if mismatch_abort := self._abort_if_reauth_device_mismatch(device):
+                        return mismatch_abort
                     serial_number: str = device.serial_number
                     _LOGGER.info("Found device with serial number %s", serial_number)
                     self._store_device_token()
@@ -435,8 +459,10 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
 
             try:
-                status, _ = await self._async_verify_mfa_and_get_device()
+                status, device = await self._async_verify_mfa_and_get_device()
                 if status == AUTHN_SUCCESS:
+                    if mismatch_abort := self._abort_if_reauth_device_mismatch(device):
+                        return mismatch_abort
                     self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._store_device_token()
                     _LOGGER.debug(

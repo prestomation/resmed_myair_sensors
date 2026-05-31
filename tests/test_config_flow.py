@@ -185,6 +185,64 @@ async def test_async_step_reauth_success(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("step_name", "helper_name", "user_input"),
+    [
+        (
+            "async_step_reauth_confirm",
+            "get_device",
+            {CONF_USER_NAME: "user", CONF_PASSWORD: "pass"},
+        ),
+        (
+            "async_step_reauth_verify_mfa",
+            "get_mfa_device",
+            {CONF_VERIFICATION_CODE: "654321"},
+        ),
+    ],
+)
+async def test_async_step_reauth_aborts_on_device_serial_mismatch(
+    flow: MyAirConfigFlow,
+    myair_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    step_name: str,
+    helper_name: str,
+    user_input: dict[str, str],
+) -> None:
+    """Reauth refuses to update an entry with credentials for another device."""
+    config_entry = MockConfigEntry(
+        domain="resmed_myair",
+        title="ResMed-CPAP",
+        data={CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA},
+        entry_id="mock_entry_id",
+        unique_id="SN123",
+        version=2,
+    )
+    flow._entry = config_entry
+    flow._client = myair_client
+    flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA}
+    mismatched_device = MyAirDevice.from_api(
+        {
+            "serialNumber": "SN999",
+            "fgDeviceManufacturerName": "ResMed",
+            "localizedName": "Guest CPAP",
+        }
+    )
+    helper_result = (
+        (AUTHN_SUCCESS, mismatched_device, myair_client)
+        if helper_name == "get_device"
+        else (AUTHN_SUCCESS, mismatched_device)
+    )
+    monkeypatch.setattr(config_flow, helper_name, AsyncMock(return_value=helper_result))
+
+    result = await getattr(flow, step_name)(user_input)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "wrong_account"
+    flow.hass.config_entries.async_update_entry.assert_not_called()
+    flow.hass.config_entries.async_reload.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     (
         "step_name",
         "is_email_verified",
