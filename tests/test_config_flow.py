@@ -31,7 +31,7 @@ from custom_components.resmed_myair.config_flow import (
 from custom_components.resmed_myair.models import MyAirDevice
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TRANSLATION_LANGUAGES = ("en", "fr")
+TRANSLATION_LANGUAGES = ("de", "en", "es", "fr")
 CONFIG_FLOW_ABORT_REASONS = (
     "already_configured",
     "incomplete_account",
