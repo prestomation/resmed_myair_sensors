@@ -108,8 +108,15 @@ def test_properties_variants(case: str, config_na: MyAirConfig, session: MagicMo
         ("abc", "xyz", ["DT=abc; Path=/", "sid=def; Path=/"], "abc", "def", False),
         # Not DT or sid, should not update
         (None, None, ["othercookie=othervalue; Path=/; HttpOnly"], None, None, False),
-        # DT changes and initial_dt is not None, should warn
-        ("oldtoken", None, ["DT=newtoken; Path=/"], "newtoken", None, True),
+        # DT changes and initial_dt is not None, should warn without logging token values
+        (
+            "oldtoken",
+            "oldsid",
+            ["DT=newtoken; Path=/", "sid=sidvalue; Path=/"],
+            "newtoken",
+            "sidvalue",
+            True,
+        ),
     ],
 )
 async def test_extract_and_update_cookies_variants(
@@ -130,16 +137,15 @@ async def test_extract_and_update_cookies_variants(
     client._cookie_dt = initial_dt
     client._cookie_sid = initial_sid
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.DEBUG):
         await client._extract_and_update_cookies(cookie_headers)
     assert client._cookie_dt == expected_dt
     assert client._cookie_sid == expected_sid
     if expect_warn:
-        assert (
-            "Changing Device Token" in caplog.text
-            and "oldtoken" in caplog.text
-            and "newtoken" in caplog.text
-        )
+        assert "Changing Device Token" in caplog.text
+        assert "oldtoken" not in caplog.text
+        assert "newtoken" not in caplog.text
+        assert "sidvalue" not in caplog.text
     else:
         assert "Changing Device Token" not in caplog.text
 

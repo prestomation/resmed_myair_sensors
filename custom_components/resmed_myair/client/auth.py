@@ -322,19 +322,25 @@ class MyAirAuthSession:
                 if k in {"dt", "sid"}:
                     norm = "DT" if k == "dt" else "sid"
                     cookies[norm] = morsel.value
-        _LOGGER.debug("[extract_and_update_cookies] extracted cookies: %s", cookies)
+        _LOGGER.debug(
+            "Extracted ResMed auth cookies: DT=%s, sid=%s",
+            bool(cookies.get("DT")),
+            bool(cookies.get("sid")),
+        )
 
         if cookies.get("DT") and cookies.get("DT") != self._cookie_dt:
             if self._cookie_dt is not None:
-                _LOGGER.warning(
-                    "Changing Device Token from: %s, to: %s", self._cookie_dt, cookies.get("DT")
-                )
+                _LOGGER.warning("Changing Device Token")
             self._cookie_dt = cookies.get("DT", self._cookie_dt)
         if cookies.get("sid") and cookies.get("sid") != self._cookie_sid:
             if self._cookie_sid is not None:
                 _LOGGER.info("Updating to new sid cookie")
             self._cookie_sid = cookies.get("sid", self._cookie_sid)
-        _LOGGER.debug("[extract_and_update_cookies] updated cookies: %s", self._cookies)
+        _LOGGER.debug(
+            "Updated ResMed auth cookie state: DT=%s, sid=%s",
+            bool(self._cookie_dt),
+            bool(self._cookie_sid),
+        )
 
     async def extract_and_update_cookies(self, cookie_headers: list) -> None:
         """Public compatibility delegate for cookie extraction."""
