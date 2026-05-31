@@ -805,28 +805,28 @@ async def test_get_access_token_success(
 
 
 @pytest.mark.asyncio
-async def test_get_access_token_raises_on_missing_location(
-    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("redirect_location", "fragment", "parsed_fragment", "match_msg"),
+    [
+        (None, "", {}, "Unable to get location from code_res"),
+        (
+            "https://redirect#error=access_denied",
+            "error=access_denied",
+            {"error": ["access_denied"]},
+            "Authorization code missing",
+        ),
+    ],
+)
+async def test_get_access_token_raises_on_invalid_authorization_redirect(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    redirect_location: str | None,
+    fragment: str,
+    parsed_fragment: dict[str, list[str]],
+    match_msg: str,
 ) -> None:
-    """Missing authorization redirect locations raise `ParsingError`."""
-    client = RESTClient(config_na, session)
-    client._session_token = "dummy_session_token"
-    client._json_headers = {"Content-Type": "application/json"}
-
-    mock_code_res = make_mock_aiohttp_response(json_value=None)
-
-    session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
-    monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", AsyncMock())
-    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
-    with pytest.raises(ParsingError, match="Unable to get location from code_res"):
-        await client._get_access_token()
-
-
-@pytest.mark.asyncio
-async def test_get_access_token_raises_on_missing_authorization_code(
-    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Redirects without an authorization code raise `ParsingError`."""
+    """Invalid authorization redirects raise `ParsingError` before token exchange."""
     client = RESTClient(config_na, session)
     client._session_token = "dummy_session_token"
     client._json_headers = {"Content-Type": "application/json"}
@@ -834,19 +834,21 @@ async def test_get_access_token_raises_on_missing_authorization_code(
     mock_code_res = make_mock_aiohttp_response()
     mock_code_res.headers = MagicMock()
     mock_code_res.headers.getall = MagicMock(return_value=[])
-    mock_code_res.headers.get = MagicMock(return_value="https://redirect#error=access_denied")
+    mock_code_res.headers.get = MagicMock(return_value=redirect_location)
 
     session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
     monkeypatch.setattr(
         "custom_components.resmed_myair.client.auth.urldefrag",
-        lambda *a, **k: MagicMock(fragment="error=access_denied"),
+        lambda *a, **k: MagicMock(fragment=fragment),
     )
     monkeypatch.setattr(
         "custom_components.resmed_myair.client.auth.parse_qs",
-        lambda *a, **k: {"error": ["access_denied"]},
+        lambda *a, **k: parsed_fragment,
     )
+    monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", AsyncMock())
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
 
-    with pytest.raises(ParsingError, match="Authorization code missing"):
+    with pytest.raises(ParsingError, match=match_msg):
         await client._get_access_token()
 
 

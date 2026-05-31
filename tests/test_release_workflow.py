@@ -110,15 +110,33 @@ def test_release_workflow_runs_checked_in_version_update_script() -> None:
     assert "python - <<'PY'" not in workflow
 
 
+@pytest.mark.parametrize(
+    ("const_text", "expected_error"),
+    [
+        ('"""Constants."""\n\nVERSION = "v0.1.0"\nDOMAIN = "resmed_myair"\n', None),
+        ('"""Constants."""\n\nDOMAIN = "resmed_myair"\n', "VERSION assignment"),
+    ],
+)
 def test_release_version_script_updates_manifest_and_const(
     tmp_path: Path,
     release_version_script: ModuleType,
+    const_text: str,
+    expected_error: str | None,
 ) -> None:
-    """The version update script rewrites both manifest and const metadata."""
+    """The version update script rewrites files or rejects invalid const metadata."""
     manifest_path = tmp_path / "manifest.json"
     const_path = tmp_path / "const.py"
     manifest_path.write_text(json.dumps({"domain": "resmed_myair", "version": "v0.1.0"}))
-    const_path.write_text('"""Constants."""\n\nVERSION = "v0.1.0"\nDOMAIN = "resmed_myair"\n')
+    const_path.write_text(const_text)
+
+    if expected_error is not None:
+        with pytest.raises(ValueError, match=expected_error):
+            release_version_script.update_release_version_files(
+                tag_name="v1.2.3",
+                manifest_path=manifest_path,
+                const_path=const_path,
+            )
+        return
 
     release_version_script.update_release_version_files(
         tag_name="v1.2.3",
@@ -129,24 +147,6 @@ def test_release_version_script_updates_manifest_and_const(
     assert json.loads(manifest_path.read_text())["version"] == "v1.2.3"
     assert manifest_path.read_text().endswith("\n")
     assert 'VERSION = "v1.2.3"' in const_path.read_text()
-
-
-def test_release_version_script_rejects_missing_const_version(
-    tmp_path: Path,
-    release_version_script: ModuleType,
-) -> None:
-    """The version update script rejects const.py files without `VERSION`."""
-    manifest_path = tmp_path / "manifest.json"
-    const_path = tmp_path / "const.py"
-    manifest_path.write_text(json.dumps({"domain": "resmed_myair", "version": "v0.1.0"}))
-    const_path.write_text('"""Constants."""\n\nDOMAIN = "resmed_myair"\n')
-
-    with pytest.raises(ValueError, match="VERSION assignment"):
-        release_version_script.update_release_version_files(
-            tag_name="v1.2.3",
-            manifest_path=manifest_path,
-            const_path=const_path,
-        )
 
 
 def test_edited_release_does_not_force_move_tag() -> None:
