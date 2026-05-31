@@ -3,6 +3,8 @@ __pycache__
 .coverage.*
 .DS_Store
 .env
+live_smoke_test.env
+live_smoke_test_output.json
 .mypy_cache
 .pytest_cache
 .qodo

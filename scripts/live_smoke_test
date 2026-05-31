@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+export RESMED_MYAIR_LIVE_SMOKE_CWD="$PWD"
+
+cd "$(dirname "$0")/.."
+
+if [ ! -x .venv/bin/python ]; then
+	scripts/setup
+fi
+
+if [ -f scripts/live_smoke_test.env ]; then
+	exec .venv/bin/python scripts/live_smoke_test.py --env-file scripts/live_smoke_test.env "$@"
+fi
+
+exec .venv/bin/python scripts/live_smoke_test.py "$@"

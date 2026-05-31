@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+if ! command -v python3.14 >/dev/null 2>&1; then
+	echo "python3.14 is required to create this project's virtualenv." >&2
+	exit 1
+fi
+
+if [ -f .venv/pyvenv.cfg ] && ! grep -qE '^version = 3\.14(\.|$)' .venv/pyvenv.cfg; then
+	echo "Existing .venv uses the wrong Python version. Remove .venv and rerun scripts/setup." >&2
+	exit 1
+fi
+
+python3.14 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install --group dev -e .
+.venv/bin/prek install

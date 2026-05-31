@@ -1,0 +1,114 @@
+{
+  "source": "Manual schema notes from working integration queries and validation probes.",
+  "introspection": {
+    "available": false,
+    "notes": [
+      "The ResMed AppSync endpoint accepts __typename.",
+      "__schema { __typename } works.",
+      "Standard introspection fields such as __schema.queryType, __schema.types, __type.name, __type.kind, and __type.fields return FieldUndefined validation errors."
+    ]
+  },
+  "queries": {
+    "getPatientWrapper": {
+      "type": "PatientWrapper",
+      "confirmed_fields": {
+        "__typename": {
+          "type": "String",
+          "source": "validation probe"
+        },
+        "patient": {
+          "type": "Patient",
+          "source": "working integration query"
+        },
+        "masks": {
+          "type": "[Mask]",
+          "source": "working integration query"
+        },
+        "fgDevices": {
+          "type": "[FgDevice]",
+          "source": "working integration query"
+        },
+        "sleepRecords": {
+          "type": "SleepRecordConnection",
+          "arguments": {
+            "startMonth": "String",
+            "endMonth": "String"
+          },
+          "source": "working integration query"
+        }
+      }
+    }
+  },
+  "types": {
+    "PatientWrapper": {
+      "confirmed_fields": {
+        "patient": "Patient",
+        "masks": "[Mask]",
+        "fgDevices": "[FgDevice]",
+        "sleepRecords(startMonth: String, endMonth: String)": "SleepRecordConnection"
+      },
+      "type_name_source": "validation probe"
+    },
+    "Patient": {
+      "confirmed_fields": {
+        "firstName": "String"
+      },
+      "type_name_source": "validation probe"
+    },
+    "Mask": {
+      "confirmed_fields": {
+        "maskCode": "String"
+      },
+      "type_name_source": "validation probe"
+    },
+    "FgDevice": {
+      "confirmed_fields": {
+        "serialNumber": "String",
+        "localizedName": "String",
+        "deviceSeries": "String",
+        "deviceFamily": "String",
+        "deviceType": "String",
+        "lastSleepDataReportTime": "String",
+        "fgDeviceManufacturerName": "String",
+        "fgDevicePatientId": "String",
+        "maskCode": "String"
+      },
+      "notes": [
+        "maskCode is copied onto device output by the integration from the first Mask item; it is not confirmed as a native FgDevice GraphQL field."
+      ],
+      "type_name_source": "validation probe"
+    },
+    "SleepRecordConnection": {
+      "confirmed_fields": {
+        "items": "[SleepRecord]",
+        "__typename": "String"
+      },
+      "type_name_source": "inferred from working query shape"
+    },
+    "SleepRecord": {
+      "confirmed_fields": {
+        "startDate": "String",
+        "totalUsage": "Int",
+        "sleepScore": "Int",
+        "usageScore": "Int",
+        "ahiScore": "Int",
+        "maskScore": "Int",
+        "leakScore": "Int",
+        "ahi": "Float",
+        "maskPairCount": "Int",
+        "leakPercentile": "Float",
+        "sleepRecordPatientId": "String",
+        "__typename": "String"
+      },
+      "type_name_source": "validation probe"
+    }
+  },
+  "known_operations": {
+    "getPatientWrapper": {
+      "query": "query getPatientWrapper { getPatientWrapper { masks { maskCode } fgDevices { serialNumber localizedName deviceSeries deviceFamily lastSleepDataReportTime fgDeviceManufacturerName fgDevicePatientId } } }"
+    },
+    "GetPatientSleepRecords": {
+      "query": "query GetPatientSleepRecords { getPatientWrapper { patient { firstName } sleepRecords(startMonth: \"YYYY-MM-DD\", endMonth: \"YYYY-MM-DD\") { items { startDate totalUsage sleepScore usageScore ahiScore maskScore leakScore ahi maskPairCount leakPercentile sleepRecordPatientId __typename } __typename } __typename } }"
+    }
+  }
+}
