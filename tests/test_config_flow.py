@@ -54,13 +54,11 @@ async def test_async_step_user_success(
             "localizedName": "CPAP",
         }
     )
-    # Patch get_device to return a successful auth and device
     monkeypatch.setattr(
         config_flow,
         "get_device",
         AsyncMock(return_value=(AUTHN_SUCCESS, device, myair_client)),
     )
-    # Ensure domain-unique-id lookup returns no existing entry for this test
     flow.hass.config_entries.async_entry_for_domain_unique_id = MagicMock(return_value=None)
     result = await flow.async_step_user(user_input)
     assert result["type"] == "create_entry"
@@ -98,7 +96,6 @@ async def test_async_step_verify_mfa_error(
     is_restclient: bool,
 ) -> None:
     """MFA failures map to the correct form error for client types."""
-    # Use a real RESTClient instance for one case, and a non-spec MagicMock for the other
     flow._client = myair_client if is_restclient else MagicMock()
     flow._data = {CONF_USER_NAME: "user"}
     user_input: dict[str, str] = {CONF_VERIFICATION_CODE: "bad"}
@@ -169,7 +166,6 @@ async def test_async_step_reauth_success(
         "get_device",
         AsyncMock(return_value=(AUTHN_SUCCESS, device, myair_client)),
     )
-    # Ensure the client reports a deterministic device token that should be persisted
     myair_client.device_token = "device_token_abc"
     result = await flow.async_step_reauth_confirm({CONF_USER_NAME: "user", CONF_PASSWORD: "pass"})
     assert result["type"] == "abort"
@@ -177,7 +173,6 @@ async def test_async_step_reauth_success(
     mock_update = flow.hass.config_entries.async_update_entry
     assert isinstance(mock_update, MagicMock)
     mock_update.assert_called_once()
-    # Device token should be written to entry data
     _, kwargs = mock_update.call_args
     assert CONF_DEVICE_TOKEN in kwargs["data"]
     assert kwargs["data"][CONF_DEVICE_TOKEN] == "device_token_abc"
@@ -286,16 +281,13 @@ async def test_async_step_reauth_incomplete_account_parametrized(
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA}
     flow._entry = config_entry
 
-    # Choose which helper to patch based on the step
     if step_name == "async_step_reauth_confirm":
-        # reauth_confirm takes a username/password input
         user_input = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass"}
         monkeypatch.setattr(
             "custom_components.resmed_myair.config_flow.get_device",
             AsyncMock(side_effect=IncompleteAccountError("incomplete")),
         )
     else:
-        # reauth_verify_mfa takes a verification code
         user_input = {CONF_VERIFICATION_CODE: "654321"}
         monkeypatch.setattr(
             "custom_components.resmed_myair.config_flow.get_mfa_device",
@@ -315,7 +307,6 @@ async def test_async_step_reauth_incomplete_account_parametrized(
 
     result = await getattr(flow, step_name)(user_input)
 
-    # Determine expectation: for verify_mfa, no-client shows form; for confirm, always abort
     if not client_exists and no_client_shows_form:
         assert result["type"] == "form"
         assert result["step_id"] == (
@@ -391,7 +382,6 @@ async def test_get_device_variants(
         mock_client.get_user_device_data = AsyncMock(
             return_value=MyAirDevice.from_api(get_user_device_data_return)
         )
-    # Patch module-level collaborators using monkeypatch
     monkeypatch.setattr(config_flow, "MyAirConfig", MagicMock())
     monkeypatch.setattr(config_flow, "RESTClient", lambda *a, **k: mock_client)
     monkeypatch.setattr(config_flow, "async_create_clientsession", lambda *a, **k: session)
@@ -535,10 +525,8 @@ async def test_async_step_reauth_calls_confirm(
     flow.hass = hass
     flow.context = {"entry_id": "123"}
     flow._data = {}
-    # Ensure the entry lookup returns the expected entry
     flow.hass.config_entries.async_get_entry = MagicMock(return_value=config_entry)
 
-    # Patch async_step_reauth_confirm to check it is called
     flow.async_step_reauth_confirm = AsyncMock(return_value={"type": "form"})
     entry_data = {"foo": "bar"}
 
@@ -559,12 +547,10 @@ async def test_async_step_user_not_device_or_not_authn_success(
     flow.hass = hass
     flow._data = {}
 
-    # Patch get_device to return a status that is not AUTHN_SUCCESS and device is None
     monkeypatch.setattr(
         "custom_components.resmed_myair.config_flow.get_device",
         AsyncMock(return_value=("MFA_REQUIRED", None, MagicMock())),
     )
-    # Patch async_step_verify_mfa to check it is called
     flow.async_step_verify_mfa = AsyncMock(return_value={"type": "form", "step_id": "verify_mfa"})
 
     user_input = {
@@ -619,7 +605,6 @@ async def test_async_step_reauth_no_entry(hass: MagicMock) -> None:
     """Reauth aborts when the referenced config entry no longer exists."""
     flow = MyAirConfigFlow()
     flow.hass = hass
-    # Simulate async_get_entry returning None
     flow.hass.config_entries.async_get_entry.return_value = None
     flow.context = {"entry_id": "missing_entry"}
 
@@ -722,7 +707,6 @@ async def test_async_step_reauth_confirm_exceptions(
         CONF_USER_NAME: "user",
         CONF_PASSWORD: "pw",
     }
-    # Patch async_abort for IncompleteAccountError
     flow.async_abort = MagicMock(return_value={"type": "abort", "reason": "incomplete_account"})
 
     result = await flow.async_step_reauth_confirm(user_input)
@@ -759,7 +743,6 @@ async def test_async_step_user_incomplete_account_parametrized(
     flow._data = {CONF_USER_NAME: "user"}
     user_input = {CONF_USER_NAME: "user", CONF_PASSWORD: "pw", CONF_REGION: REGION_NA}
 
-    # Patch get_device to raise IncompleteAccountError
     monkeypatch.setattr(
         "custom_components.resmed_myair.config_flow.get_device",
         AsyncMock(side_effect=IncompleteAccountError("fail")),
@@ -775,7 +758,6 @@ async def test_async_step_user_incomplete_account_parametrized(
     else:
         flow._client = None
 
-    # The flow should always abort if is_email_verified raises
     result = await flow.async_step_user(user_input)
     assert result["type"] == "abort"
     assert result["reason"] == expected_abort_reason
