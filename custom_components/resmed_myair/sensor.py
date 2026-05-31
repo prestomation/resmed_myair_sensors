@@ -2,6 +2,7 @@
 
 from datetime import date
 import logging
+import re
 from typing import Any, Final, cast
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
@@ -24,6 +25,7 @@ from .helpers import redact_dict
 from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+SERVICE_NAME_SANITIZER: Final[re.Pattern[str]] = re.compile(r"[^a-z0-9_]+")
 
 
 def _coordinator_data(coordinator: MyAirDataUpdateCoordinator) -> MyAirCoordinatorData:
@@ -99,7 +101,9 @@ async def async_setup_entry(
 
     async_add_entities(sensors, False)
 
-    sanitized_username: str = config_entry.data[CONF_USER_NAME].replace("@", "_").replace(".", "_")
+    sanitized_username: str = SERVICE_NAME_SANITIZER.sub(
+        "_", config_entry.data[CONF_USER_NAME].casefold()
+    ).strip("_")
 
     async def refresh(_: Any) -> None:
         """Refresh coordinator data when the per-account force-poll service runs.

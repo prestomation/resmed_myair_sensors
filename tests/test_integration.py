@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.components.sensor import SensorEntityDescription
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -14,7 +15,9 @@ from custom_components.resmed_myair import (
     sensor as sensor_platform,
 )
 from custom_components.resmed_myair.const import (
+    CONF_USER_NAME,
     DEVICE_SENSOR_DESCRIPTIONS,
+    DOMAIN,
     PLATFORMS,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
 )
@@ -581,3 +584,57 @@ async def test_async_setup_entry_registers_all_sensors(
         + 2  # FriendlyUsageTime + MostRecentSleepDate
     )
     assert len(added_entities) == expected_count
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("username", "expected_service_name"),
+    [
+        ("test@example.com", "force_poll_test_example_com"),
+        ("test+alerts@example.com", "force_poll_test_alerts_example_com"),
+        ("Upper.User@example.com", "force_poll_upper_user_example_com"),
+    ],
+)
+async def test_sensor_setup_registers_valid_force_poll_service_names(
+    hass: MagicMock,
+    config_entry: MockConfigEntry,
+    coordinator_factory: CoordinatorFactory,
+    monkeypatch: pytest.MonkeyPatch,
+    username: str,
+    expected_service_name: str,
+) -> None:
+    """Sensor setup sanitizes account usernames into valid HA service names."""
+    registered_services: list[tuple[str, str, object]] = []
+
+    def register_service(domain: str, service: str, handler: object) -> None:
+        """Collect service registrations from the platform setup flow."""
+        registered_services.append((domain, service, handler))
+
+    coordinator = coordinator_factory(mock=True)
+    coordinator.data = coordinator_data(device={"serialNumber": "SN123"}, sleep_records=[])
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="ResMed-CPAP",
+        data={**config_entry.data, CONF_USER_NAME: username},
+        entry_id=f"entry-{expected_service_name}",
+        version=2,
+    )
+    entry.runtime_data = coordinator
+    hass.services.async_register = register_service
+
+    monkeypatch.setattr(
+        sensor_platform,
+        "SLEEP_RECORD_SENSOR_DESCRIPTIONS",
+        {"usage": SensorEntityDescription(key="totalUsage")},
+    )
+    monkeypatch.setattr(
+        sensor_platform,
+        "DEVICE_SENSOR_DESCRIPTIONS",
+        {"serial": SensorEntityDescription(key="serialNumber")},
+    )
+
+    await sensor_platform.async_setup_entry(hass, entry, MagicMock())
+
+    assert registered_services
+    assert registered_services[-1][0] == DOMAIN
+    assert registered_services[-1][1] == expected_service_name
