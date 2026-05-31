@@ -716,6 +716,90 @@ async def test_async_step_reconfigure_success_updates_entry_and_schedules_reload
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("step_name", "helper_name", "user_input"),
+    [
+        (
+            "async_step_reconfigure",
+            "get_device",
+            {
+                CONF_USER_NAME: "new@example.com",
+                CONF_PASSWORD: "new-password",
+                CONF_REGION: REGION_EU,
+            },
+        ),
+        (
+            "async_step_reconfigure_verify_mfa",
+            "get_mfa_device",
+            {CONF_VERIFICATION_CODE: "654321"},
+        ),
+    ],
+)
+async def test_async_step_reconfigure_backfills_legacy_entry_unique_id(
+    flow: MyAirConfigFlow,
+    myair_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    step_name: str,
+    helper_name: str,
+    user_input: dict[str, str],
+) -> None:
+    """Reconfigure repairs legacy entries that have no unique ID."""
+    config_entry = MockConfigEntry(
+        domain="resmed_myair",
+        title="ResMed-CPAP",
+        data={
+            CONF_USER_NAME: "old@example.com",
+            CONF_PASSWORD: "old-password",
+            CONF_REGION: REGION_NA,
+            CONF_DEVICE_TOKEN: "old-token",
+        },
+        entry_id="mock_entry_id",
+        unique_id=None,
+        version=2,
+    )
+    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+    flow._client = myair_client
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow.hass.config_entries.async_schedule_reload = MagicMock()
+    myair_client.device_token = "updated-token"
+    if step_name == "async_step_reconfigure_verify_mfa":
+        flow._data = {
+            CONF_USER_NAME: "new@example.com",
+            CONF_PASSWORD: "new-password",
+            CONF_REGION: REGION_EU,
+            CONF_DEVICE_TOKEN: "old-token",
+        }
+    device = MyAirDevice.from_api(
+        {
+            "serialNumber": "SN123",
+            "fgDeviceManufacturerName": "ResMed",
+            "localizedName": "CPAP",
+        }
+    )
+    helper_result = (
+        (AUTHN_SUCCESS, device, myair_client)
+        if helper_name == "get_device"
+        else (AUTHN_SUCCESS, device)
+    )
+    monkeypatch.setattr(config_flow, helper_name, AsyncMock(return_value=helper_result))
+
+    result = await getattr(flow, step_name)(user_input)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reconfigure_successful"
+    _, kwargs = flow.hass.config_entries.async_update_entry.call_args
+    assert kwargs["entry"] is config_entry
+    assert kwargs["data"] == {
+        CONF_USER_NAME: "new@example.com",
+        CONF_PASSWORD: "new-password",
+        CONF_REGION: REGION_EU,
+        CONF_DEVICE_TOKEN: "updated-token",
+    }
+    assert kwargs["unique_id"] == "SN123"
+    flow.hass.config_entries.async_schedule_reload.assert_called_once_with("mock_entry_id")
+
+
+@pytest.mark.asyncio
 async def test_async_step_user_not_device_or_not_authn_success(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock
 ) -> None:

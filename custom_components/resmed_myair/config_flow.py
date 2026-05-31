@@ -244,6 +244,35 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="wrong_account")
         return None
 
+    async def _async_reconfigure_unique_id_update(
+        self, entry: ConfigEntry, device: MyAirDevice
+    ) -> str | None:
+        """Validate reconfigure device identity and return any unique ID update.
+
+        Args:
+            entry: Config entry being reconfigured.
+            device: Typed myAir device returned by the API.
+
+        Returns:
+            Device serial number when a legacy entry needs unique ID backfill,
+            otherwise `None`.
+
+        Raises:
+            ParsingError: When device data does not include a serial number.
+        """
+        if not device.serial_number:
+            raise ParsingError("Unable to get Serial Number from Device Data")
+        await self.async_set_unique_id(device.serial_number)
+        if not entry.unique_id:
+            _LOGGER.info(
+                "Reconfigure will backfill missing legacy entry unique ID with device serial "
+                "number %s",
+                device.serial_number,
+            )
+            return device.serial_number
+        self._abort_if_unique_id_mismatch(reason="wrong_account")
+        return None
+
     def _update_reload_and_abort(
         self,
         entry: ConfigEntry,
@@ -568,13 +597,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._data.get(CONF_DEVICE_TOKEN, None),
                 )
                 if device and status == AUTHN_SUCCESS:
-                    if not device.serial_number:
-                        raise ParsingError("Unable to get Serial Number from Device Data")
-                    await self.async_set_unique_id(device.serial_number)
-                    self._abort_if_unique_id_mismatch(reason="wrong_account")
+                    unique_id = await self._async_reconfigure_unique_id_update(entry, device)
                     self._store_device_token()
                     _LOGGER.debug("[async_step_reconfigure] data: %s", redact_dict(self._data))
-                    return self._update_reload_and_abort(entry, data_updates={**self._data})
+                    return self._update_reload_and_abort(
+                        entry,
+                        data_updates={**self._data},
+                        unique_id=unique_id,
+                    )
                 return await self.async_step_reconfigure_verify_mfa()
             except (
                 AuthenticationError,
@@ -614,17 +644,18 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 status, device = await self._async_verify_mfa_and_get_device()
                 if status == AUTHN_SUCCESS:
-                    if not device.serial_number:
-                        raise ParsingError("Unable to get Serial Number from Device Data")
-                    await self.async_set_unique_id(device.serial_number)
-                    self._abort_if_unique_id_mismatch(reason="wrong_account")
+                    unique_id = await self._async_reconfigure_unique_id_update(entry, device)
                     self._data.pop(CONF_VERIFICATION_CODE, None)
                     self._store_device_token()
                     _LOGGER.debug(
                         "[async_step_reconfigure_verify_mfa] data: %s",
                         redact_dict(self._data),
                     )
-                    return self._update_reload_and_abort(entry, data_updates={**self._data})
+                    return self._update_reload_and_abort(
+                        entry,
+                        data_updates={**self._data},
+                        unique_id=unique_id,
+                    )
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
                 errors["base"] = "mfa_error"
             except (
