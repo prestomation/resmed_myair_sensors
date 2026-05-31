@@ -18,6 +18,11 @@ from custom_components.resmed_myair.const import (
     REGION_EU,
     REGION_NA,
 )
+from custom_components.resmed_myair.models import (
+    MyAirCoordinatorData,
+    MyAirDevice,
+    MyAirSleepRecord,
+)
 
 type JSONValue = str | int | float | bool | None | dict[str, JSONValue] | list[JSONValue]
 type HeadersValue = Mapping[str, str] | CIMultiDict[str] | None
@@ -26,7 +31,7 @@ type HeadersValue = Mapping[str, str] | CIMultiDict[str] | None
 class CoordinatorLike(Protocol):
     """Protocol for the coordinator test doubles used by sensor tests."""
 
-    data: dict[str, object]
+    data: MyAirCoordinatorData
 
     def async_add_listener(self, *args: object, **kwargs: object) -> Callable[[], None]:
         """Register a listener callback and return an unsubscribe callback."""
@@ -36,9 +41,63 @@ class CoordinatorFactory(Protocol):
     """Factory protocol shared by coordinator fixtures and tests."""
 
     def __call__(
-        self, mock: bool = False, data: dict[str, object] | None = None
+        self,
+        mock: bool = False,
+        data: dict[str, object] | MyAirCoordinatorData | None = None,
     ) -> CoordinatorLike | MagicMock:
         """Return either a dataful coordinator double or a mock coordinator."""
+
+
+def coordinator_data(
+    device: dict[str, object] | None = None,
+    sleep_records: list[dict[str, object]] | None = None,
+) -> MyAirCoordinatorData:
+    """Build typed coordinator data for sensor tests."""
+    return MyAirCoordinatorData(
+        device=MyAirDevice.from_api(device) if device is not None else None,
+        sleep_records=tuple(MyAirSleepRecord.from_api(record) for record in (sleep_records or [])),
+    )
+
+
+def _coordinator_data_from_mapping(data: dict[str, object] | None = None) -> MyAirCoordinatorData:
+    """Build typed coordinator data from legacy mapping payloads."""
+    if data is None:
+        data = {
+            "device": {
+                "serialNumber": "SN123",
+                "deviceType": "AirSense",
+                "lastSleepDataReportTime": "2024-06-01T12:00:00+00:00",
+                "localizedName": "Bedroom CPAP",
+                "fgDeviceManufacturerName": "ResMed",
+            },
+            "sleep_records": [
+                {
+                    "startDate": "2024-05-31",
+                    "totalUsage": 123,
+                    "sleepScore": 90,
+                    "ahi": 2.1,
+                    "maskPairCount": 3,
+                    "leakPercentile": 5,
+                },
+                {
+                    "startDate": "2024-06-01",
+                    "totalUsage": 456,
+                    "sleepScore": 95,
+                    "ahi": 1.8,
+                    "maskPairCount": 2,
+                    "leakPercentile": 4,
+                },
+            ],
+        }
+
+    raw_records = data.get("sleep_records") if isinstance(data, Mapping) else None
+    records: list[dict[str, object]] = []
+    if isinstance(raw_records, list):
+        records = [dict(record) for record in raw_records if isinstance(record, dict)]
+
+    raw_device = data.get("device") if isinstance(data, Mapping) else None
+    device: dict[str, object] | None = dict(raw_device) if isinstance(raw_device, Mapping) else None
+    return coordinator_data(device=device, sleep_records=records)
 
 
 class ServiceEntryLike(Protocol):
@@ -331,53 +390,28 @@ def coordinator_factory() -> CoordinatorFactory:
     """
 
     def _make(
-        mock: bool = False, data: dict[str, object] | None = None
+        mock: bool = False, data: dict[str, object] | MyAirCoordinatorData | None = None
     ) -> CoordinatorLike | MagicMock:
         if mock:
             m = MagicMock()
             m.async_refresh = AsyncMock()
             m.async_config_entry_first_refresh = AsyncMock()
             # Provide a data attribute so callers can set/read coordinator.data
-            m.data = {}
+            m.data = MyAirCoordinatorData()
             return m
 
-        # default data used by many tests
-        if data is None:
-            data = {
-                "device": {
-                    "serialNumber": "SN123",
-                    "deviceType": "AirSense",
-                    "lastSleepDataReportTime": "2024-06-01T12:00:00+00:00",
-                    "localizedName": "Bedroom CPAP",
-                    "fgDeviceManufacturerName": "ResMed",
-                },
-                "sleep_records": [
-                    {
-                        "startDate": "2024-05-31",
-                        "totalUsage": 123,
-                        "sleepScore": 90,
-                        "ahi": 2.1,
-                        "maskPairCount": 3,
-                        "leakPercentile": 5,
-                    },
-                    {
-                        "startDate": "2024-06-01",
-                        "totalUsage": 456,
-                        "sleepScore": 95,
-                        "ahi": 1.8,
-                        "maskPairCount": 2,
-                        "leakPercentile": 4,
-                    },
-                ],
-            }
+        if isinstance(data, MyAirCoordinatorData):
+            payload = data
+        else:
+            payload = _coordinator_data_from_mapping(data)
 
         class DummyCoordinator:
-            def __init__(self, d: dict[str, object]) -> None:
+            def __init__(self, d: MyAirCoordinatorData) -> None:
                 self.data = d
 
             def async_add_listener(self, *args: object, **kwargs: object) -> Callable[[], None]:
                 return lambda: None
 
-        return DummyCoordinator(data)
+        return DummyCoordinator(payload)
 
     return _make

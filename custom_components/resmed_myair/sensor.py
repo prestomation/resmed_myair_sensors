@@ -1,16 +1,15 @@
 """Sensor entities for resmed_myair."""
 
-from collections.abc import Mapping
 from datetime import date
 import logging
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -22,8 +21,25 @@ from .const import (
 )
 from .coordinator import MyAirDataUpdateCoordinator
 from .helpers import redact_dict
+from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+def _coordinator_data(coordinator: MyAirDataUpdateCoordinator) -> MyAirCoordinatorData:
+    """Return typed coordinator data or an empty payload."""
+    if isinstance(coordinator.data, MyAirCoordinatorData):
+        return coordinator.data
+    return MyAirCoordinatorData()
+
+
+def _parse_native_value(value: Any | None, description: SensorEntityDescription) -> Any | None:
+    """Parse native values for Home Assistant sensor device classes."""
+    if isinstance(value, str) and description.device_class == SensorDeviceClass.DATE:
+        return dt_util.parse_date(value)
+    if isinstance(value, str) and description.device_class == SensorDeviceClass.TIMESTAMP:
+        return dt_util.parse_datetime(value)
+    return value
 
 
 async def async_setup_entry(
@@ -85,11 +101,11 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
         coordinator: MyAirDataUpdateCoordinator,
     ) -> None:
         """Create the CPAP sensors."""
-        super().__init__(coordinator)
+        super().__init__(cast("DataUpdateCoordinator[dict[str, Any]]", coordinator))
         self.sensor_key: Final[str] = sensor_desc.key
         self.coordinator: MyAirDataUpdateCoordinator = coordinator
-        device_data = self.coordinator.data.get("device", {})
-        serial_number: str = device_data.get("serialNumber", "")
+        device_data: MyAirDevice | None = _coordinator_data(coordinator).device
+        serial_number: str = device_data.serial_number if device_data else ""
         self.entity_description: SensorEntityDescription = sensor_desc
 
         self._attr_name: str = friendly_name
@@ -97,9 +113,9 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
         self._available: bool = False
         self._attr_device_info: DeviceInfo = DeviceInfo(
             identifiers={(DOMAIN, serial_number)},
-            manufacturer=device_data.get("fgDeviceManufacturerName"),
-            model=device_data.get("deviceType"),
-            name=device_data.get("localizedName"),
+            manufacturer=device_data.manufacturer if device_data else None,
+            model=device_data.model if device_data else None,
+            name=device_data.name if device_data else None,
             suggested_area="Bedroom",
             sw_version=VERSION,
         )
@@ -132,23 +148,22 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         """Handle updated data from the coordinator."""
         # The API always returns the previous month of data, so the client stores this
         # We assume this is ordered temporally and grab the last one: the latest one
-        value: Any | None = None
-        if self.coordinator.data.get("sleep_records"):
-            try:
-                value = self.coordinator.data["sleep_records"][-1][self.sensor_key]
-            except KeyError as e:
-                _LOGGER.error("Unable to parse Sleep Record. %s: %s", type(e).__name__, e)
-                self._available = False
-            else:
-                self._available = True
-            if (
-                isinstance(value, str)
-                and self.entity_description.device_class == SensorDeviceClass.DATE
-            ):
-                value = dt_util.parse_date(value)
-        else:
+        latest_record: MyAirSleepRecord | None = _coordinator_data(
+            self.coordinator
+        ).latest_sleep_record
+        if latest_record is None:
             _LOGGER.error("Sleep record data missing from coordinator data")
+            value: Any | None = None
             self._available = False
+        elif self.sensor_key not in latest_record.raw:
+            _LOGGER.error("Unable to parse Sleep Record. %s", self.sensor_key)
+            value = None
+            self._available = False
+        else:
+            value = _parse_native_value(
+                latest_record.native_value(self.sensor_key), self.entity_description
+            )
+            self._available = True
 
         self._attr_native_value = value
         self.async_write_ha_state()
@@ -169,23 +184,20 @@ class MyAirDeviceSensor(MyAirBaseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        value: Any | None = None
-        if self.coordinator.data.get("device"):
-            try:
-                value = self.coordinator.data["device"][self.sensor_key]
-            except KeyError as e:
-                _LOGGER.error("Unable to parse Device. %s: %s", type(e).__name__, e)
-                self._available = False
-            else:
-                self._available = True
-            if (
-                isinstance(value, str)
-                and self.entity_description.device_class == SensorDeviceClass.TIMESTAMP
-            ):
-                value = dt_util.parse_datetime(value)
-        else:
+        device_data: MyAirDevice | None = _coordinator_data(self.coordinator).device
+        if device_data is None:
             _LOGGER.error("Device data missing from coordinator data")
+            value: Any | None = None
             self._available = False
+        elif self.sensor_key not in device_data.raw:
+            _LOGGER.error("Unable to parse Device. %s", self.sensor_key)
+            value = None
+            self._available = False
+        else:
+            value = _parse_native_value(
+                device_data.native_value(self.sensor_key), self.entity_description
+            )
+            self._available = True
 
         self._attr_native_value = value
         self.async_write_ha_state()
@@ -206,20 +218,18 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        value: str | None = None
-        if self.coordinator.data.get("sleep_records"):
-            try:
-                usage_minutes: int = self.coordinator.data["sleep_records"][-1]["totalUsage"]
-            except (KeyError, IndexError) as e:
-                _LOGGER.error("Unable to parse Usage Time. %s: %s", type(e).__name__, e)
-                self._available = False
-            else:
-                usage_minutes = max(usage_minutes, 0)
-                value = f"{usage_minutes // 60}:{(usage_minutes % 60):02}"
-                self._available = True
-        else:
+        latest_record: MyAirSleepRecord | None = _coordinator_data(
+            self.coordinator
+        ).latest_sleep_record
+        if latest_record is None:
             _LOGGER.error("Sleep record data missing from coordinator data")
+            value: str | None = None
             self._available = False
+        else:
+            value = latest_record.friendly_usage_time
+            self._available = value is not None
+            if value is None:
+                _LOGGER.error("Unable to parse Usage Time. totalUsage")
 
         self._attr_native_value = value
         self.async_write_ha_state()
@@ -242,28 +252,10 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        value: date | None = None
-        if self.coordinator.data.get("sleep_records"):
-            try:
-                # Filter out all 0-usage days
-                sleep_days_with_data: list[Mapping[str, Any]] = [
-                    record
-                    for record in self.coordinator.data["sleep_records"]
-                    if record["totalUsage"] > 0
-                ]
-
-                if sleep_days_with_data:
-                    date_string: str = sleep_days_with_data[-1]["startDate"]
-                    value = dt_util.parse_date(date_string)
-                    self._available = True
-                else:
-                    self._available = False
-            except KeyError as e:
-                _LOGGER.error("Unable to parse Most Recent Sleep Date. %s: %s", type(e).__name__, e)
-                self._available = False
-        else:
-            _LOGGER.error("Sleep record data missing from coordinator data")
-            self._available = False
-
+        value: date | None = _coordinator_data(self.coordinator).most_recent_sleep_date
         self._attr_native_value = value
+        self._available = value is not None
+        if value is None:
+            _LOGGER.error("Sleep record data missing from coordinator data")
+
         self.async_write_ha_state()

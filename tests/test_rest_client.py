@@ -11,11 +11,14 @@ from multidict import CIMultiDict
 import pytest
 
 from custom_components.resmed_myair.client import rest_client as rest_client_module
+from custom_components.resmed_myair.client.auth import MyAirAuthSession
+from custom_components.resmed_myair.client.graphql import MyAirGraphQLClient
 from custom_components.resmed_myair.client.myair_client import (
     AuthenticationError,
     IncompleteAccountError,
     MyAirConfig,
 )
+from custom_components.resmed_myair.client.regions import RegionConfig, get_region_config
 from custom_components.resmed_myair.client.rest_client import (
     AUTH_NEEDS_MFA,
     AUTHN_SUCCESS,
@@ -26,20 +29,61 @@ from custom_components.resmed_myair.client.rest_client import (
     RESTClient,
 )
 from custom_components.resmed_myair.const import REGION_EU
+from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
 from tests.conftest import make_mock_aiohttp_context_manager, make_mock_aiohttp_response
+
+
+def test_get_region_config_returns_na_settings() -> None:
+    """NA region lookup returns the existing ResMed endpoints."""
+    config = get_region_config(REGION_NA)
+
+    assert isinstance(config, RegionConfig)
+    assert config.product == "myAir"
+    assert config.oauth_redirect_url == "https://myair.resmed.com"
+    assert config.authn_url == "https://resmed-ext-1.okta.com/api/v1/authn"
+
+
+def test_get_region_config_returns_eu_settings() -> None:
+    """EU region lookup returns the existing ResMed endpoints."""
+    config = get_region_config(REGION_EU)
+
+    assert isinstance(config, RegionConfig)
+    assert config.product == "myAir EU"
+    assert config.oauth_redirect_url == "https://myair.resmed.eu"
+    assert config.authn_url == "https://id.resmed.eu/api/v1/authn"
+
+
+def test_get_region_config_fallback_to_eu_for_unknown_region() -> None:
+    """Unexpected region values default to EU settings."""
+    assert get_region_config("unexpected") == EU_CONFIG
+
+
+def test_rest_client_owns_auth_session(config_na: MyAirConfig, session: MagicMock) -> None:
+    """RESTClient composes a dedicated auth session."""
+    client = RESTClient(config_na, session)
+
+    assert isinstance(client._auth, MyAirAuthSession)
+    assert client.device_token == config_na.device_token
+
+
+def test_rest_client_owns_graphql_client(config_na: MyAirConfig, session: MagicMock) -> None:
+    """RESTClient composes a dedicated GraphQL client."""
+    client = RESTClient(config_na, session)
+
+    assert isinstance(client._graphql, MyAirGraphQLClient)
 
 
 @pytest.mark.parametrize(
     ("region", "expected_config"), [(REGION_NA, NA_CONFIG), (REGION_EU, EU_CONFIG)]
 )
 def test_rest_client_init_region(
-    region: str, expected_config: dict[str, str], session: MagicMock
+    region: str, expected_config: RegionConfig, session: MagicMock
 ) -> None:
     """Test RESTClient initialization for both NA and EU regions."""
     config = MyAirConfig(username="user", password="pass", region=region, device_token="token")
     client = RESTClient(config, session)
     assert client._region_config == expected_config
-    assert client._email_factor_id == expected_config["email_factor_id"]
+    assert client._email_factor_id == expected_config.email_factor_id
     assert client._mfa_url.startswith("https://")
 
 
@@ -73,8 +117,15 @@ def test_properties_variants(case: str, config_na: MyAirConfig, session: MagicMo
         ("abc", "xyz", ["DT=abc; Path=/", "sid=def; Path=/"], "abc", "def", False),
         # Not DT or sid, should not update
         (None, None, ["othercookie=othervalue; Path=/; HttpOnly"], None, None, False),
-        # DT changes and initial_dt is not None, should warn
-        ("oldtoken", None, ["DT=newtoken; Path=/"], "newtoken", None, True),
+        # DT changes and initial_dt is not None, should warn without logging token values
+        (
+            "oldtoken",
+            "oldsid",
+            ["DT=newtoken; Path=/", "sid=sidvalue; Path=/"],
+            "newtoken",
+            "sidvalue",
+            True,
+        ),
     ],
 )
 async def test_extract_and_update_cookies_variants(
@@ -95,16 +146,15 @@ async def test_extract_and_update_cookies_variants(
     client._cookie_dt = initial_dt
     client._cookie_sid = initial_sid
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.DEBUG):
         await client._extract_and_update_cookies(cookie_headers)
     assert client._cookie_dt == expected_dt
     assert client._cookie_sid == expected_sid
     if expect_warn:
-        assert (
-            "Changing Device Token" in caplog.text
-            and "oldtoken" in caplog.text
-            and "newtoken" in caplog.text
-        )
+        assert "Changing Device Token" in caplog.text
+        assert "oldtoken" not in caplog.text
+        assert "newtoken" not in caplog.text
+        assert "sidvalue" not in caplog.text
     else:
         assert "Changing Device Token" not in caplog.text
 
@@ -536,6 +586,133 @@ async def test_mfa_methods_success_variants(
 
 
 @pytest.mark.asyncio
+async def test_json_headers_assignment_forwards_to_auth_trigger_mfa(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Setting RESTClient._json_headers updates delegated auth request headers."""
+    client = RESTClient(config_na, session)
+    client._state_token = "dummy_state_token"
+    client._mfa_url = "https://example.com/mfa"
+    client._json_headers = {"Content-Type": "application/json"}
+    mock_response = make_mock_aiohttp_response(json_value={"status": "MFA_CHALLENGE_SENT"})
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+
+    await client._trigger_mfa()
+
+    assert client._auth.json_headers == {"Content-Type": "application/json"}
+    assert session.post.call_args.kwargs["headers"] == {"Content-Type": "application/json"}
+
+
+@pytest.mark.asyncio
+async def test_verify_mfa_debug_logs_do_not_expose_mfa_secrets(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MFA debug logging avoids verification code and state token values."""
+    client = RESTClient(config_na, session)
+    client._state_token = "dummy_state_token"
+    client._mfa_url = "https://example.com/mfa"
+    mock_response = make_mock_aiohttp_response(
+        json_value={"status": AUTHN_SUCCESS, "sessionToken": "dummy_session_token"}
+    )
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+
+    with caplog.at_level(logging.DEBUG):
+        await client._verify_mfa("654321")
+
+    assert "654321" not in caplog.text
+    assert "dummy_state_token" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_trigger_mfa_debug_logs_do_not_expose_auth_flow_secrets(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MFA trigger debug logging avoids state, session, and passcode values."""
+    client = RESTClient(config_na, session)
+    client._state_token = "dummy_state_token"
+    client._mfa_url = "https://example.com/mfa"
+    mock_response = make_mock_aiohttp_response(
+        json_value={
+            "status": "MFA_CHALLENGE_SENT",
+            "stateToken": "response_state_token",
+            "sessionToken": "response_session_token",
+            "_embedded": {"verification": {"passCode": "nested_pass_code"}},
+        }
+    )
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
+    error_check = AsyncMock()
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", error_check)
+
+    with caplog.at_level(logging.DEBUG):
+        await client._trigger_mfa()
+
+    mock_response.json.assert_awaited_once()
+    error_check.assert_awaited_once_with(
+        "trigger_mfa",
+        mock_response,
+        {
+            "status": "MFA_CHALLENGE_SENT",
+            "stateToken": "response_state_token",
+            "sessionToken": "response_session_token",
+            "_embedded": {"verification": {"passCode": "nested_pass_code"}},
+        },
+        False,
+    )
+    assert "response_state_token" not in caplog.text
+    assert "response_session_token" not in caplog.text
+    assert "nested_pass_code" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_debug_logs_do_not_expose_oauth_secrets(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OAuth debug logging avoids session token, auth code, and verifier values."""
+    client = RESTClient(config_na, session)
+    client._session_token = "dummy_session_token"
+
+    mock_code_res = make_mock_aiohttp_response()
+    mock_code_res.headers = MagicMock()
+    mock_code_res.headers.getall = MagicMock(return_value=[])
+    mock_code_res.headers.get = MagicMock(return_value="https://redirect#code=secret_auth_code")
+    mock_token_res = make_mock_aiohttp_response(
+        json_value={"access_token": "access_token_value", "id_token": "id_token_value"}
+    )
+    session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_token_res)
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.auth.urldefrag",
+        lambda *a, **k: MagicMock(fragment="code=secret_auth_code"),
+    )
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.auth.parse_qs",
+        lambda *a, **k: {"code": ["secret_auth_code"]},
+    )
+    monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", AsyncMock())
+    monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
+
+    with caplog.at_level(logging.DEBUG):
+        await client._get_access_token()
+
+    assert "dummy_session_token" not in caplog.text
+    assert "secret_auth_code" not in caplog.text
+    assert "code_verifier" not in caplog.text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("json_value", "match"),
     [
@@ -593,11 +770,11 @@ async def test_get_access_token_success(
     session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_token_res)
     monkeypatch.setattr(
-        "custom_components.resmed_myair.client.rest_client.urldefrag",
+        "custom_components.resmed_myair.client.auth.urldefrag",
         lambda *a, **k: MagicMock(fragment="code=abc123"),
     )
     monkeypatch.setattr(
-        "custom_components.resmed_myair.client.rest_client.parse_qs",
+        "custom_components.resmed_myair.client.auth.parse_qs",
         lambda *a, **k: {"code": ["the_code"]},
     )
     mock_extract = AsyncMock()
@@ -625,6 +802,34 @@ async def test_get_access_token_raises_on_missing_location(
     monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", AsyncMock())
     monkeypatch.setattr(RESTClient, "_resmed_response_error_check", AsyncMock())
     with pytest.raises(ParsingError, match="Unable to get location from code_res"):
+        await client._get_access_token()
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_raises_on_missing_authorization_code(
+    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test _get_access_token raises ParsingError if the redirect has no code."""
+    client = RESTClient(config_na, session)
+    client._session_token = "dummy_session_token"
+    client._json_headers = {"Content-Type": "application/json"}
+
+    mock_code_res = make_mock_aiohttp_response()
+    mock_code_res.headers = MagicMock()
+    mock_code_res.headers.getall = MagicMock(return_value=[])
+    mock_code_res.headers.get = MagicMock(return_value="https://redirect#error=access_denied")
+
+    session.get.return_value = make_mock_aiohttp_context_manager(mock_code_res)
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.auth.urldefrag",
+        lambda *a, **k: MagicMock(fragment="error=access_denied"),
+    )
+    monkeypatch.setattr(
+        "custom_components.resmed_myair.client.auth.parse_qs",
+        lambda *a, **k: {"error": ["access_denied"]},
+    )
+
+    with pytest.raises(ParsingError, match="Authorization code missing"):
         await client._get_access_token()
 
 
@@ -665,11 +870,11 @@ async def test_get_access_token_raises_on_missing_token_variants(
         session, "post", lambda *args, **kwargs: make_mock_aiohttp_context_manager(mock_token_res)
     )
     monkeypatch.setattr(
-        "custom_components.resmed_myair.client.rest_client.urldefrag",
+        "custom_components.resmed_myair.client.auth.urldefrag",
         lambda *a, **k: MagicMock(fragment="code=abc123"),
     )
     monkeypatch.setattr(
-        "custom_components.resmed_myair.client.rest_client.parse_qs",
+        "custom_components.resmed_myair.client.auth.parse_qs",
         lambda *a, **k: {"code": ["the_code"]},
     )
     monkeypatch.setattr(RESTClient, "_extract_and_update_cookies", AsyncMock())
@@ -704,7 +909,7 @@ async def test_gql_query_variants(
     if jwt_behavior == "valid":
         # jwt.decode returns a payload including myAirCountryId
         monkeypatch.setattr(
-            "custom_components.resmed_myair.client.rest_client.jwt.decode",
+            "custom_components.resmed_myair.client.graphql.jwt.decode",
             lambda *a, **k: {"myAirCountryId": expected_country},
         )
         monkeypatch.setattr(
@@ -724,7 +929,7 @@ async def test_gql_query_variants(
             raise ValueError("bad jwt")
 
         monkeypatch.setattr(
-            "custom_components.resmed_myair.client.rest_client.jwt.decode",
+            "custom_components.resmed_myair.client.graphql.jwt.decode",
             bad_decode,
         )
         with pytest.raises(ParsingError, match="Unable to decode id_token into jwt_data"):
@@ -737,7 +942,7 @@ async def test_gql_query_variants(
     [
         (
             "idtoken",
-            {"side_effect": Exception("bad jwt")},
+            {"side_effect": ValueError("bad jwt")},
             "Unable to decode id_token into jwt_data",
         ),
         ("idtoken", {"return_value": {}}, "myAirCountryId not found in jwt_data"),
@@ -766,14 +971,14 @@ async def test_gql_query_failure_variants(
                 raise jwt_behavior["side_effect"]
 
             monkeypatch.setattr(
-                "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                "custom_components.resmed_myair.client.graphql.jwt.decode",
                 side,
             )
             with pytest.raises(ParsingError, match=match):
                 await client._gql_query("op", "query")
         else:
             monkeypatch.setattr(
-                "custom_components.resmed_myair.client.rest_client.jwt.decode",
+                "custom_components.resmed_myair.client.graphql.jwt.decode",
                 lambda *a, **k: jwt_behavior.get("return_value", {}),
             )
             with pytest.raises(ParsingError, match=match):
@@ -785,10 +990,8 @@ async def test_gql_query_failure_variants(
 
 
 @pytest.mark.asyncio
-async def test_gql_query_graphql_error(
-    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Ensure gql_query raises AuthenticationError on GraphQL auth errors."""
+async def test_gql_query_graphql_error(config_na: MyAirConfig, session: MagicMock) -> None:
+    """Ensure gql_query maps GraphQL unauthorized errors."""
     client = RESTClient(config_na, session)
     client._access_token = "access"
     client._id_token = None
@@ -800,12 +1003,7 @@ async def test_gql_query_graphql_error(
     )
 
     session.post.return_value = make_mock_aiohttp_context_manager(mock_res)
-    monkeypatch.setattr(
-        RESTClient,
-        "_resmed_response_error_check",
-        AsyncMock(side_effect=AuthenticationError("unauthorized")),
-    )
-    with pytest.raises(AuthenticationError, match="unauthorized"):
+    with pytest.raises(ParsingError, match="unauthorized: 401"):
         await client._gql_query("op", "query")
 
 
@@ -901,7 +1099,16 @@ async def test_data_fetch_success_variants(
     client._country_code = "US"
     monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
     result = await getattr(client, method_name)()
-    assert result == expected
+    if method_name == "get_sleep_records":
+        assert isinstance(result, list)
+        assert isinstance(result[0], MyAirSleepRecord)
+        assert result[0].total_usage_minutes == expected[0]["totalUsage"]  # type: ignore[index]
+        assert result[0].raw == expected[0]
+    else:
+        assert isinstance(result, MyAirDevice)
+        assert result.raw == expected
+        assert result.serial_number == expected.get("serialNumber")
+        assert result.native_value("serialNumber") == expected.get("serialNumber")
 
 
 @pytest.mark.asyncio
@@ -956,6 +1163,21 @@ async def test_get_sleep_records_failure_variants(
     client._country_code = "US"
     monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
     with pytest.raises(ParsingError, match=match_msg):
+        await client.get_sleep_records()
+
+
+@pytest.mark.asyncio
+async def test_get_sleep_records_raises_parsing_error_for_non_mapping_items(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sleep record list entries must be mappings before model parsing."""
+    client = RESTClient(config_na, session)
+    mock_response = {"data": {"getPatientWrapper": {"sleepRecords": {"items": [123]}}}}
+    monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
+
+    with pytest.raises(ParsingError, match="Returned record item is not a mapping"):
         await client.get_sleep_records()
 
 
@@ -1022,9 +1244,9 @@ async def test_get_user_device_data_masks_variants(
         assert "Error getting User Mask Data" not in caplog.text
 
     if expected_mask:
-        assert result["maskCode"] == expected_mask
+        assert result.raw["maskCode"] == expected_mask
     else:
-        assert "maskCode" not in result
+        assert "maskCode" not in result.raw
 
 
 @pytest.mark.asyncio
@@ -1106,9 +1328,9 @@ async def test_authn_check_email_factor_id_exceptions(
     mock_response = make_mock_aiohttp_response(json_value=authn_dict)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
 
-    # Should NOT raise, but should set _email_factor_id to region_config["email_factor_id"]
+    # Should NOT raise, but should set _email_factor_id to region_config.email_factor_id
     result = await client._authn_check()
-    assert client._email_factor_id == client._region_config["email_factor_id"]
+    assert client._email_factor_id == client._region_config.email_factor_id
     assert result == "MFA_REQUIRED"
 
 
