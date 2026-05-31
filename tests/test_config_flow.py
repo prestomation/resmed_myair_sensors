@@ -360,6 +360,7 @@ async def test_async_step_reauth_aborts_on_unverified_device_identity(
     flow._entry = config_entry
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA}
+    flow.hass.config_entries.async_schedule_reload = MagicMock()
     mismatched_device = MyAirDevice.from_api(
         {
             "serialNumber": device_serial_number,
@@ -379,7 +380,7 @@ async def test_async_step_reauth_aborts_on_unverified_device_identity(
     assert result["type"] == "abort"
     assert result["reason"] == "wrong_account"
     flow.hass.config_entries.async_update_entry.assert_not_called()
-    flow.hass.config_entries.async_reload.assert_not_called()
+    flow.hass.config_entries.async_schedule_reload.assert_not_called()
 
 
 @pytest.mark.asyncio
