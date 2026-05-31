@@ -520,34 +520,6 @@ async def test_async_step_user_not_device_or_not_authn_success(
     flow.async_step_verify_mfa.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_async_step_user_device_missing_serial_number(
-    monkeypatch: pytest.MonkeyPatch, hass: MagicMock
-) -> None:
-    """Missing device serial numbers keep the user step on its form."""
-    flow = MyAirConfigFlow()
-    flow.hass = hass
-    flow._data = {}
-
-    # Patch get_device to return a device dict without 'serialNumber'
-    device = MyAirDevice.from_api({"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"})
-    monkeypatch.setattr(
-        "custom_components.resmed_myair.config_flow.get_device",
-        AsyncMock(return_value=(AUTHN_SUCCESS, device, MagicMock())),
-    )
-
-    user_input = {
-        CONF_USER_NAME: "user",
-        CONF_PASSWORD: "pass",
-        CONF_REGION: REGION_NA,
-    }
-
-    result = await flow.async_step_user(user_input)
-    assert result["type"] == "form"
-    assert result["step_id"] == "user"
-    assert result["errors"]["base"] == "authentication_error"
-
-
 @pytest.mark.parametrize(
     ("step_name", "expected_step_id", "needs_entry"),
     [
@@ -598,35 +570,63 @@ async def test_async_step_reauth_no_entry(hass: MagicMock) -> None:
     flow.hass.config_entries.async_get_entry.assert_called_once_with("missing_entry")
 
 
+@pytest.mark.parametrize(
+    ("step_name", "user_input", "flow_data", "expected_step_id", "needs_entry"),
+    [
+        (
+            "async_step_user",
+            {
+                CONF_USER_NAME: "user",
+                CONF_PASSWORD: "pass",
+                CONF_REGION: REGION_NA,
+            },
+            {},
+            "user",
+            False,
+        ),
+        (
+            "async_step_reauth_confirm",
+            {
+                CONF_USER_NAME: "user",
+                CONF_PASSWORD: "pw",
+            },
+            {
+                CONF_USER_NAME: "user",
+                CONF_PASSWORD: "pw",
+                CONF_REGION: REGION_NA,
+                CONF_DEVICE_TOKEN: "token",
+            },
+            "reauth_confirm",
+            True,
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_async_step_reauth_confirm_missing_serial_number(
-    monkeypatch: pytest.MonkeyPatch, hass: MagicMock, config_entry: MockConfigEntry
+async def test_async_step_device_missing_serial_number_variants(
+    flow: MyAirConfigFlow,
+    monkeypatch: pytest.MonkeyPatch,
+    config_entry: MockConfigEntry,
+    step_name: str,
+    user_input: dict[str, str],
+    flow_data: dict[str, str],
+    expected_step_id: str,
+    needs_entry: bool,
 ) -> None:
-    """Missing device serial numbers keep reauth confirm on its form."""
-    flow = MyAirConfigFlow()
-    flow.hass = hass
-    flow._data = {
-        CONF_USER_NAME: "user",
-        CONF_PASSWORD: "pw",
-        CONF_REGION: REGION_NA,
-        CONF_DEVICE_TOKEN: "token",
-    }
-    flow._entry = config_entry
-    # Patch get_device to return a device dict without 'serialNumber'
+    """Missing device serial numbers keep the active auth form open."""
+    flow._data = flow_data
+    if needs_entry:
+        flow._entry = config_entry
     device = MyAirDevice.from_api({"fgDeviceManufacturerName": "ResMed", "localizedName": "CPAP"})
     monkeypatch.setattr(
-        "custom_components.resmed_myair.config_flow.get_device",
+        config_flow,
+        "get_device",
         AsyncMock(return_value=(AUTHN_SUCCESS, device, MagicMock(spec=RESTClient))),
     )
 
-    user_input = {
-        CONF_USER_NAME: "user",
-        CONF_PASSWORD: "pw",
-    }
+    result = await getattr(flow, step_name)(user_input)
 
-    result = await flow.async_step_reauth_confirm(user_input)
     assert result["type"] == "form"
-    assert result["step_id"] == "reauth_confirm"
+    assert result["step_id"] == expected_step_id
     assert result["errors"]["base"] == "authentication_error"
 
 
