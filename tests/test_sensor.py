@@ -165,6 +165,21 @@ def test_sleep_record_sensor_handle_coordinator_update(
     assert sensor.native_value == expected_value
 
 
+def test_sleep_record_sensor_is_available_when_raw_key_value_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
+    """Ensure raw sleep sensors stay available when the raw key exists with a null value."""
+    coordinator = coordinator_factory(data={"sleep_records": [{"foo": None}]})
+    sensor = MyAirSleepRecordSensor("Test", SensorEntityDescription(key="foo"), coordinator)
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value is None
+
+
 @pytest.mark.parametrize(
     (
         "device_data",
@@ -229,6 +244,21 @@ def test_myair_device_sensor_parametrized(
     sensor._handle_coordinator_update()
     assert sensor.available == expected_available
     assert sensor.native_value == expected_native
+
+
+def test_device_sensor_is_available_when_raw_key_value_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
+    """Ensure raw device sensors stay available when the raw key exists with a null value."""
+    coordinator = coordinator_factory(data={"device": {"foo": None}})
+    sensor = MyAirDeviceSensor("Test", SensorEntityDescription(key="foo"), coordinator)
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value is None
 
 
 @pytest.mark.asyncio

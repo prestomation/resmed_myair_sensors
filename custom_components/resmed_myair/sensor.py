@@ -163,7 +163,7 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
             value = _parse_native_value(
                 latest_record.native_value(self.sensor_key), self.entity_description
             )
-            self._available = value is not None
+            self._available = True
 
         self._attr_native_value = value
         self.async_write_ha_state()
@@ -197,7 +197,7 @@ class MyAirDeviceSensor(MyAirBaseSensor):
             value = _parse_native_value(
                 device_data.native_value(self.sensor_key), self.entity_description
             )
-            self._available = value is not None
+            self._available = True
 
         self._attr_native_value = value
         self.async_write_ha_state()
