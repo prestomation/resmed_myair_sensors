@@ -54,41 +54,34 @@ async def test_async_update_data_auth_error(hass: MagicMock, myair_client: Magic
     myair_client.connect.assert_awaited_once()
 
 
+@pytest.mark.parametrize("failing_fetch", ["device", "sleep_records"])
 @pytest.mark.asyncio
-async def test_async_update_data_parsing_error_device(
-    hass: MagicMock, myair_client: MagicMock
+async def test_async_update_data_parsing_error_variants(
+    hass: MagicMock, myair_client: MagicMock, failing_fetch: str
 ) -> None:
-    """Device parsing failures degrade to an empty device payload."""
-    myair_client.get_sleep_records.return_value = [
-        MyAirSleepRecord.from_api({"totalUsage": 60, "startDate": "2024-07-01"})
-    ]
-    myair_client.get_user_device_data.side_effect = ParsingError("device parse fail")
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
-    data = await coordinator._async_update_data()
-    assert data.device is None
-    # Unaffected path still returns defaults
-    assert data.sleep_records == (
-        MyAirSleepRecord.from_api({"totalUsage": 60, "startDate": "2024-07-01"}),
-    )
-    myair_client.connect.assert_awaited_once()
-    myair_client.get_user_device_data.assert_awaited_once()
-    myair_client.get_sleep_records.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_async_update_data_parsing_error_sleep_records(
-    hass: MagicMock, myair_client: MagicMock
-) -> None:
-    """Sleep-record parsing failures degrade to an empty record list."""
-    myair_client.get_user_device_data.return_value = MyAirDevice.from_api(
+    """Parsing failures degrade only the failing payload branch."""
+    expected_device = MyAirDevice.from_api(
         {"serialNumber": "1234", "fgDeviceManufacturerName": "ResMed"}
     )
-    myair_client.get_sleep_records.side_effect = ParsingError("sleep parse fail")
+    expected_records = (MyAirSleepRecord.from_api({"totalUsage": 60, "startDate": "2024-07-01"}),)
+    myair_client.get_user_device_data.return_value = expected_device
+    myair_client.get_sleep_records.return_value = list(expected_records)
+
+    if failing_fetch == "device":
+        myair_client.get_user_device_data.side_effect = ParsingError("device parse fail")
+    else:
+        myair_client.get_sleep_records.side_effect = ParsingError("sleep parse fail")
+
     coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
     data = await coordinator._async_update_data()
-    assert data.sleep_records == ()
-    assert data.device is not None
-    assert data.device.serial_number == "1234"
+
+    if failing_fetch == "device":
+        assert data.device is None
+        assert data.sleep_records == expected_records
+    else:
+        assert data.device is expected_device
+        assert data.sleep_records == ()
+
     myair_client.connect.assert_awaited_once()
     myair_client.get_user_device_data.assert_awaited_once()
     myair_client.get_sleep_records.assert_awaited_once()
