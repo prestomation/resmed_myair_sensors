@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_RECONFIGURE
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -127,10 +128,10 @@ async def test_reauth_mfa_workflow_updates_entry_and_reloads(
     get_mfa_device = AsyncMock(return_value=(AUTHN_SUCCESS, _device()))
     monkeypatch.setattr(config_flow, "get_device", get_device)
     monkeypatch.setattr(config_flow, "get_mfa_device", get_mfa_device)
-    hass.config_entries.async_get_entry = MagicMock(return_value=config_entry)
+    hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
     hass.config_entries.async_update_entry = MagicMock()
-    hass.config_entries.async_reload = AsyncMock()
-    flow = _flow(hass, {"entry_id": config_entry.entry_id})
+    hass.config_entries.async_schedule_reload = MagicMock()
+    flow = _flow(hass, {"source": SOURCE_REAUTH, "entry_id": config_entry.entry_id})
 
     confirm_form = await flow.async_step_reauth(dict(entry_data))
     mfa_form = await flow.async_step_reauth_confirm(
@@ -155,13 +156,75 @@ async def test_reauth_mfa_workflow_updates_entry_and_reloads(
         "old-token",
     )
     get_mfa_device.assert_awaited_once_with(myair_client, "654321")
-    hass.config_entries.async_update_entry.assert_called_once_with(
-        config_entry,
-        data={
+    _, kwargs = hass.config_entries.async_update_entry.call_args
+    assert kwargs["entry"] is config_entry
+    assert kwargs["data"] == {
+        CONF_USER_NAME: "new@example.com",
+        CONF_PASSWORD: "new-password",
+        CONF_REGION: REGION_NA,
+        CONF_DEVICE_TOKEN: "new-token",
+    }
+    hass.config_entries.async_schedule_reload.assert_called_once_with("existing-entry")
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_mfa_workflow_updates_entry_and_reloads(
+    hass: MagicMock,
+    myair_client: RESTClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reconfigure carries updated setup data through MFA, update, and reload."""
+    entry_data = {
+        CONF_USER_NAME: "old@example.com",
+        CONF_PASSWORD: "old-password",
+        CONF_REGION: REGION_NA,
+        CONF_DEVICE_TOKEN: "old-token",
+    }
+    config_entry = MockConfigEntry(
+        domain="resmed_myair",
+        title="ResMed-Bedroom CPAP",
+        data=entry_data,
+        entry_id="existing-entry",
+        unique_id="SN123",
+        version=2,
+    )
+    myair_client.device_token = "new-token"
+    get_device = AsyncMock(return_value=("MFA_REQUIRED", None, myair_client))
+    get_mfa_device = AsyncMock(return_value=(AUTHN_SUCCESS, _device()))
+    monkeypatch.setattr(config_flow, "get_device", get_device)
+    monkeypatch.setattr(config_flow, "get_mfa_device", get_mfa_device)
+    hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    hass.config_entries.async_update_entry = MagicMock()
+    hass.config_entries.async_schedule_reload = MagicMock()
+    flow = _flow(hass, {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id})
+
+    mfa_form = await flow.async_step_reconfigure(
+        {
             CONF_USER_NAME: "new@example.com",
             CONF_PASSWORD: "new-password",
-            CONF_REGION: REGION_NA,
-            CONF_DEVICE_TOKEN: "new-token",
-        },
+            CONF_REGION: REGION_EU,
+        }
     )
-    hass.config_entries.async_reload.assert_awaited_once_with("existing-entry")
+    result = await flow.async_step_reconfigure_verify_mfa({CONF_VERIFICATION_CODE: "654321"})
+
+    assert mfa_form["type"] == "form"
+    assert mfa_form["step_id"] == "reconfigure_verify_mfa"
+    assert result["type"] == "abort"
+    assert result["reason"] == "reconfigure_successful"
+    get_device.assert_awaited_once_with(
+        hass,
+        "new@example.com",
+        "new-password",
+        REGION_EU,
+        "old-token",
+    )
+    get_mfa_device.assert_awaited_once_with(myair_client, "654321")
+    _, kwargs = hass.config_entries.async_update_entry.call_args
+    assert kwargs["entry"] is config_entry
+    assert kwargs["data"] == {
+        CONF_USER_NAME: "new@example.com",
+        CONF_PASSWORD: "new-password",
+        CONF_REGION: REGION_EU,
+        CONF_DEVICE_TOKEN: "new-token",
+    }
+    hass.config_entries.async_schedule_reload.assert_called_once_with("existing-entry")

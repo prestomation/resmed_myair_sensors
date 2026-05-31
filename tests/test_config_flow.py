@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from aiohttp import ClientError
-from homeassistant.config_entries import UnknownEntry
+from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_RECONFIGURE, UnknownEntry
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -18,6 +18,7 @@ from custom_components.resmed_myair.config_flow import (
     CONF_REGION,
     CONF_USER_NAME,
     CONF_VERIFICATION_CODE,
+    REGION_EU,
     REGION_NA,
     AuthenticationError,
     HttpProcessingError,
@@ -36,6 +37,7 @@ CONFIG_FLOW_ABORT_REASONS = (
     "incomplete_account",
     "incomplete_account_verify_email",
     "reauth_successful",
+    "reconfigure_successful",
     "wrong_account",
 )
 
@@ -308,6 +310,7 @@ async def test_async_step_reauth_backfills_legacy_entry_unique_id(
     )
     flow._entry = config_entry
     flow._client = myair_client
+    flow.hass.config_entries.async_schedule_reload = MagicMock()
     myair_client.device_token = "updated-token"
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA}
     device = MyAirDevice.from_api(
@@ -328,17 +331,16 @@ async def test_async_step_reauth_backfills_legacy_entry_unique_id(
 
     assert result["type"] == "abort"
     assert result["reason"] == "reauth_successful"
-    flow.hass.config_entries.async_update_entry.assert_called_once_with(
-        config_entry,
-        data={
-            CONF_USER_NAME: "user",
-            CONF_PASSWORD: "pass",
-            CONF_REGION: REGION_NA,
-            CONF_DEVICE_TOKEN: "updated-token",
-        },
-        unique_id="SN123",
-    )
-    flow.hass.config_entries.async_reload.assert_awaited_once_with("mock_entry_id")
+    _, kwargs = flow.hass.config_entries.async_update_entry.call_args
+    assert kwargs["entry"] is config_entry
+    assert kwargs["data"] == {
+        CONF_USER_NAME: "user",
+        CONF_PASSWORD: "pass",
+        CONF_REGION: REGION_NA,
+        CONF_DEVICE_TOKEN: "updated-token",
+    }
+    assert kwargs["unique_id"] == "SN123"
+    flow.hass.config_entries.async_schedule_reload.assert_called_once_with("mock_entry_id")
 
 
 @pytest.mark.asyncio
@@ -628,9 +630,9 @@ async def test_async_step_reauth_calls_confirm(
     """The reauth entry route loads entry data before calling confirm."""
     flow = MyAirConfigFlow()
     flow.hass = hass
-    flow.context = {"entry_id": "123"}
+    flow.context = {"source": SOURCE_REAUTH, "entry_id": "123"}
     flow._data = {}
-    flow.hass.config_entries.async_get_entry = MagicMock(return_value=config_entry)
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
 
     flow.async_step_reauth_confirm = AsyncMock(return_value={"type": "form"})
     entry_data = {"foo": "bar"}
@@ -640,7 +642,77 @@ async def test_async_step_reauth_calls_confirm(
     assert flow._entry == config_entry
     assert flow._data["foo"] == "bar"
     flow.async_step_reauth_confirm.assert_awaited_once()
-    flow.hass.config_entries.async_get_entry.assert_called_once_with("123")
+    flow.hass.config_entries.async_get_known_entry.assert_called_once_with("123")
+
+
+@pytest.mark.asyncio
+async def test_async_step_reconfigure_success_updates_entry_and_schedules_reload(
+    hass: MagicMock,
+    myair_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reconfigure validates the same device before updating setup data."""
+    config_entry = MockConfigEntry(
+        domain="resmed_myair",
+        title="ResMed-CPAP",
+        data={
+            CONF_USER_NAME: "old@example.com",
+            CONF_PASSWORD: "old-password",
+            CONF_REGION: REGION_NA,
+            CONF_DEVICE_TOKEN: "old-token",
+        },
+        entry_id="mock_entry_id",
+        unique_id="SN123",
+        version=2,
+    )
+    device = MyAirDevice.from_api(
+        {
+            "serialNumber": "SN123",
+            "fgDeviceManufacturerName": "ResMed",
+            "localizedName": "CPAP",
+        }
+    )
+    myair_client.device_token = "new-token"
+    monkeypatch.setattr(
+        config_flow,
+        "get_device",
+        AsyncMock(return_value=(AUTHN_SUCCESS, device, myair_client)),
+    )
+    hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    hass.config_entries.async_schedule_reload = MagicMock()
+    flow = MyAirConfigFlow()
+    flow.hass = hass
+    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+
+    result = await flow.async_step_reconfigure(
+        {
+            CONF_USER_NAME: "new@example.com",
+            CONF_PASSWORD: "new-password",
+            CONF_REGION: REGION_EU,
+        }
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reconfigure_successful"
+    get_device_mock = config_flow.get_device
+    assert isinstance(get_device_mock, AsyncMock)
+    get_device_mock.assert_awaited_once_with(
+        hass,
+        "new@example.com",
+        "new-password",
+        REGION_EU,
+        "old-token",
+    )
+    hass.config_entries.async_get_known_entry.assert_any_call("mock_entry_id")
+    _, kwargs = hass.config_entries.async_update_entry.call_args
+    assert kwargs["entry"] is config_entry
+    assert kwargs["data"] == {
+        CONF_USER_NAME: "new@example.com",
+        CONF_PASSWORD: "new-password",
+        CONF_REGION: REGION_EU,
+        CONF_DEVICE_TOKEN: "new-token",
+    }
+    hass.config_entries.async_schedule_reload.assert_called_once_with("mock_entry_id")
 
 
 @pytest.mark.asyncio
@@ -710,12 +782,14 @@ async def test_async_step_reauth_no_entry(hass: MagicMock) -> None:
     """Reauth aborts when the referenced config entry no longer exists."""
     flow = MyAirConfigFlow()
     flow.hass = hass
-    flow.hass.config_entries.async_get_entry.return_value = None
-    flow.context = {"entry_id": "missing_entry"}
+    flow.hass.config_entries.async_get_known_entry = MagicMock(
+        side_effect=UnknownEntry("missing_entry")
+    )
+    flow.context = {"source": SOURCE_REAUTH, "entry_id": "missing_entry"}
 
     with pytest.raises(UnknownEntry):
         await flow.async_step_reauth({})
-    flow.hass.config_entries.async_get_entry.assert_called_once_with("missing_entry")
+    flow.hass.config_entries.async_get_known_entry.assert_called_once_with("missing_entry")
 
 
 @pytest.mark.parametrize(

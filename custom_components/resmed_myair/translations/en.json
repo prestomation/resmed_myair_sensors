@@ -32,6 +32,22 @@
                     "verification_code": "One-time verification code"
                 },
                 "description": "Enter the One-time verification code you received from ResMed to {username}."
+            },
+            "reconfigure": {
+                "title": "Reconfigure ResMed myAir",
+                "description": "Update the account details used by the ResMed myAir integration.",
+                "data": {
+                    "Username": "Username",
+                    "Password": "Password",
+                    "Region": "myAir Region"
+                }
+            },
+            "reconfigure_verify_mfa": {
+                "title": "Verify MFA",
+                "data": {
+                    "verification_code": "One-time verification code"
+                },
+                "description": "Enter the One-time verification code you received from ResMed to {username}."
             }
         },
         "error": {
@@ -43,7 +59,8 @@
             "incomplete_account": "ResMed myAir Account Setup is Incomplete. Login to the myAir website and ensure that CPAP data is showing. Also, ensure that the Time Zone is set under My Account.",
             "incomplete_account_verify_email": "ResMed myAir Account Setup is Incomplete. Email address has not been verified.",
             "reauth_successful": "ResMed myAir Reauthentication Successful",
-            "wrong_account": "Reauthentication failed because the account belongs to a different device. Use credentials for the originally configured device."
+            "reconfigure_successful": "ResMed myAir Reconfiguration Successful",
+            "wrong_account": "The account belongs to a different device. Use credentials for the originally configured device."
         }
     }
 }
