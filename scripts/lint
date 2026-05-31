@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+if [ ! -x .venv/bin/prek ] || [ ! -x .venv/bin/mypy ]; then
+	scripts/setup
+fi
+
+status=0
+
+.venv/bin/prek run -a || status=$?
+
+exit "$status"

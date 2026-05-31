@@ -7,8 +7,7 @@ export RESMED_MYAIR_LIVE_SMOKE_CWD="$PWD"
 cd "$(dirname "$0")/.."
 
 if [ ! -x .venv/bin/python ]; then
-	echo "Missing .venv Python. Create the repo venv before running this script." >&2
-	exit 1
+	scripts/setup
 fi
 
 if [ -f scripts/live_smoke_test.env ]; then
