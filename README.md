@@ -13,7 +13,7 @@
 
 ## Features
 
-This integration creates sensors from your myAir CPAP data like AHI Events/hr, Usage Minutes, Mask On/Off count, Mask Leak %. There is also a Last Sleep Data Recorded sensor to tell you the last date that myAir has recorded. This can be used to, say, notify you of your scores when they are updated in myAir in the morning.
+This integration creates sensors from your myAir CPAP data like AHI Events/hr, Usage Minutes, Mask On/Off count, and Mask Leak in L/min. There is also a Last Sleep Data Recorded sensor to tell you the last date that myAir has recorded. This can be used to, say, notify you of your scores when they are updated in myAir in the morning.
 
 By the nature of CPAP data, sensors will only update once per day (assuming your CPAP is used every day). For this reason, the integration only polls every 30 minutes. A service exists for each config that will force update if you want to automate the sync after you wake up.
 
@@ -38,7 +38,7 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
 1. CPAP Mask On/Off Count
 1. CPAP Current Data Date
     * This is the last date currently being displayed by the other sensors
-1. CPAP Mask Leak %
+1. CPAP Mask Leak
 1. CPAP Total myAir Score
 1. CPAP Sleep Data Last Collected
     * This is the datetime the CPAP uploaded the most recent data

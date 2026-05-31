@@ -7,7 +7,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, Platform, UnitOfTime
+from homeassistant.const import Platform, UnitOfTime, UnitOfVolumeFlowRate
 
 VERSION = "v0.2.6"
 
@@ -68,10 +68,10 @@ SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP Current Data Date": SensorEntityDescription(
         key="startDate", device_class=SensorDeviceClass.DATE
     ),
-    "CPAP Mask Leak %": SensorEntityDescription(
+    "CPAP Mask Leak": SensorEntityDescription(
         key="leakPercentile",
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=PERCENTAGE,
+        native_unit_of_measurement=UnitOfVolumeFlowRate.LITERS_PER_MINUTE,
     ),
     "CPAP Total myAir Score": SensorEntityDescription(
         key="sleepScore", state_class=SensorStateClass.MEASUREMENT

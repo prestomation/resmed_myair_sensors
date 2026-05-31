@@ -5,10 +5,11 @@ import logging
 from unittest.mock import MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
+from homeassistant.const import UnitOfVolumeFlowRate
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.resmed_myair.const import CONF_USER_NAME
+from custom_components.resmed_myair.const import CONF_USER_NAME, SLEEP_RECORD_SENSOR_DESCRIPTIONS
 from custom_components.resmed_myair.sensor import (
     MyAirDeviceSensor,
     MyAirFriendlyUsageTime,
@@ -17,6 +18,20 @@ from custom_components.resmed_myair.sensor import (
     async_setup_entry,
 )
 from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike, coordinator_data
+
+
+def test_mask_leak_sensor_uses_liters_per_minute_without_changing_raw_key(
+    coordinator_factory: CoordinatorFactory,
+) -> None:
+    """Mask leak keeps its legacy raw key while exposing the correct flow unit."""
+    description = SLEEP_RECORD_SENSOR_DESCRIPTIONS["CPAP Mask Leak"]
+    coordinator = coordinator_factory(data=coordinator_data(device={"serialNumber": "SN123"}))
+
+    sensor = MyAirSleepRecordSensor("CPAP Mask Leak", description, coordinator)
+
+    assert description.key == "leakPercentile"
+    assert description.native_unit_of_measurement == UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+    assert sensor.unique_id == "resmed_myair_SN123_leakPercentile"
 
 
 @pytest.mark.parametrize(
