@@ -68,9 +68,12 @@ SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP Current Data Date": SensorEntityDescription(
         key="startDate", device_class=SensorDeviceClass.DATE
     ),
+    # Key remains leakPercentile even though units changed from % to L/min
+    # to not lose sensor history
     "CPAP Mask Leak": SensorEntityDescription(
         key="leakPercentile",
         state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement=UnitOfVolumeFlowRate.LITERS_PER_MINUTE,
     ),
     "CPAP Total myAir Score": SensorEntityDescription(
