@@ -31,7 +31,15 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Set up from a config entry."""
+    """Create the myAir client, coordinator, and platform entities for an entry.
+
+    Args:
+        hass: Home Assistant instance loading the integration.
+        config_entry: Stored myAir account configuration.
+
+    Returns:
+        ``True`` after the first coordinator refresh and platform setup succeed.
+    """
     _LOGGER.info("Starting ResMed myAir Integration Version: %s", VERSION)
     _LOGGER.debug("[init async_setup_entry] config_entry.data: %s", redact_dict(config_entry.data))
 
@@ -59,7 +67,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate old entry."""
+    """Upgrade stored config-entry data between integration schema versions.
+
+    Args:
+        hass: Home Assistant instance that owns the config entry registry.
+        config_entry: Existing myAir entry being loaded.
+
+    Returns:
+        ``True`` after applying any needed migration.
+    """
     _LOGGER.debug("Migrating from version %s", config_entry.version)
 
     if config_entry.version == 1:
@@ -75,7 +91,15 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
+    """Unload myAir platforms for a removed or reloaded config entry.
+
+    Args:
+        hass: Home Assistant instance unloading the integration.
+        entry: myAir config entry being unloaded.
+
+    Returns:
+        Whether Home Assistant unloaded all forwarded platforms successfully.
+    """
     _LOGGER.info("Unloading: %s", redact_dict(entry.data))
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 

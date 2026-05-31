@@ -1,4 +1,4 @@
-"""Tests for the prek autoupdate workflow."""
+"""Prek-autoupdate workflow tests that protect cleanup and permissions logic."""
 
 from collections.abc import Generator
 from importlib import util
@@ -29,7 +29,7 @@ class FakeCleanupClient:
         closed_pulls: list[dict[str, object]],
         fail_on_close: bool = False,
     ) -> None:
-        """Initialize fake pull request state.
+        """Initialize fake pull-request state for cleanup assertions.
 
         Args:
             open_pulls: Pull requests to return for open PR lookups.
@@ -45,18 +45,18 @@ class FakeCleanupClient:
         self.max_pages_by_state: dict[str, int | None] = {}
 
     def list_pulls(self, *, state: str, max_pages: int | None = None) -> list[dict[str, object]]:
-        """Return fake pull requests by state."""
+        """Return fake pull requests for the requested state."""
         self.max_pages_by_state[state] = max_pages
         return self.open_pulls if state == "open" else self.closed_pulls
 
     def close_pull(self, pull_number: int) -> None:
-        """Record or reject a closed pull request."""
+        """Record a closed pull request unless the test marked it protected."""
         if self.fail_on_close:
             raise AssertionError(f"Unexpected close for PR {pull_number}")
         self.closed_prs.append(pull_number)
 
     def delete_ref(self, ref: str) -> None:
-        """Record a deleted git ref."""
+        """Record a deleted git ref for later assertions."""
         self.deleted_refs.append(ref)
 
 
@@ -69,7 +69,7 @@ def _workflow_pull(
     body: str = WORKFLOW_BODY_MARKER,
     merged_at: str | None = None,
 ) -> dict[str, object]:
-    """Return a fake workflow pull request object.
+    """Return a fake workflow pull-request object.
 
     Args:
         number: Pull request number.
@@ -147,17 +147,17 @@ def cleanup_script() -> Generator[ModuleType]:
     ],
 )
 def test_workflow_contains_expected_cleanup_logic(needle: str, reason: str) -> None:
-    """Workflow should include standalone cleanup logic for generated prek PRs."""
+    """Workflow text includes the cleanup logic needed for generated prek PRs."""
     assert needle in WORKFLOW_PATH.read_text(), reason
 
 
 def test_workflow_avoids_inline_repository_template_expansion() -> None:
-    """Workflow should not expand the repository context inside shell scripts."""
+    """Workflow shell snippets avoid inlining repository context values."""
     assert '--repository "${{ github.repository }}"' not in WORKFLOW_PATH.read_text()
 
 
 def test_workflow_scopes_write_permissions_to_update_job() -> None:
-    """Workflow should grant write permissions only to the mutating job."""
+    """Only the update job receives write permissions."""
     workflow = WORKFLOW_PATH.read_text()
     jobs_index = workflow.index("jobs:")
     root_block = workflow[:jobs_index]
@@ -173,7 +173,7 @@ def test_workflow_scopes_write_permissions_to_update_job() -> None:
 def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
     cleanup_script: ModuleType,
 ) -> None:
-    """Cleanup script should close stale PRs and remove workflow-created branches."""
+    """Cleanup closes stale PRs and removes workflow-created branches."""
     client = FakeCleanupClient(
         open_pulls=[
             _workflow_pull(number=10),
@@ -217,7 +217,7 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
 
 
 def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -> None:
-    """Cleanup script should not delete the branch for the kept update PR."""
+    """Cleanup leaves the active update branch untouched."""
     client = FakeCleanupClient(
         open_pulls=[_workflow_pull(number=12)],
         closed_pulls=[
@@ -253,7 +253,7 @@ def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -
 def test_cleanup_script_preserves_human_prs_with_matching_label_and_prefix(
     cleanup_script: ModuleType,
 ) -> None:
-    """Cleanup script should not mutate human PRs that share labels and prefixes."""
+    """Cleanup skips human-authored PRs that match bot labels and prefixes."""
     client = FakeCleanupClient(
         open_pulls=[
             _workflow_pull(
@@ -295,7 +295,7 @@ def test_cleanup_script_preserves_human_prs_with_matching_label_and_prefix(
 def test_cleanup_script_preserves_bot_prs_without_workflow_body_marker(
     cleanup_script: ModuleType,
 ) -> None:
-    """Cleanup script should not mutate bot PRs without the workflow body marker."""
+    """Cleanup skips bot PRs that lack the workflow body marker."""
     client = FakeCleanupClient(
         open_pulls=[
             _workflow_pull(
@@ -335,7 +335,7 @@ def test_cleanup_script_preserves_bot_prs_without_workflow_body_marker(
 
 
 def test_github_headers_include_json_content_type(cleanup_script: ModuleType) -> None:
-    """GitHub client headers should describe JSON request bodies correctly."""
+    """GitHub requests declare JSON content types for cleanup API calls."""
     headers = cleanup_script._github_headers("token")
 
     assert headers["Content-Type"] == "application/json"

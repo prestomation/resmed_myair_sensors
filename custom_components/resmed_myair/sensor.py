@@ -27,14 +27,30 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def _coordinator_data(coordinator: MyAirDataUpdateCoordinator) -> MyAirCoordinatorData:
-    """Return typed coordinator data or an empty payload."""
+    """Normalize coordinator payloads before sensors read typed fields.
+
+    Args:
+        coordinator: Integration coordinator whose data may be unset during startup.
+
+    Returns:
+        Existing typed data, or an empty payload that keeps entity updates defensive.
+    """
     if isinstance(coordinator.data, MyAirCoordinatorData):
         return coordinator.data
     return MyAirCoordinatorData()
 
 
 def _parse_native_value(value: Any | None, description: SensorEntityDescription) -> Any | None:
-    """Parse native values for Home Assistant sensor device classes."""
+    """Convert raw API strings for Home Assistant date and timestamp sensors.
+
+    Args:
+        value: Raw value taken from a device or sleep-record payload.
+        description: Entity description that declares any HA device class.
+
+    Returns:
+        Parsed date/datetime values for matching device classes; otherwise the
+        original value.
+    """
     if isinstance(value, str) and description.device_class == SensorDeviceClass.DATE:
         return dt_util.parse_date(value)
     if isinstance(value, str) and description.device_class == SensorDeviceClass.TIMESTAMP:
@@ -47,7 +63,13 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up myAir sensors."""
+    """Create all myAir sensor entities and register the manual refresh service.
+
+    Args:
+        hass: Home Assistant instance receiving the entities and service.
+        config_entry: Loaded myAir config entry with coordinator runtime data.
+        async_add_entities: Home Assistant callback used to add entity instances.
+    """
     _LOGGER.debug(
         "[sensor async_setup_entry] config_entry.data: %s", redact_dict(config_entry.data)
     )
@@ -80,19 +102,18 @@ async def async_setup_entry(
     sanitized_username: str = config_entry.data[CONF_USER_NAME].replace("@", "_").replace(".", "_")
 
     async def refresh(_: Any) -> None:
+        """Refresh coordinator data when the per-account force-poll service runs.
+
+        Args:
+            _: Service call payload; unused because refresh needs no parameters.
+        """
         await coordinator.async_refresh()
 
     hass.services.async_register(DOMAIN, f"force_poll_{sanitized_username}", refresh)
 
 
 class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
-    """Base sensor for ResMed myAir.
-
-    It knows the Friendly Name and key from the API response
-    for any particular sensor and keeps track of the coordinator.
-    All it really does is return that key from the newest
-    response that the coordinator has stored.
-    """
+    """Common entity identity and coordinator plumbing for myAir sensors."""
 
     def __init__(
         self,
@@ -100,7 +121,13 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
         sensor_desc: SensorEntityDescription,
         coordinator: MyAirDataUpdateCoordinator,
     ) -> None:
-        """Create the CPAP sensors."""
+        """Build stable entity metadata from the device and sensor description.
+
+        Args:
+            friendly_name: Entity name shown in Home Assistant.
+            sensor_desc: Description containing the API key and HA metadata.
+            coordinator: Data coordinator that supplies device and sleep payloads.
+        """
         super().__init__(cast("DataUpdateCoordinator[dict[str, Any]]", coordinator))
         self.sensor_key: Final[str] = sensor_desc.key
         self.coordinator: MyAirDataUpdateCoordinator = coordinator
@@ -122,17 +149,17 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Return whether entity is available."""
+        """Report whether the last coordinator update produced a valid sensor value."""
         return self._available
 
     async def async_added_to_hass(self) -> None:
-        """Run once integration has been added to HA."""
+        """Populate the entity state immediately after Home Assistant adds it."""
         await super().async_added_to_hass()
         self._handle_coordinator_update()
 
 
 class MyAirSleepRecordSensor(MyAirBaseSensor):
-    """myAir Sleep Record sensor class."""
+    """Expose one field from the latest nightly sleep-record payload."""
 
     def __init__(
         self,
@@ -140,12 +167,18 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         sensor_desc: SensorEntityDescription,
         coordinator: MyAirDataUpdateCoordinator,
     ) -> None:
-        """Initialize myAir Sleep Record sensor."""
+        """Create a sleep-record-backed entity.
+
+        Args:
+            friendly_name: Entity name shown in Home Assistant.
+            sensor_desc: Description whose key maps into a sleep-record payload.
+            coordinator: Data coordinator that supplies sleep records.
+        """
         super().__init__(friendly_name, sensor_desc, coordinator)
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
+        """Publish the selected field from the latest sleep record to HA state."""
         # The API always returns the previous month of data, so the client stores this
         # We assume this is ordered temporally and grab the last one: the latest one
         latest_record: MyAirSleepRecord | None = _coordinator_data(
@@ -170,7 +203,7 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
 
 
 class MyAirDeviceSensor(MyAirBaseSensor):
-    """myAir Device sensor class."""
+    """Expose one field from the assigned myAir device payload."""
 
     def __init__(
         self,
@@ -178,12 +211,18 @@ class MyAirDeviceSensor(MyAirBaseSensor):
         sensor_desc: SensorEntityDescription,
         coordinator: MyAirDataUpdateCoordinator,
     ) -> None:
-        """Initialize myAir Device sensor."""
+        """Create a device-payload-backed entity.
+
+        Args:
+            friendly_name: Entity name shown in Home Assistant.
+            sensor_desc: Description whose key maps into the device payload.
+            coordinator: Data coordinator that supplies device data.
+        """
         super().__init__(friendly_name, sensor_desc, coordinator)
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
+        """Publish the selected device field to HA state."""
         device_data: MyAirDevice | None = _coordinator_data(self.coordinator).device
         if device_data is None:
             _LOGGER.error("Device data missing from coordinator data")
@@ -204,20 +243,24 @@ class MyAirDeviceSensor(MyAirBaseSensor):
 
 
 class MyAirFriendlyUsageTime(MyAirBaseSensor):
-    """myAir Friendly Usage Time sensor class."""
+    """Expose the latest nightly usage as ``H:MM`` text."""
 
     def __init__(
         self,
         coordinator: MyAirDataUpdateCoordinator,
     ) -> None:
-        """Initialize myAir Friendly Usage Time sensor."""
+        """Create the synthesized friendly-usage sensor.
+
+        Args:
+            coordinator: Data coordinator that supplies sleep records.
+        """
         desc = SensorEntityDescription(key="usageTime")
 
         super().__init__("CPAP Usage Time", desc, coordinator)
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
+        """Publish formatted usage time from the latest sleep record."""
         latest_record: MyAirSleepRecord | None = _coordinator_data(
             self.coordinator
         ).latest_sleep_record
@@ -236,13 +279,17 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
 
 
 class MyAirMostRecentSleepDate(MyAirBaseSensor):
-    """myAir Most Recent Sleep Date sensor class."""
+    """Expose the newest sleep date with recorded CPAP usage."""
 
     def __init__(
         self,
         coordinator: MyAirDataUpdateCoordinator,
     ) -> None:
-        """Initialize myAir Most Recent Sleep Date sensor."""
+        """Create the synthesized most-recent-sleep-date sensor.
+
+        Args:
+            coordinator: Data coordinator that supplies sleep records.
+        """
         desc = SensorEntityDescription(
             key="mostRecentSleepDate", device_class=SensorDeviceClass.DATE
         )
@@ -251,7 +298,7 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
+        """Publish the most recent usage-bearing sleep date to HA state."""
         value: date | None = _coordinator_data(self.coordinator).most_recent_sleep_date
         self._attr_native_value = value
         self._available = value is not None

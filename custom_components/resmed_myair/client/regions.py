@@ -7,7 +7,7 @@ from .const import REGION_NA
 
 @dataclass(frozen=True, slots=True)
 class RegionConfig:
-    """Endpoint and client settings for a ResMed myAir region."""
+    """Static endpoints and client identifiers for one myAir region."""
 
     product: str
     okta_url: str
@@ -20,37 +20,37 @@ class RegionConfig:
 
     @property
     def authn_url(self) -> str:
-        """Return the Okta authn URL."""
+        """Build the Okta primary-authentication endpoint URL."""
         return f"https://{self.okta_url}/api/v1/authn"
 
     @property
     def authorize_url(self) -> str:
-        """Return the Okta authorize URL."""
+        """Build the Okta authorization-code endpoint URL."""
         return f"https://{self.okta_url}/oauth2/{self.auth_server_id}/v1/authorize"
 
     @property
     def token_url(self) -> str:
-        """Return the Okta token URL."""
+        """Build the Okta token-exchange endpoint URL."""
         return f"https://{self.okta_url}/oauth2/{self.auth_server_id}/v1/token"
 
     @property
     def introspect_url(self) -> str:
-        """Return the Okta token introspection URL."""
+        """Build the Okta access-token introspection endpoint URL."""
         return f"https://{self.okta_url}/oauth2/{self.auth_server_id}/v1/introspect"
 
     @property
     def userinfo_url(self) -> str:
-        """Return the Okta userinfo URL."""
+        """Build the Okta userinfo endpoint URL used for account checks."""
         return f"https://{self.okta_url}/oauth2/{self.auth_server_id}/v1/userinfo"
 
     def mfa_url(self, email_factor_id: str | None = None) -> str:
-        """Return the Okta MFA verification URL.
+        """Build the email-factor MFA endpoint for an auth challenge.
 
         Args:
             email_factor_id: Optional factor ID discovered from authn.
 
         Returns:
-            The MFA verification URL.
+            Fully qualified Okta MFA verification URL.
         """
         factor_id = email_factor_id or self.email_factor_id
         return (
@@ -102,12 +102,12 @@ EU_CONFIG: RegionConfig = RegionConfig(
 
 
 def get_region_config(region: str) -> RegionConfig:
-    """Return the region configuration matching the configured region.
+    """Resolve a user-selected region code to endpoint settings.
 
     Args:
         region: Region code configured by the user.
 
     Returns:
-        The region config object for the requested region.
+        North America settings for ``REGION_NA``; Europe settings otherwise.
     """
     return NA_CONFIG if region == REGION_NA else EU_CONFIG

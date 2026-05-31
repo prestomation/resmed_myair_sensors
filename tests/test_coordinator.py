@@ -1,4 +1,4 @@
-"""Unit tests for the coordinator that updates myAir data."""
+"""Coordinator tests that protect refresh, auth, and parse fallbacks."""
 
 from unittest.mock import MagicMock
 
@@ -16,7 +16,7 @@ from custom_components.resmed_myair.models import (
 
 @pytest.mark.asyncio
 async def test_async_update_data_success(hass: MagicMock, myair_client: MagicMock) -> None:
-    """Coordinator returns device and sleep_records on success."""
+    """Successful refreshes return both device data and sleep records."""
     myair_client.get_user_device_data.return_value = MyAirDevice.from_api(
         {
             "serialNumber": "1234",
@@ -43,7 +43,7 @@ async def test_async_update_data_success(hass: MagicMock, myair_client: MagicMoc
 
 @pytest.mark.asyncio
 async def test_async_update_data_auth_error(hass: MagicMock, myair_client: MagicMock) -> None:
-    """AuthenticationError in client.connect should raise ConfigEntryAuthFailed."""
+    """Authentication failures surface as config-entry auth errors."""
     myair_client.connect.side_effect = AuthenticationError("bad creds")
     coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
     # Only assert that the correct exception type is raised. The exact
@@ -58,7 +58,7 @@ async def test_async_update_data_auth_error(hass: MagicMock, myair_client: Magic
 async def test_async_update_data_parsing_error_device(
     hass: MagicMock, myair_client: MagicMock
 ) -> None:
-    """ParsingError during device data fetch results in empty device dict."""
+    """Device parsing failures degrade to an empty device payload."""
     myair_client.get_sleep_records.return_value = [
         MyAirSleepRecord.from_api({"totalUsage": 60, "startDate": "2024-07-01"})
     ]
@@ -79,7 +79,7 @@ async def test_async_update_data_parsing_error_device(
 async def test_async_update_data_parsing_error_sleep_records(
     hass: MagicMock, myair_client: MagicMock
 ) -> None:
-    """ParsingError during sleep record fetch results in empty sleep_records list."""
+    """Sleep-record parsing failures degrade to an empty record list."""
     myair_client.get_user_device_data.return_value = MyAirDevice.from_api(
         {"serialNumber": "1234", "fgDeviceManufacturerName": "ResMed"}
     )

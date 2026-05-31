@@ -54,7 +54,18 @@ async def get_device(
     region: str,
     device_token: str | None = None,
 ) -> tuple[str, MyAirDevice | None, RESTClient]:
-    """Login and get user device data from ResMed servers."""
+    """Authenticate with myAir and fetch device data when login is complete.
+
+    Args:
+        hass: Home Assistant instance used to create the aiohttp session.
+        username: myAir account username.
+        password: myAir account password.
+        region: myAir region code selected by the user.
+        device_token: Optional remembered-device token from a previous setup.
+
+    Returns:
+        Auth status, optional device data, and the client carrying auth state.
+    """
     _LOGGER.debug("[get_device] Starting")
     config = MyAirConfig(
         username=username, password=password, region=region, device_token=device_token
@@ -71,7 +82,15 @@ async def get_device(
 
 
 async def get_mfa_device(client: RESTClient, verification_code: str) -> tuple[str, MyAirDevice]:
-    """Get access token and user device data."""
+    """Complete MFA and fetch device data with the authenticated client.
+
+    Args:
+        client: REST client already holding an active MFA challenge.
+        verification_code: Email MFA code entered by the user.
+
+    Returns:
+        Auth success status and the account's assigned device.
+    """
     _LOGGER.debug("[get_mfa_device] Starting")
     status: str = await client.verify_mfa_and_get_access_token(verification_code)
     device = await client.get_user_device_data(initial=True)
@@ -79,13 +98,13 @@ async def get_mfa_device(client: RESTClient, verification_code: str) -> tuple[st
 
 
 class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Config flow for resmed_myair."""
+    """Drive initial setup, MFA, and reauth for a myAir account."""
 
     # For future migration support
     VERSION = 2
 
     def __init__(self) -> None:
-        """Initialize flow."""
+        """Initialize per-flow client and form data state."""
         self._client: RESTClient | None = None
         self._entry: ConfigEntry
         self._data: MutableMapping[str, Any] = {}
@@ -94,7 +113,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         self,
         device_token: str | None = None,
     ) -> tuple[str, MyAirDevice | None]:
-        """Login with stored flow data and fetch the user device."""
+        """Attempt login using collected form data.
+
+        Args:
+            device_token: Optional remembered-device token to reuse during reauth.
+
+        Returns:
+            Auth status and device data when auth completed without MFA.
+        """
         status, device, self._client = await get_device(
             self.hass,
             self._data[CONF_USER_NAME],
@@ -105,7 +131,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         return status, device
 
     async def _async_verify_mfa_and_get_device(self) -> tuple[str, MyAirDevice]:
-        """Verify MFA with stored flow data and fetch the user device."""
+        """Verify the submitted MFA code using the active REST client.
+
+        Returns:
+            Auth status and device data after MFA succeeds.
+
+        Raises:
+            AuthenticationError: When the flow reaches MFA without an initialized client.
+        """
         if not isinstance(self._client, RESTClient):
             raise AuthenticationError("MFA client is not initialized")
         return await get_mfa_device(
@@ -114,12 +147,19 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     def _store_device_token(self) -> None:
-        """Store the current client device token in flow data."""
+        """Persist the latest remembered-device token into the config payload."""
         if self._client:
             self._data.update({CONF_DEVICE_TOKEN: self._client.device_token})
 
     def _entry_title(self, device: MyAirDevice) -> str:
-        """Return the config entry title for a device."""
+        """Build a stable Home Assistant entry title from device metadata.
+
+        Args:
+            device: Typed myAir device returned by the API.
+
+        Returns:
+            Manufacturer and localized name joined for display.
+        """
         manufacturer = device.manufacturer or "ResMed"
         name = device.name or "myAir"
         return f"{manufacturer}-{name}"
@@ -127,7 +167,15 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_abort_incomplete_account(
         self, step: str, error: IncompleteAccountError
     ) -> ConfigFlowResult:
-        """Abort incomplete-account flows with optional email verification detail."""
+        """Abort setup with the most specific incomplete-account reason available.
+
+        Args:
+            step: Flow step where myAir reported incomplete account setup.
+            error: Original incomplete-account exception from the client.
+
+        Returns:
+            Config-flow abort result for Home Assistant.
+        """
         if self._client:
             try:
                 if not (await self._client.is_email_verified()):
@@ -156,7 +204,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step."""
+        """Collect credentials, validate the account, and branch to MFA if needed.
+
+        Args:
+            user_input: Submitted username, password, and region values.
+
+        Returns:
+            Form, MFA step, abort, or created-entry result for Home Assistant.
+        """
         errors: dict[str, str] = {}
         user_input = user_input or {}
         if user_input:
@@ -216,7 +271,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_verify_mfa(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Verify active MFA."""
+        """Verify MFA during initial setup and create the config entry.
+
+        Args:
+            user_input: Submitted verification code from the MFA form.
+
+        Returns:
+            MFA form, abort, or created-entry result for Home Assistant.
+        """
         errors: dict[str, str] = {}
         user_input = user_input or {}
         if user_input and isinstance(self._client, RESTClient):
@@ -261,7 +323,17 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_reauth(self, entry_data: MutableMapping[str, Any]) -> ConfigFlowResult:
-        """Handle configuration by re-auth."""
+        """Load the existing config entry before prompting for new credentials.
+
+        Args:
+            entry_data: Current config-entry data supplied by Home Assistant.
+
+        Returns:
+            Next reauth flow step.
+
+        Raises:
+            UnknownEntry: When Home Assistant no longer has the reauth entry.
+        """
         _LOGGER.info("Starting Reauthorization")
         entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         if entry:
@@ -277,7 +349,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth_confirm(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Dialog that informs the user that reauth is required."""
+        """Collect replacement credentials and update the entry after validation.
+
+        Args:
+            user_input: Submitted username and password values.
+
+        Returns:
+            Reauth form, MFA step, abort, or successful-reauth abort result.
+        """
         errors: dict[str, str] = {}
 
         if user_input:
@@ -334,7 +413,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth_verify_mfa(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Reauthorize access to ResMed myAir."""
+        """Complete MFA during reauth and reload the repaired config entry.
+
+        Args:
+            user_input: Submitted verification code from the reauth MFA form.
+
+        Returns:
+            Reauth MFA form, abort, or successful-reauth abort result.
+        """
         errors: dict[str, str] = {}
         user_input = user_input or {}
 

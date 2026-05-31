@@ -15,12 +15,12 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 class MyAirGraphQLClient:
-    """Execute ResMed AppSync GraphQL operations."""
+    """Execute authenticated ResMed AppSync operations for myAir data."""
 
     def __init__(
         self, session: ClientSession, auth: MyAirAuthSession, region_config: RegionConfig
     ) -> None:
-        """Initialize the GraphQL client.
+        """Bind GraphQL requests to the shared session and auth state.
 
         Args:
             session: Shared aiohttp client session.
@@ -33,7 +33,7 @@ class MyAirGraphQLClient:
         self._country_code: str | None = None
 
     async def query(self, operation_name: str, query: str, initial: bool = False) -> dict[str, Any]:
-        """Run a GraphQL query.
+        """Post a myAir GraphQL operation and validate ResMed errors.
 
         Args:
             operation_name: GraphQL operation name.
@@ -41,7 +41,7 @@ class MyAirGraphQLClient:
             initial: Whether this query is part of initial config flow.
 
         Returns:
-            Decoded JSON response.
+            Decoded GraphQL response payload.
         """
         headers = self._headers()
         json_query: dict[str, Any] = {
@@ -68,7 +68,14 @@ class MyAirGraphQLClient:
         return dict(records_dict)
 
     def _headers(self) -> dict[str, str]:
-        """Return headers required by ResMed AppSync."""
+        """Build AppSync headers from regional constants and token claims.
+
+        Returns:
+            Headers accepted by ResMed's myAir GraphQL endpoint.
+
+        Raises:
+            ParsingError: When no country code can be derived for AppSync.
+        """
         country_code: str | None = self._country_code or self._country_code_from_id_token()
         if not country_code:
             raise ParsingError("country_code not defined and id_token not present to identify it")
@@ -88,7 +95,14 @@ class MyAirGraphQLClient:
         }
 
     def _country_code_from_id_token(self) -> str | None:
-        """Derive the myAir country code from the ID token."""
+        """Decode the unsigned ID token claim used by ResMed's country header.
+
+        Returns:
+            myAir country code, or ``None`` when no ID token is available yet.
+
+        Raises:
+            ParsingError: When the ID token cannot be decoded or lacks the claim.
+        """
         if not self._auth.id_token:
             return None
         try:

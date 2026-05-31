@@ -1,10 +1,10 @@
-"""Tests documenting OAuth helper feasibility for ResMed myAir."""
+"""OAuth-helper feasibility checks for ResMed myAir redirect URLs."""
 
 from custom_components.resmed_myair.client.rest_client import EU_CONFIG, NA_CONFIG
 
 
 def test_resmed_registered_redirect_urls_are_external() -> None:
-    """ResMed's app redirect URLs are not Home Assistant callback URLs."""
+    """ResMed's registered redirect URLs stay outside the Home Assistant callback path."""
     redirect_urls = {
         NA_CONFIG.oauth_redirect_url,
         EU_CONFIG.oauth_redirect_url,

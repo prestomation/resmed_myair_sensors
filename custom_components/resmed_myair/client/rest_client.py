@@ -30,10 +30,15 @@ AUTHN_SUCCESS: str = _AUTHN_SUCCESS
 
 
 class RESTClient(MyAirClient):
-    """myAir uses oauth on Okta and AWS AppSync GraphQL."""
+    """Coordinate myAir authentication and AppSync GraphQL data access."""
 
     def __init__(self, config: MyAirConfig, session: ClientSession) -> None:
-        """Initialize REST Client."""
+        """Create auth and GraphQL helpers around a shared aiohttp session.
+
+        Args:
+            config: User credentials, region, and optional remembered-device token.
+            session: Home Assistant-managed aiohttp session.
+        """
         _LOGGER.debug("[RESTClient init] config: %s", redact_dict(config._asdict()))
         self._config: MyAirConfig = config
         self._session: ClientSession = session
@@ -46,128 +51,196 @@ class RESTClient(MyAirClient):
 
     @property
     def _country_code(self) -> str | None:
-        """Compatibility alias for GraphQL country code cache."""
+        """Expose the GraphQL country-code cache for legacy tests."""
         return self._graphql._country_code  # noqa: SLF001
 
     @_country_code.setter
     def _country_code(self, value: str | None) -> None:
+        """Set the GraphQL country-code cache for compatibility.
+
+        Args:
+            value: myAir country code, or ``None`` to force token decoding later.
+        """
         self._graphql._country_code = value  # noqa: SLF001
 
     @property
     def device_token(self) -> str | None:
-        """Return the device token."""
+        """Expose the remembered-device token that should be saved in config entries."""
         return self._auth.device_token
 
     @property
     def _cookies(self) -> dict[str, Any]:
-        """Compatibility cookie mapping."""
+        """Expose Okta cookies through the legacy private RESTClient attribute."""
         return self._auth.cookies
 
     @property
     def _json_headers(self) -> dict[str, Any]:
-        """Compatibility JSON header mapping."""
+        """Expose JSON auth headers through the legacy private attribute."""
         return self._auth.json_headers
 
     @_json_headers.setter
     def _json_headers(self, value: Mapping[str, Any]) -> None:
+        """Replace JSON auth headers through the legacy private attribute.
+
+        Args:
+            value: Header mapping used for subsequent Okta JSON requests.
+        """
         self._auth.json_headers = value
 
     @property
     def _region_config(self) -> RegionConfig:
-        """Return region config from auth session."""
+        """Expose regional endpoint settings through the legacy attribute."""
         return self._auth.region_config
 
     @_region_config.setter
     def _region_config(self, value: RegionConfig) -> None:
+        """Replace regional endpoint settings through the legacy attribute.
+
+        Args:
+            value: Region configuration used by future auth calls.
+        """
         self._auth.region_config = value
 
     @property
     def _email_factor_id(self) -> str:
-        """Return MFA factor ID from auth session."""
+        """Expose the active Okta email factor ID through the legacy attribute."""
         return self._auth.email_factor_id
 
     @_email_factor_id.setter
     def _email_factor_id(self, value: str) -> None:
+        """Store the active Okta email factor ID through the legacy attribute.
+
+        Args:
+            value: MFA email factor ID to use for verification.
+        """
         self._auth.email_factor_id = value
 
     @property
     def _mfa_url(self) -> str:
-        """Return MFA verification URL from auth session."""
+        """Expose the active Okta MFA verification URL through the legacy attribute."""
         return self._auth.mfa_url
 
     @_mfa_url.setter
     def _mfa_url(self, value: str) -> None:
+        """Store the active Okta MFA verification URL through the legacy attribute.
+
+        Args:
+            value: Fully qualified Okta MFA verification URL.
+        """
         self._auth.mfa_url = value
 
     @property
     def _cookie_dt(self) -> str | None:
-        """Return DT cookie from auth session."""
+        """Expose the remembered-device cookie through the legacy attribute."""
         return self._auth.device_token
 
     @_cookie_dt.setter
     def _cookie_dt(self, value: str | None) -> None:
+        """Store the remembered-device cookie through the legacy attribute.
+
+        Args:
+            value: DT cookie value, or ``None`` to clear it.
+        """
         self._auth.device_token = value
 
     @property
     def _cookie_sid(self) -> str | None:
-        """Return sid cookie from auth session."""
+        """Expose the Okta session cookie through the legacy attribute."""
         return self._auth.cookie_sid
 
     @_cookie_sid.setter
     def _cookie_sid(self, value: str | None) -> None:
+        """Store the Okta session cookie through the legacy attribute.
+
+        Args:
+            value: ``sid`` cookie value, or ``None`` to clear it.
+        """
         self._auth.cookie_sid = value
 
     @property
     def _uses_mfa(self) -> bool:
-        """Return MFA-needed marker from auth session."""
+        """Expose whether Okta required MFA through the legacy attribute."""
         return self._auth.uses_mfa
 
     @_uses_mfa.setter
     def _uses_mfa(self, value: bool) -> None:
+        """Store whether Okta required MFA through the legacy attribute.
+
+        Args:
+            value: ``True`` when the current auth flow is waiting for MFA.
+        """
         self._auth.uses_mfa = value
 
     @property
     def _access_token(self) -> str | None:
-        """Compatibility alias for access token."""
+        """Expose the OAuth bearer token through the legacy attribute."""
         return self._auth.access_token
 
     @_access_token.setter
     def _access_token(self, value: str | None) -> None:
+        """Store the OAuth bearer token through the legacy attribute.
+
+        Args:
+            value: Access token, or ``None`` before auth succeeds.
+        """
         self._auth.access_token = value
 
     @property
     def _id_token(self) -> str | None:
-        """Compatibility alias for ID token."""
+        """Expose the OAuth ID token through the legacy attribute."""
         return self._auth.id_token
 
     @_id_token.setter
     def _id_token(self, value: str | None) -> None:
+        """Store the OAuth ID token through the legacy attribute.
+
+        Args:
+            value: ID token, or ``None`` before token exchange succeeds.
+        """
         self._auth.id_token = value
 
     @property
     def _state_token(self) -> str | None:
-        """Compatibility alias for state token."""
+        """Expose the Okta MFA state token through the legacy attribute."""
         return self._auth.state_token
 
     @_state_token.setter
     def _state_token(self, value: str | None) -> None:
+        """Store the Okta MFA state token through the legacy attribute.
+
+        Args:
+            value: State token, or ``None`` when no MFA flow is active.
+        """
         self._auth.state_token = value
 
     @property
     def _session_token(self) -> str | None:
-        """Compatibility alias for session token."""
+        """Expose the Okta session token through the legacy attribute."""
         return self._auth.session_token
 
     @_session_token.setter
     def _session_token(self, value: str | None) -> None:
+        """Store the Okta session token through the legacy attribute.
+
+        Args:
+            value: Session token, or ``None`` before auth succeeds.
+        """
         self._auth.session_token = value
 
     def _refresh_auth_error_checker(self) -> None:
-        """Keep auth error checks aligned with the public wrapper."""
+        """Route auth helper validation through RESTClient's compatibility wrapper."""
         self._auth.set_error_checker(self._resmed_response_error_check)
 
     async def connect(self, initial: bool | None = False) -> str:
-        """Check authn and connect to ResMed servers."""
+        """Authenticate with myAir or reuse an active OAuth token.
+
+        Args:
+            initial: Whether the call is part of config setup, where MFA can be
+                triggered and surfaced to the user.
+
+        Returns:
+            Okta authentication status.
+        """
         self._refresh_auth_error_checker()
         return await self._auth.connect(
             initial=initial,
@@ -179,7 +252,14 @@ class RESTClient(MyAirClient):
         )
 
     async def verify_mfa_and_get_access_token(self, verification_code: str) -> str:
-        """Confirm valid MFA and obtain access token."""
+        """Complete an MFA challenge and cache OAuth tokens.
+
+        Args:
+            verification_code: Email MFA code supplied by the user.
+
+        Returns:
+            Okta authentication status after MFA verification.
+        """
         self._refresh_auth_error_checker()
         return await self._auth.verify_mfa_and_get_access_token(
             verification_code,
@@ -188,7 +268,7 @@ class RESTClient(MyAirClient):
         )
 
     async def is_email_verified(self) -> bool:
-        """Check if email address is verified."""
+        """Return whether Okta userinfo reports a verified email address."""
         self._refresh_auth_error_checker()
         return await self._auth.is_email_verified()
 
@@ -199,54 +279,96 @@ class RESTClient(MyAirClient):
         resp_dict: MutableMapping[str, Any],
         initial: bool | None = False,
     ) -> None:
-        """Compatibility wrapper over MyAirAuthSession error handling."""
+        """Validate ResMed responses through the legacy static helper.
+
+        Args:
+            step: Human-readable auth or GraphQL step name for diagnostics.
+            response: aiohttp response object associated with the payload.
+            resp_dict: Decoded response payload to inspect.
+            initial: Whether the request belongs to initial config setup.
+        """
         return await MyAirAuthSession.resmed_response_error_check(
             step, response, resp_dict, initial
         )
 
     async def _extract_and_update_cookies(self, cookie_headers: list) -> None:
-        """Compatibility wrapper for auth session cookie extraction."""
+        """Update remembered-device and session cookies from Okta headers.
+
+        Args:
+            cookie_headers: Raw ``Set-Cookie`` header values from Okta responses.
+        """
         self._refresh_auth_error_checker()
         await self._auth.extract_and_update_cookies(cookie_headers)
 
     async def _get_initial_dt(self) -> None:
-        """Compatibility wrapper for auth initial DT retrieval."""
+        """Bootstrap the remembered-device cookie before primary authentication."""
         self._refresh_auth_error_checker()
         await self._auth.get_initial_dt(self._extract_and_update_cookies)
 
     async def _is_access_token_active(self) -> bool:
-        """Compatibility wrapper for access token status check."""
+        """Check if the cached OAuth token can be reused.
+
+        Returns:
+            ``True`` when Okta introspection marks the token active.
+        """
         self._refresh_auth_error_checker()
         return await self._auth.is_access_token_active()
 
     async def _authn_check(self) -> str:
-        """Compatibility wrapper for authn check."""
+        """Run primary Okta username/password authentication.
+
+        Returns:
+            Okta status indicating success or an MFA requirement.
+        """
         self._refresh_auth_error_checker()
         return await self._auth.authn_check()
 
     async def _trigger_mfa(self) -> None:
-        """Compatibility wrapper for MFA trigger."""
+        """Send an email MFA challenge for the active Okta state token."""
         self._refresh_auth_error_checker()
         return await self._auth.trigger_mfa()
 
     async def _verify_mfa(self, verification_code: str) -> str:
-        """Compatibility wrapper for MFA verification."""
+        """Submit an email MFA code and capture the resulting session token.
+
+        Args:
+            verification_code: MFA code supplied by the user.
+
+        Returns:
+            Okta status after verification.
+        """
         self._refresh_auth_error_checker()
         return await self._auth.verify_mfa(verification_code)
 
     async def _get_access_token(self) -> None:
-        """Compatibility wrapper for token exchange."""
+        """Exchange the Okta session token for OAuth access and ID tokens."""
         self._refresh_auth_error_checker()
         await self._auth.get_access_token(self._extract_and_update_cookies)
 
     async def _gql_query(
         self, operation_name: str, query: str, initial: bool | None = False
     ) -> dict[str, Any]:
-        """Run a GraphQL query through the transport client."""
+        """Execute a myAir AppSync operation with the current auth state.
+
+        Args:
+            operation_name: GraphQL operation name sent to AppSync.
+            query: GraphQL document to execute.
+            initial: Whether the query is part of config setup.
+
+        Returns:
+            Decoded GraphQL response payload.
+        """
         return await self._graphql.query(operation_name, query, initial=bool(initial))
 
     async def get_sleep_records(self, initial: bool = False) -> list[MyAirSleepRecord]:
-        """Get sleep records from ResMed servers."""
+        """Fetch and normalize the recent nightly sleep records.
+
+        Args:
+            initial: Whether this fetch is part of config setup.
+
+        Returns:
+            Typed records returned by myAir for the last 30 days.
+        """
         today_date: datetime.date = datetime.datetime.now(datetime.UTC).astimezone().date()
         today: str = today_date.isoformat()
         one_month_ago: str = (today_date - datetime.timedelta(days=30)).isoformat()
@@ -310,7 +432,14 @@ class RESTClient(MyAirClient):
         return typed_records
 
     async def get_user_device_data(self, initial: bool = False) -> MyAirDevice:
-        """Get user device data from ResMed servers."""
+        """Fetch and normalize the account's assigned flow-generator device.
+
+        Args:
+            initial: Whether this fetch is part of config setup.
+
+        Returns:
+            Typed device data enriched with the first mask code when available.
+        """
         query: str = """
         query getPatientWrapper {
             getPatientWrapper {

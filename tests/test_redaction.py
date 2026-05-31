@@ -1,4 +1,4 @@
-"""Tests for shared ResMed myAir redaction helpers."""
+"""Redaction tests that protect nested secret-stripping behavior."""
 
 from types import MappingProxyType
 
@@ -6,7 +6,7 @@ from custom_components.resmed_myair.redaction import REDACTED, redact_dict
 
 
 def test_redact_dict_redacts_nested_sensitive_values() -> None:
-    """Sensitive keys are redacted inside mappings and lists."""
+    """Sensitive keys are redacted inside nested mappings and lists."""
     data = {
         "Username": "person@example.com",
         "nested": [{"access_token": "token-value"}, {"safe": "value"}],
@@ -21,18 +21,18 @@ def test_redact_dict_redacts_nested_sensitive_values() -> None:
 
 
 def test_redact_dict_redacts_given_name() -> None:
-    """The myAir given_name claim is redacted."""
+    """The myAir `given_name` claim is always redacted."""
     assert redact_dict({"given_name": "Alice"}) == {"given_name": REDACTED}
 
 
 def test_redact_dict_redacts_nested_immutable_mappings() -> None:
-    """Immutable nested mappings should be copied and redacted."""
+    """Immutable nested mappings are copied before redaction."""
     data = {"nested": MappingProxyType({"access_token": "token-value"})}
 
     assert redact_dict(data) == {"nested": {"access_token": REDACTED}}
 
 
 def test_redact_dict_returns_non_collection_values_unchanged() -> None:
-    """Scalar values are returned unchanged."""
+    """Scalar values pass through the redactor unchanged."""
     assert redact_dict("plain") == "plain"
     assert redact_dict(None) is None

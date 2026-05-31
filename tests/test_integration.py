@@ -1,4 +1,4 @@
-"""Tests for the resmed_myair integration (integration-level unit tests)."""
+"""Integration-level tests for setup, unload, migration, and sensor wiring."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
@@ -43,7 +43,7 @@ async def test_async_setup_entry_refresh_failure(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test integration setup entry raises if first refresh fails."""
+    """Setup propagates refresh failures before forwarding platforms."""
     # Replace async_create_clientsession to return the provided session
     monkeypatch.setattr(
         resmed_module, "async_create_clientsession", lambda *args, **kwargs: session
@@ -72,7 +72,7 @@ async def test_async_setup_entry_multiple_calls(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test async_setup_entry can be called multiple times without error."""
+    """Setup remains idempotent across repeated calls for the same entry."""
     monkeypatch.setattr(
         resmed_module, "async_create_clientsession", lambda *args, **kwargs: session
     )
@@ -98,7 +98,7 @@ async def test_async_setup_entry_multiple_calls(
 async def test_friendly_usage_time_sensor_with_negative_usage(
     hass: MagicMock, coordinator_factory: CoordinatorFactory
 ) -> None:
-    """Test MyAirFriendlyUsageTime handles negative usage values."""
+    """Friendly usage sensors clamp negative minutes to zero."""
     coordinator = coordinator_factory(data={"sleep_records": [{"totalUsage": -10}]})
     sensor = MyAirFriendlyUsageTime(coordinator)
     sensor.hass = hass
@@ -113,7 +113,7 @@ async def test_friendly_usage_time_sensor_with_negative_usage(
 async def test_most_recent_sleep_date_sensor_with_future_date(
     hass: MagicMock, coordinator_factory: CoordinatorFactory
 ) -> None:
-    """Test MyAirMostRecentSleepDate handles future dates."""
+    """Most-recent sleep date sensors preserve future-dated records."""
     future = (datetime.now(UTC).date() + timedelta(days=10)).isoformat()
 
     coordinator = coordinator_factory(
@@ -130,7 +130,7 @@ async def test_most_recent_sleep_date_sensor_with_future_date(
 
 @pytest.mark.asyncio
 async def test_async_migrate_entry_v2(hass: MagicMock, config_entry: MockConfigEntry) -> None:
-    """Test migration does nothing for version 2."""
+    """Version 2 config entries skip migration updates."""
     # The shared `config_entry` fixture is already a MockConfigEntry at version 2.
     hass.config_entries.async_update_entry = MagicMock()
     result = await async_migrate_entry(hass, config_entry)
@@ -156,7 +156,7 @@ async def test_async_unload_entry_variants(
     expected_result: object,
     expected_runtime_data: object,
 ) -> None:
-    """Test async_unload_entry returns correct result and preserves runtime_data."""
+    """Unload returns the platform result without clearing runtime data."""
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=unload_return)
     config_entry.runtime_data = initial_runtime_data
     result1 = await async_unload_entry(hass, config_entry)
@@ -173,7 +173,7 @@ async def test_async_unload_entry_variants(
 async def test_async_unload_entry_calls_unload_platforms(
     hass: MagicMock, config_entry: MockConfigEntry
 ) -> None:
-    """Test async_unload_entry calls async_unload_platforms and returns True."""
+    """Unload delegates to `async_unload_platforms` and returns success."""
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     config_entry.runtime_data = "dummy"
     result = await async_unload_entry(hass, config_entry)
@@ -185,7 +185,7 @@ async def test_async_unload_entry_calls_unload_platforms(
 async def test_sleep_record_sensor_multiple_updates(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Test MyAirSleepRecordSensor updates value on multiple coordinator updates."""
+    """Sleep-record sensors follow successive coordinator payload updates."""
     key = "CPAP Usage Minutes"
     desc = SLEEP_RECORD_SENSOR_DESCRIPTIONS[key]
     sensor = MyAirSleepRecordSensor(key, desc, coordinator)
@@ -215,7 +215,7 @@ async def test_sleep_record_sensor_multiple_updates(
 async def test_device_sensor_multiple_updates(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Test MyAirDeviceSensor updates value on multiple coordinator updates."""
+    """Device sensors follow successive coordinator payload updates."""
     key = "CPAP Sleep Data Last Collected"
     desc = DEVICE_SENSOR_DESCRIPTIONS[key]
     sensor = MyAirDeviceSensor(key, desc, coordinator)
@@ -247,7 +247,7 @@ async def test_device_sensor_multiple_updates(
 async def test_friendly_usage_time_sensor_multiple_updates(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Test MyAirFriendlyUsageTime sensor updates formatted usage time on data change."""
+    """Friendly usage sensors reformat minutes after each data change."""
     sensor = MyAirFriendlyUsageTime(coordinator)
     sensor.hass = hass
     sensor.entity_id = "sensor.test_friendly_usage"
@@ -275,7 +275,7 @@ async def test_friendly_usage_time_sensor_multiple_updates(
 async def test_most_recent_sleep_date_sensor_multiple_updates(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Test MyAirMostRecentSleepDate sensor updates date as new records are added."""
+    """Most-recent sleep date sensors advance as new usable records appear."""
     sensor = MyAirMostRecentSleepDate(coordinator)
     sensor.hass = hass
     sensor.entity_id = "sensor.test_recent_sleep"
@@ -345,7 +345,7 @@ async def test_sensor_becomes_unavailable_on_missing_data(
     data_field: str,
     empty_value: object,
 ) -> None:
-    """Test sensors become unavailable when their data is missing."""
+    """Entities go unavailable when the backing payload disappears."""
     sensor = sensor_class(key, desc, coordinator)
     sensor.hass = hass
     sensor.entity_id = f"sensor.test_{key.replace(' ', '_').lower()}"
@@ -440,7 +440,7 @@ async def test_sensor_handles_empty_or_missing_data(
     expected_available: bool,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Test sensors handle empty or missing data gracefully."""
+    """Entities remain safe when their coordinator payload is empty."""
     coordinator = coordinator_factory(data=coordinator_data)
     if sensor_class in (MyAirSleepRecordSensor, MyAirDeviceSensor):
         sensor = sensor_class(key, desc, coordinator)
@@ -456,7 +456,7 @@ async def test_sensor_handles_empty_or_missing_data(
 
 # Home Assistant calls this through an AsyncMock side effect during setup tests.
 async def fake_forward_entry_setups(config_entry: MockConfigEntry, platforms: list[str]) -> None:
-    """Forward sensor platform setups during tests using the provided config entry."""
+    """Forward sensor platform setup calls using the test config entry."""
     # Use the hass from config_entry, which is set by Home Assistant during setup
     hass = config_entry.hass
     if "sensor" in platforms:
@@ -470,7 +470,7 @@ async def test_force_poll_service_triggers_refresh(
     coordinator_factory: CoordinatorFactory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test that the force_poll service calls coordinator.async_refresh()."""
+    """The force-poll service directly triggers a coordinator refresh."""
     # Use the centralized factory to create a mock coordinator with the
     # attributes tests expect (async_refresh, async_config_entry_first_refresh, .data)
     dummy_coordinator = coordinator_factory(mock=True)
@@ -483,6 +483,15 @@ async def test_force_poll_service_triggers_refresh(
     domains = []
 
     def register(domain: str, name: str, func: object, *args: object, **kwargs: object) -> None:
+        """Capture service registration arguments for force-poll assertions.
+
+        Args:
+            domain: Home Assistant service domain being registered.
+            name: Service name derived from the account username.
+            func: Service callback registered by the integration.
+            *args: Additional Home Assistant service registration arguments.
+            **kwargs: Additional Home Assistant service registration options.
+        """
         registered[name] = func
         domains.append(domain)
 
@@ -520,7 +529,7 @@ async def test_force_poll_service_triggers_refresh(
 async def test_sensor_unique_id_and_device_info(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Test that sensors have unique_id and correct device info."""
+    """Sensors expose stable unique IDs and manufacturer device metadata."""
     key = "CPAP Usage Minutes"
     desc = SLEEP_RECORD_SENSOR_DESCRIPTIONS[key]
     sensor = MyAirSleepRecordSensor(key, desc, coordinator)
@@ -537,10 +546,16 @@ async def test_sensor_unique_id_and_device_info(
 async def test_async_setup_entry_registers_all_sensors(
     hass: MagicMock, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test async_setup_entry adds all expected sensor entities."""
+    """Setup registers every device, sleep, and synthesized sensor entity."""
     added_entities = []
 
     def fake_add_entities(entities: list[object], update_before_add: bool) -> None:
+        """Collect entities that setup passes to Home Assistant.
+
+        Args:
+            entities: Sensor entities created by ``async_setup_entry``.
+            update_before_add: Whether HA should update entities before adding them.
+        """
         assert isinstance(update_before_add, bool)
         added_entities.extend(entities)
 
