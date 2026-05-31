@@ -241,7 +241,9 @@ class MyAirBaseSensor(CoordinatorEntity, SensorEntity):
             stat_value = _round_stat_value(raw_value, statistic_desc.round_digits)
             start = datetime.combine(start_date, time.min, tzinfo=dt_util.DEFAULT_TIME_ZONE)
             if statistic_desc.import_mode == "sum":
-                running_sum = _round_stat_value(running_sum + stat_value, statistic_desc.round_digits)
+                running_sum = _round_stat_value(
+                    running_sum + stat_value, statistic_desc.round_digits
+                )
                 statistics.append(
                     StatisticData(
                         start=start,

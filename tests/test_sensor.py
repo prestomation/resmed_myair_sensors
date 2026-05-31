@@ -1,9 +1,13 @@
 """Unit tests for sensor entities in the resmed_myair integration."""
 
+from collections.abc import Callable
 from datetime import datetime
 import logging
+from typing import Any
 from unittest.mock import MagicMock
 
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
+from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -17,12 +21,11 @@ from custom_components.resmed_myair.sensor import (
     MyAirUsageHoursSensor,
     async_setup_entry,
 )
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
-from homeassistant.util import dt as dt_util
+from tests.conftest import CoordinatorFactory
 
 
 @pytest.mark.parametrize(
-    "data,sensor_key,device_class,expected_available",
+    ("data", "sensor_key", "device_class", "expected_available"),
     [
         ({}, "foo", None, False),  # No device
         ({"device": {}}, "foo", None, False),  # KeyError
@@ -36,8 +39,13 @@ from homeassistant.util import dt as dt_util
     ],
 )
 def test_device_sensor_all_branches(
-    data, sensor_key, device_class, expected_available, monkeypatch, coordinator_factory
-):
+    data: dict[str, object],
+    sensor_key: str,
+    device_class: SensorDeviceClass | None,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Parametrized tests for MyAirDeviceSensor behavior across branches."""
     # Construct description using the explicit device_class parameter so the test
     # deterministically controls whether the sensor is a timestamp sensor.
@@ -53,7 +61,7 @@ def test_device_sensor_all_branches(
 
 
 @pytest.mark.parametrize(
-    "data,expected_native,expected_available",
+    ("data", "expected_native", "expected_available"),
     [
         ({}, None, False),  # No sleep_records
         ({"sleep_records": []}, None, False),  # Empty sleep_records
@@ -63,8 +71,12 @@ def test_device_sensor_all_branches(
     ],
 )
 def test_friendly_usage_time_all_branches(
-    data, expected_native, expected_available, monkeypatch, coordinator_factory
-):
+    data: dict[str, object],
+    expected_native: object,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Parametrized tests for MyAirFriendlyUsageTime behavior across branches."""
     coordinator = coordinator_factory(data=data)
     sensor = MyAirFriendlyUsageTime(coordinator)
@@ -77,7 +89,7 @@ def test_friendly_usage_time_all_branches(
 
 
 @pytest.mark.parametrize(
-    "data,days,expected_native,expected_available",
+    ("data", "days", "expected_native", "expected_available"),
     [
         ({}, 7, None, False),
         ({"sleep_records": []}, 7, None, False),
@@ -119,8 +131,13 @@ def test_friendly_usage_time_all_branches(
     ],
 )
 def test_usage_hours_average_all_branches(
-    data, days, expected_native, expected_available, monkeypatch, coordinator_factory
-):
+    data: dict[str, object],
+    days: int,
+    expected_native: float | None,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Parametrized tests for rolling average usage hours sensors."""
     coordinator = coordinator_factory(data=data)
     sensor = MyAirUsageHoursAverageSensor(coordinator, days=days)
@@ -131,7 +148,11 @@ def test_usage_hours_average_all_branches(
 
 
 @pytest.mark.asyncio
-async def test_usage_hours_imports_external_statistics(hass, monkeypatch, coordinator_factory):
+async def test_usage_hours_imports_external_statistics(
+    hass: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Ensure usage hours imports dated records as external statistics."""
     coordinator = coordinator_factory(
         data={
@@ -145,10 +166,10 @@ async def test_usage_hours_imports_external_statistics(hass, monkeypatch, coordi
     sensor = MyAirUsageHoursSensor(coordinator)
     sensor.hass = hass
 
-    imported: list = []
+    imported: list[tuple[dict[str, object], list[dict[str, object]]]] = []
 
     class DummyRecorder:
-        async def async_add_executor_job(self, func, *args):
+        async def async_add_executor_job(self, func: Callable[..., Any], *args: object) -> Any:
             return func(*args)
 
     monkeypatch.setattr("custom_components.resmed_myair.sensor.get_instance", lambda hass: DummyRecorder())
@@ -202,7 +223,11 @@ async def test_usage_hours_imports_external_statistics(hass, monkeypatch, coordi
 
 
 @pytest.mark.asyncio
-async def test_usage_hours_import_skips_existing_statistics(hass, monkeypatch, coordinator_factory):
+async def test_usage_hours_import_skips_existing_statistics(
+    hass: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Ensure import only adds new nightly records after the last imported date."""
     coordinator = coordinator_factory(
         data={
@@ -216,10 +241,10 @@ async def test_usage_hours_import_skips_existing_statistics(hass, monkeypatch, c
     sensor = MyAirUsageHoursSensor(coordinator)
     sensor.hass = hass
 
-    imported: list = []
+    imported: list[tuple[dict[str, object], list[dict[str, object]]]] = []
 
     class DummyRecorder:
-        async def async_add_executor_job(self, func, *args):
+        async def async_add_executor_job(self, func: Callable[..., Any], *args: object) -> Any:
             return func(*args)
 
     monkeypatch.setattr("custom_components.resmed_myair.sensor.get_instance", lambda hass: DummyRecorder())
@@ -250,7 +275,9 @@ async def test_usage_hours_import_skips_existing_statistics(hass, monkeypatch, c
     assert statistics[0]["sum"] == 5.0
 
 
-def test_usage_hours_sensor_exposes_daily_history(monkeypatch, coordinator_factory):
+def test_usage_hours_sensor_exposes_daily_history(
+    monkeypatch: pytest.MonkeyPatch, coordinator_factory: CoordinatorFactory
+) -> None:
     """Ensure usage hours sensor exposes daily history for custom chart cards."""
     coordinator = coordinator_factory(
         data={
@@ -305,7 +332,9 @@ def test_usage_hours_sensor_exposes_daily_history(monkeypatch, coordinator_facto
     }
 
 
-def test_usage_hours_sensor_prefers_persisted_history(monkeypatch, coordinator_factory):
+def test_usage_hours_sensor_prefers_persisted_history(
+    monkeypatch: pytest.MonkeyPatch, coordinator_factory: CoordinatorFactory
+) -> None:
     """Ensure dashboard history uses persisted sleep_records_history, not only live cloud records."""
     coordinator = coordinator_factory(
         data={
@@ -332,7 +361,9 @@ def test_usage_hours_sensor_prefers_persisted_history(monkeypatch, coordinator_f
     ]
 
 
-def test_usage_hours_sensor_merges_recorder_usage_history(monkeypatch, coordinator_factory):
+def test_usage_hours_sensor_merges_recorder_usage_history(
+    monkeypatch: pytest.MonkeyPatch, coordinator_factory: CoordinatorFactory
+) -> None:
     """Ensure dashboard history includes recorder-backed usage dates when persisted history is incomplete."""
     coordinator = coordinator_factory(
         data={
@@ -362,7 +393,7 @@ def test_usage_hours_sensor_merges_recorder_usage_history(monkeypatch, coordinat
 
 
 @pytest.mark.parametrize(
-    "data,expected_native,expected_available",
+    ("data", "expected_native", "expected_available"),
     [
         ({}, None, False),  # No sleep_records
         ({"sleep_records": []}, None, False),  # Empty sleep_records
@@ -384,8 +415,12 @@ def test_usage_hours_sensor_merges_recorder_usage_history(monkeypatch, coordinat
     ],
 )
 def test_most_recent_sleep_date_all_branches(
-    data, expected_native, expected_available, monkeypatch, coordinator_factory
-):
+    data: dict[str, object],
+    expected_native: str | None,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Parametrized tests for MyAirMostRecentSleepDate behavior across branches."""
     coordinator = coordinator_factory(data=data)
     sensor = MyAirMostRecentSleepDate(coordinator)
@@ -398,7 +433,7 @@ def test_most_recent_sleep_date_all_branches(
 
 
 @pytest.mark.parametrize(
-    "sleep_records,sensor_key,device_class,expected_value,expected_available",
+    ("sleep_records", "sensor_key", "device_class", "expected_value", "expected_available"),
     [
         (None, "foo", None, None, False),
         ([], "foo", None, None, False),
@@ -409,14 +444,14 @@ def test_most_recent_sleep_date_all_branches(
     ],
 )
 def test_sleep_record_sensor_handle_coordinator_update(
-    sleep_records,
-    sensor_key,
-    device_class,
-    expected_value,
-    expected_available,
-    monkeypatch,
-    coordinator_factory,
-):
+    sleep_records: list[dict[str, object]] | None,
+    sensor_key: str,
+    device_class: SensorDeviceClass | None,
+    expected_value: object,
+    expected_available: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Parametrized tests for MyAirSleepRecordSensor handling various record formats."""
     # Patch dt_util.parse_date to return a sentinel for test
     if device_class == SensorDeviceClass.DATE:
@@ -440,7 +475,14 @@ def test_sleep_record_sensor_handle_coordinator_update(
 
 
 @pytest.mark.parametrize(
-    "device_data,sensor_key,device_class,expected_native,expected_available,patch_parse_datetime",
+    (
+        "device_data",
+        "sensor_key",
+        "device_class",
+        "expected_native",
+        "expected_available",
+        "patch_parse_datetime",
+    ),
     [
         # No device in coordinator data
         (None, "foo", None, None, False, False),
@@ -469,15 +511,15 @@ def test_sleep_record_sensor_handle_coordinator_update(
     ],
 )
 def test_myair_device_sensor_parametrized(
-    device_data,
-    sensor_key,
-    device_class,
-    expected_native,
-    expected_available,
-    patch_parse_datetime,
-    monkeypatch,
-    coordinator_factory,
-):
+    device_data: dict[str, object] | None,
+    sensor_key: str,
+    device_class: SensorDeviceClass | None,
+    expected_native: object,
+    expected_available: bool,
+    patch_parse_datetime: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+) -> None:
     """Combined parametrized test for MyAirDeviceSensor with optional datetime parsing."""
     # Patch dt_util.parse_datetime if needed
     if patch_parse_datetime:
@@ -500,8 +542,11 @@ def test_myair_device_sensor_parametrized(
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_adds_entities(
-    monkeypatch, coordinator_factory, hass, config_entry
-):
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator_factory: CoordinatorFactory,
+    hass: MagicMock,
+    config_entry: MockConfigEntry,
+) -> None:
     """Test that sensor async_setup_entry adds the expected entities."""
     async_add_entities = MagicMock()
     coordinator = coordinator_factory(mock=True)
@@ -541,8 +586,10 @@ async def test_async_setup_entry_adds_entities(
     assert kwargs.get("update_before_add", False) is False
 
 def test_myair_device_sensor_handle_coordinator_update_keyerror(
-    caplog, coordinator_factory, monkeypatch
-):
+    caplog: pytest.LogCaptureFixture,
+    coordinator_factory: CoordinatorFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Ensure MyAirDeviceSensor handles missing keys and logs an error."""
     coordinator = coordinator_factory(mock=True)
     coordinator.data = {"device": {"serialNumber": "SN123"}}

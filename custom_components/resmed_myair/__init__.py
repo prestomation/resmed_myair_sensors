@@ -5,7 +5,6 @@ import logging
 from typing import Any
 
 from aiohttp import DummyCookieJar
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession

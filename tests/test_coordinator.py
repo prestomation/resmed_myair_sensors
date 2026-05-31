@@ -1,8 +1,12 @@
 """Unit tests for the coordinator that updates myAir data."""
 
-from datetime import date, timedelta
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.resmed_myair.client.myair_client import AuthenticationError, ParsingError
@@ -10,12 +14,10 @@ from custom_components.resmed_myair.coordinator import (
     MyAirDataUpdateCoordinator,
     _merge_sleep_history,
 )
-from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.util import dt as dt_util
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_success(hass, myair_client):
+async def test_async_update_data_success(hass: MagicMock, myair_client: MagicMock) -> None:
     """Coordinator returns device and sleep_records on success."""
     coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
     coordinator._sleep_history_store.async_save = AsyncMock()  # type: ignore[method-assign]
@@ -29,7 +31,7 @@ async def test_async_update_data_success(hass, myair_client):
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_auth_error(hass, myair_client):
+async def test_async_update_data_auth_error(hass: MagicMock, myair_client: MagicMock) -> None:
     """AuthenticationError in client.connect should raise ConfigEntryAuthFailed."""
     myair_client.connect.side_effect = AuthenticationError("bad creds")
     coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
@@ -42,7 +44,9 @@ async def test_async_update_data_auth_error(hass, myair_client):
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_parsing_error_device(hass, myair_client):
+async def test_async_update_data_parsing_error_device(
+    hass: MagicMock, myair_client: MagicMock
+) -> None:
     """ParsingError during device data fetch results in empty device dict."""
     myair_client.get_user_device_data.side_effect = ParsingError("device parse fail")
     coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
@@ -58,7 +62,9 @@ async def test_async_update_data_parsing_error_device(hass, myair_client):
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_parsing_error_sleep_records(hass, myair_client):
+async def test_async_update_data_parsing_error_sleep_records(
+    hass: MagicMock, myair_client: MagicMock
+) -> None:
     """ParsingError during sleep record fetch results in empty sleep_records list."""
     myair_client.get_sleep_records.side_effect = ParsingError("sleep parse fail")
     coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
@@ -72,7 +78,7 @@ async def test_async_update_data_parsing_error_sleep_records(hass, myair_client)
     myair_client.get_sleep_records.assert_awaited_once()
 
 
-def test_merge_sleep_history_preserves_older_records():
+def test_merge_sleep_history_preserves_older_records() -> None:
     """Merging should keep older records that have aged out of the cloud window."""
     existing = [
         {"startDate": "2026-02-26", "totalUsage": 100},
@@ -95,9 +101,9 @@ def test_merge_sleep_history_preserves_older_records():
     ]
 
 
-def test_merge_sleep_history_updates_same_day_and_trims_window():
+def test_merge_sleep_history_updates_same_day_and_trims_window() -> None:
     """Merging should replace same-day records and trim history length."""
-    today = date.today()
+    today = datetime.now(UTC).date()
     existing = [
         {
             "startDate": (today - timedelta(days=offset)).isoformat(),
@@ -120,7 +126,9 @@ def test_merge_sleep_history_updates_same_day_and_trims_window():
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_merges_usage_history_from_recorder(hass, myair_client, monkeypatch):
+async def test_async_update_data_merges_usage_history_from_recorder(
+    hass: MagicMock, myair_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Coordinator should seed local history from existing recorder usage statistics."""
     myair_client.get_user_device_data.return_value = {"serialNumber": "23172442329"}
     myair_client.get_sleep_records.return_value = [
@@ -131,7 +139,9 @@ async def test_async_update_data_merges_usage_history_from_recorder(hass, myair_
     coordinator._sleep_history_store.async_save = AsyncMock()  # type: ignore[method-assign]
 
     class DummyRecorder:
-        async def async_add_executor_job(self, func, *args):
+        async def async_add_executor_job(
+            self, func: Callable[..., Any], *args: object
+        ) -> dict[str, list[dict[str, object]]]:
             return {
                 "resmed_myair:23172442329_usagehours_sum": [
                     {
@@ -165,8 +175,8 @@ async def test_async_update_data_merges_usage_history_from_recorder(hass, myair_
 
 @pytest.mark.asyncio
 async def test_async_update_data_merges_usage_history_from_recorder_float_start(
-    hass, myair_client, monkeypatch
-):
+    hass: MagicMock, myair_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Coordinator should handle recorder rows that return float timestamps."""
     myair_client.get_user_device_data.return_value = {"serialNumber": "23172442329"}
     myair_client.get_sleep_records.return_value = []
@@ -174,7 +184,9 @@ async def test_async_update_data_merges_usage_history_from_recorder_float_start(
     coordinator._sleep_history_store.async_save = AsyncMock()  # type: ignore[method-assign]
 
     class DummyRecorder:
-        async def async_add_executor_job(self, func, *args):
+        async def async_add_executor_job(
+            self, func: Callable[..., Any], *args: object
+        ) -> dict[str, list[dict[str, object]]]:
             return {
                 "resmed_myair:23172442329_usagehours_sum": [
                     {

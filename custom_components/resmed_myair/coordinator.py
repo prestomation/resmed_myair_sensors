@@ -136,7 +136,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
         return [
             {
                 "startDate": _statistics_row_date(row["start"]).isoformat(),
-                "totalUsage": max(int(round(float(row["change"]) * 60)), 0),
+                "totalUsage": max(round(float(row["change"]) * 60), 0),
             }
             for row in rows
             if row.get("start") is not None and row.get("change") is not None

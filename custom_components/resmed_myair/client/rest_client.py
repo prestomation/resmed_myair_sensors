@@ -37,13 +37,15 @@ EU_CONFIG: Mapping[str, Any] = {
     "email_factor_id": "emfg9cmjqxEPr52cT417",
     # This is the server ID that is designated by Okta for myAir used in authentication urls
     "auth_server_id": "aus2uznux2sYKTsEg417",
-    # This is the ID that is designated by Okta for myAir that appears in request bodies during login
+    # This is the ID that is designated by Okta for myAir that appears in
+    # request bodies during login
     "authorize_client_id": "0oa2uz04d2Pks2NgR417",
     # Used as the x-api-key header for the AppSync GraphQL API
     "myair_api_key": "da2-o66oo6xdnfh5hlfuw5yw5g2dtm",
     # The AppSync URL that accepts the access token to return Sleep Records
     "graphql_url": "https://graphql.hyperdrive.resmed.eu/graphql",
-    # Redirect url for browser to go to once authentication is complete. Must be the same as what is defined by Okta
+    # Redirect url for browser to go to once authentication is complete.
+    # Must be the same as what is defined by Okta
     "oauth_redirect_url": "https://myair.resmed.eu",
 }
 
@@ -56,13 +58,15 @@ NA_CONFIG: Mapping[str, Any] = {
     "email_factor_id": "xxx",
     # This is the server ID that is designated by Okta for myAir used in authentication urls
     "auth_server_id": "aus4ccsxvnidQgLmA297",
-    # This is the ID that is designated by Okta for myAir that appears in request bodies during login
+    # This is the ID that is designated by Okta for myAir that appears in request bodies
+    # during login
     "authorize_client_id": "0oa4ccq1v413ypROi297",
     # Used as the x-api-key header for the AppSync GraphQL API
     "myair_api_key": "da2-cenztfjrezhwphdqtwtbpqvzui",
     # The AppSync URL that accepts the access token to return Sleep Records
     "graphql_url": "https://graphql.myair-prd.dht.live/graphql",
-    # Redirect url for browser to go to once authentication is complete. Must be the same as what is defined by Okta
+    # Redirect url for browser to go to once authentication is complete.
+    # Must be the same as what is defined by Okta
     "oauth_redirect_url": "https://myair.resmed.com",
 }
 
@@ -221,14 +225,13 @@ class RESTClient(MyAirClient):
         _LOGGER.debug("[get_initial_dt] initial_dt_url: %s", initial_dt_url)
         _LOGGER.debug("[get_initial_dt] headers: %s", redact_dict(self._json_headers))
 
-        async with (
-            self._session.get(
-                initial_dt_url,
-                headers=self._json_headers,
-                raise_for_status=False,  # This will likely return a 400 which is ok. Just need the device token.
-                allow_redirects=False,
-            ) as initial_dt_res
-        ):
+        async with self._session.get(
+            initial_dt_url,
+            headers=self._json_headers,
+            # This will likely return a 400 which is ok. Just need the device token.
+            raise_for_status=False,
+            allow_redirects=False,
+        ) as initial_dt_res:
             _LOGGER.debug("[get_initial_dt] initial_dt_res: %s", initial_dt_res)
 
         await self._extract_and_update_cookies(initial_dt_res.headers.getall("set-cookie", []))
@@ -281,7 +284,10 @@ class RESTClient(MyAirClient):
         if "errors" in resp_dict:
             try:
                 if "errorInfo" in resp_dict["errors"][0]:
-                    error_message: str = f"{resp_dict['errors'][0]['errorInfo']['errorType']}: {resp_dict['errors'][0]['errorInfo']['errorCode']}"
+                    error_message: str = (
+                        f"{resp_dict['errors'][0]['errorInfo']['errorType']}: "
+                        f"{resp_dict['errors'][0]['errorInfo']['errorCode']}"
+                    )
                     if resp_dict["errors"][0]["errorInfo"]["errorType"] == "unauthorized":
                         if step == "gql_query" and not initial:
                             raise ParsingError(
@@ -338,12 +344,12 @@ class RESTClient(MyAirClient):
             self._state_token = authn_dict["stateToken"]
             try:
                 self._email_factor_id = authn_dict["_embedded"]["factors"][0]["id"]
-            except (KeyError, TypeError):
+            except KeyError, TypeError:
                 self._email_factor_id = self._region_config["email_factor_id"]
             _LOGGER.debug("[authn_check] email_factor_id: %s", self._email_factor_id)
             try:
-                self._mfa_url = f"{authn_dict['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"
-            except (KeyError, TypeError):
+                self._mfa_url = f"{authn_dict['_embedded']['factors'][0]['_links']['verify']['href']}?rememberDevice=true"  # noqa: E501
+            except KeyError, TypeError:
                 self._mfa_url = OAUTH_URLS["mfa_url"].format(
                     okta_url=self._region_config["okta_url"],
                     email_factor_id=self._email_factor_id,
@@ -469,7 +475,8 @@ class RESTClient(MyAirClient):
         await self._extract_and_update_cookies(code_res.headers.getall("set-cookie", []))
 
         # Now we change the code for an access token
-        # requests defaults to forms, which is what /token needs, so we don't use our api_session from above
+        # requests defaults to forms, which is what /token needs,
+        # so we don't use our api_session from above
         token_query: dict[str, Any] = {
             "client_id": self._region_config["authorize_client_id"],
             "redirect_uri": self._region_config["oauth_redirect_url"],
@@ -584,10 +591,9 @@ class RESTClient(MyAirClient):
 
     async def get_sleep_records(self, initial: bool | None = False) -> list[Mapping[str, Any]]:
         """Get sleep records from ResMed servers."""
-        today: str = datetime.datetime.now().strftime("%Y-%m-%d")
-        one_month_ago: str = (datetime.datetime.now() - datetime.timedelta(days=30)).strftime(
-            "%Y-%m-%d"
-        )
+        today_date: datetime.date = datetime.datetime.now(datetime.UTC).astimezone().date()
+        today: str = today_date.isoformat()
+        one_month_ago: str = (today_date - datetime.timedelta(days=30)).isoformat()
 
         query: str = """query GetPatientSleepRecords {
             getPatientWrapper {
