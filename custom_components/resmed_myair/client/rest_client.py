@@ -16,7 +16,7 @@ from aiohttp.http_exceptions import HttpProcessingError
 import jwt
 from multidict import CIMultiDict
 
-from .const import AUTH_NEEDS_MFA, AUTHN_SUCCESS
+from .const import AUTH_NEEDS_MFA, AUTHN_SUCCESS, REGION_NA as _REGION_NA
 from .helpers import redact_dict
 from .myair_client import (
     AuthenticationError,
@@ -25,16 +25,18 @@ from .myair_client import (
     MyAirConfig,
     ParsingError,
 )
-from .regions import EU_CONFIG, NA_CONFIG, RegionConfig, get_region_config
-
-__all__ = [
-    "EU_CONFIG",
-    "NA_CONFIG",
-    "RegionConfig",
-    "get_region_config",
-]
+from .regions import (
+    EU_CONFIG as _EU_CONFIG,
+    NA_CONFIG as _NA_CONFIG,
+    RegionConfig,
+    get_region_config,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+REGION_NA: str = _REGION_NA
+NA_CONFIG: RegionConfig = _NA_CONFIG
+EU_CONFIG: RegionConfig = _EU_CONFIG
 
 
 class RESTClient(MyAirClient):

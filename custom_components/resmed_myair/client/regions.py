@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from .const import REGION_EU
+from .const import REGION_NA
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +110,4 @@ def get_region_config(region: str) -> RegionConfig:
     Returns:
         The region config object for the requested region.
     """
-    if region == REGION_EU:
-        return EU_CONFIG
-    return NA_CONFIG
+    return NA_CONFIG if region == REGION_NA else EU_CONFIG

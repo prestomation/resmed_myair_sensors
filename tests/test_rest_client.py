@@ -22,10 +22,11 @@ from custom_components.resmed_myair.client.rest_client import (
     AUTHN_SUCCESS,
     EU_CONFIG,
     NA_CONFIG,
+    REGION_NA,
     ParsingError,
     RESTClient,
 )
-from custom_components.resmed_myair.const import REGION_EU, REGION_NA
+from custom_components.resmed_myair.const import REGION_EU
 from tests.conftest import make_mock_aiohttp_context_manager, make_mock_aiohttp_response
 
 
@@ -47,6 +48,11 @@ def test_get_region_config_returns_eu_settings() -> None:
     assert config.product == "myAir EU"
     assert config.oauth_redirect_url == "https://myair.resmed.eu"
     assert config.authn_url == "https://id.resmed.eu/api/v1/authn"
+
+
+def test_get_region_config_fallback_to_eu_for_unknown_region() -> None:
+    """Unexpected region values default to EU settings."""
+    assert get_region_config("unexpected") == EU_CONFIG
 
 
 @pytest.mark.parametrize(
