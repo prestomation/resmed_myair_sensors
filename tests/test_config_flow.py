@@ -772,32 +772,105 @@ async def test_async_step_reauth_confirm_exceptions(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("is_email_verified", "client_exists", "expected_abort_reason"),
+    (
+        "step_name",
+        "helper_path",
+        "user_input",
+        "flow_data",
+        "is_email_verified",
+        "client_exists",
+        "expected_abort_reason",
+    ),
     [
-        (False, True, "incomplete_account_verify_email"),  # Email not verified
-        (True, True, "incomplete_account"),  # Email verified
-        (None, False, "incomplete_account"),  # No client
-        ("exception", True, "incomplete_account"),  # ParsingError in is_email_verified
+        pytest.param(
+            "async_step_user",
+            "custom_components.resmed_myair.config_flow.get_device",
+            {CONF_USER_NAME: "user", CONF_PASSWORD: "pw", CONF_REGION: REGION_NA},
+            {CONF_USER_NAME: "user"},
+            False,
+            True,
+            "incomplete_account_verify_email",
+            id="user-email-unverified",
+        ),
+        pytest.param(
+            "async_step_user",
+            "custom_components.resmed_myair.config_flow.get_device",
+            {CONF_USER_NAME: "user", CONF_PASSWORD: "pw", CONF_REGION: REGION_NA},
+            {CONF_USER_NAME: "user"},
+            True,
+            True,
+            "incomplete_account",
+            id="user-email-verified",
+        ),
+        pytest.param(
+            "async_step_user",
+            "custom_components.resmed_myair.config_flow.get_device",
+            {CONF_USER_NAME: "user", CONF_PASSWORD: "pw", CONF_REGION: REGION_NA},
+            {CONF_USER_NAME: "user"},
+            None,
+            False,
+            "incomplete_account",
+            id="user-no-client",
+        ),
+        pytest.param(
+            "async_step_user",
+            "custom_components.resmed_myair.config_flow.get_device",
+            {CONF_USER_NAME: "user", CONF_PASSWORD: "pw", CONF_REGION: REGION_NA},
+            {CONF_USER_NAME: "user"},
+            "exception",
+            True,
+            "incomplete_account",
+            id="user-email-check-parse-error",
+        ),
+        pytest.param(
+            "async_step_verify_mfa",
+            "custom_components.resmed_myair.config_flow.get_mfa_device",
+            {CONF_VERIFICATION_CODE: "654321"},
+            {},
+            False,
+            True,
+            "incomplete_account_verify_email",
+            id="verify-mfa-email-unverified",
+        ),
+        pytest.param(
+            "async_step_verify_mfa",
+            "custom_components.resmed_myair.config_flow.get_mfa_device",
+            {CONF_VERIFICATION_CODE: "654321"},
+            {},
+            True,
+            True,
+            "incomplete_account",
+            id="verify-mfa-email-verified",
+        ),
+        pytest.param(
+            "async_step_verify_mfa",
+            "custom_components.resmed_myair.config_flow.get_mfa_device",
+            {CONF_VERIFICATION_CODE: "654321"},
+            {},
+            "exception",
+            True,
+            "incomplete_account",
+            id="verify-mfa-email-check-parse-error",
+        ),
     ],
 )
-async def test_async_step_user_incomplete_account_parametrized(
+async def test_async_step_initial_incomplete_account_abort_variants(
     monkeypatch: pytest.MonkeyPatch,
+    step_name: str,
+    helper_path: str,
+    user_input: dict[str, str],
+    flow_data: dict[str, str],
     is_email_verified: bool | str | None,
     client_exists: bool,
     expected_abort_reason: str,
     hass: MagicMock,
     myair_client: MagicMock,
 ) -> None:
-    """User-step incomplete-account branches all converge on aborts."""
+    """Initial auth and MFA incomplete-account branches converge on abort reasons."""
     flow = MyAirConfigFlow()
     flow.hass = hass
-    flow._data = {CONF_USER_NAME: "user"}
-    user_input = {CONF_USER_NAME: "user", CONF_PASSWORD: "pw", CONF_REGION: REGION_NA}
-
-    monkeypatch.setattr(
-        "custom_components.resmed_myair.config_flow.get_device",
-        AsyncMock(side_effect=IncompleteAccountError("fail")),
-    )
+    flow._data = flow_data
+    monkeypatch.setattr(helper_path, AsyncMock(side_effect=IncompleteAccountError("fail")))
     flow.async_abort = MagicMock(return_value={"type": "abort", "reason": expected_abort_reason})
 
     if client_exists:
@@ -809,51 +882,11 @@ async def test_async_step_user_incomplete_account_parametrized(
     else:
         flow._client = None
 
-    result = await flow.async_step_user(user_input)
+    result = await getattr(flow, step_name)(user_input)
+
     assert result["type"] == "abort"
     assert result["reason"] == expected_abort_reason
     if client_exists and is_email_verified != "exception":
-        flow._client.is_email_verified.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("is_email_verified", "expected_abort_reason"),
-    [
-        (False, "incomplete_account_verify_email"),
-        (True, "incomplete_account"),
-        ("exception", "incomplete_account"),
-    ],
-)
-async def test_async_step_verify_mfa_incomplete_account_parametrized(
-    monkeypatch: pytest.MonkeyPatch,
-    is_email_verified: bool | str,
-    expected_abort_reason: str,
-    hass: MagicMock,
-    myair_client: MagicMock,
-) -> None:
-    """Initial MFA incomplete-account branches converge on the right abort reason."""
-    flow = MyAirConfigFlow()
-    flow.hass = hass
-    flow._data = {}
-    flow._client = myair_client
-    user_input = {CONF_VERIFICATION_CODE: "654321"}
-    monkeypatch.setattr(
-        "custom_components.resmed_myair.config_flow.get_mfa_device",
-        AsyncMock(side_effect=IncompleteAccountError("incomplete")),
-    )
-    flow.async_abort = MagicMock(return_value={"type": "abort", "reason": expected_abort_reason})
-
-    if is_email_verified == "exception":
-        flow._client.is_email_verified = AsyncMock(side_effect=ParsingError("unexpected error"))
-    else:
-        flow._client.is_email_verified = AsyncMock(return_value=is_email_verified)
-
-    result = await flow.async_step_verify_mfa(user_input)
-
-    assert result["type"] == "abort"
-    assert result["reason"] == expected_abort_reason
-    if is_email_verified != "exception":
         flow._client.is_email_verified.assert_awaited_once()
 
 
