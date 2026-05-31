@@ -21,6 +21,12 @@ from .helpers import redact_dict
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _HISTORY_STORE_VERSION = 1
 _MAX_HISTORY_DAYS = 400
+_RECORDER_STATE_FIELDS = {
+    "ahi": "ahi",
+    "maskPairCount": "maskPairCount",
+    "leakPercentile": "leakPercentile",
+    "sleepScore": "sleepScore",
+}
 
 
 class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
@@ -90,7 +96,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
             data["sleep_records"] = []
         _LOGGER.debug("[async_update_data] sleep_records: %s", redact_dict(data["sleep_records"]))
 
-        self._usage_hours_history = await self._async_get_usage_history_from_recorder(
+        self._usage_hours_history = await self._async_get_sleep_history_from_recorder(
             data["device"],
         )
         self._sleep_history = _merge_sleep_history(self._sleep_history, self._usage_hours_history)
@@ -108,39 +114,52 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator):
             history = self.data.get("sleep_records", [])
         return _merge_sleep_history(self._usage_hours_history, history)
 
-    async def _async_get_usage_history_from_recorder(
+    async def _async_get_sleep_history_from_recorder(
         self,
         device: Mapping[str, Any],
     ) -> list[dict[str, Any]]:
-        """Load usage history from recorder statistics."""
+        """Load sleep history recoverable from recorder statistics."""
         serial_number = device.get("serialNumber") or self._serial_number
         if not serial_number:
             return []
 
         statistic_id = _usage_hours_sum_statistic_id(serial_number)
+        state_statistic_ids = {
+            _recorder_state_statistic_id(serial_number, sensor_key)
+            for sensor_key in _RECORDER_STATE_FIELDS
+        }
         start_time = dt_util.now() - timedelta(days=_MAX_HISTORY_DAYS)
         recorder_stats = await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
             start_time,
             None,
-            {statistic_id},
+            {statistic_id, *state_statistic_ids},
             "day",
             None,
-            {"change"},
+            {"change", "state"},
         )
-        rows = recorder_stats.get(statistic_id, [])
-        if not rows:
-            return []
+        records_by_date: dict[str, dict[str, Any]] = {}
 
-        return [
-            {
-                "startDate": _statistics_row_date(row["start"]).isoformat(),
-                "totalUsage": max(round(float(row["change"]) * 60), 0),
-            }
-            for row in rows
-            if row.get("start") is not None and row.get("change") is not None
-        ]
+        for row in recorder_stats.get(statistic_id, []):
+            if row.get("start") is None or row.get("change") is None:
+                continue
+            start_date = _statistics_row_date(row["start"]).isoformat()
+            records_by_date.setdefault(start_date, {"startDate": start_date})[
+                "totalUsage"
+            ] = max(round(float(row["change"]) * 60), 0)
+
+        for sensor_key, record_key in _RECORDER_STATE_FIELDS.items():
+            state_statistic_id = _recorder_state_statistic_id(serial_number, sensor_key)
+            for row in recorder_stats.get(state_statistic_id, []):
+                if row.get("start") is None or row.get("state") is None:
+                    continue
+                start_date = _statistics_row_date(row["start"]).isoformat()
+                records_by_date.setdefault(start_date, {"startDate": start_date})[
+                    record_key
+                ] = row["state"]
+
+        return [records_by_date[start_date] for start_date in sorted(records_by_date)]
 
 
 def _merge_sleep_history(
@@ -157,7 +176,7 @@ def _merge_sleep_history(
         start_date = record.get("startDate")
         if not start_date:
             continue
-        merged_by_date[start_date] = dict(record)
+        merged_by_date[start_date] = {**merged_by_date.get(start_date, {}), **dict(record)}
 
     sorted_dates = sorted(merged_by_date)
     if len(sorted_dates) > _MAX_HISTORY_DAYS:
@@ -181,6 +200,11 @@ def _normalize_sleep_history(history: list[dict[str, Any]]) -> list[dict[str, An
 def _usage_hours_sum_statistic_id(serial_number: str) -> str:
     """Build the recorder statistic id for usage hours."""
     return f"{DOMAIN}:{slugify(f'{serial_number}_usagehours_sum')}"
+
+
+def _recorder_state_statistic_id(serial_number: str, sensor_key: str) -> str:
+    """Build the recorder statistic id for a nightly state metric."""
+    return f"{DOMAIN}:{slugify(f'{serial_number}_{sensor_key}')}"
 
 
 def _statistics_row_date(value: Any) -> date:

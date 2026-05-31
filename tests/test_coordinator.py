@@ -125,6 +125,34 @@ def test_merge_sleep_history_updates_same_day_and_trims_window() -> None:
     assert merged[-2]["totalUsage"] == 111
 
 
+def test_merge_sleep_history_preserves_existing_fields_for_partial_records() -> None:
+    """Partial recorder rows should not erase details already saved for a day."""
+    existing = [
+        {
+            "startDate": "2026-03-31",
+            "totalUsage": 420,
+            "ahi": 1.2,
+            "maskPairCount": 1,
+            "leakPercentile": 7,
+            "sleepScore": 91,
+        }
+    ]
+    latest = [{"startDate": "2026-03-31", "totalUsage": 421}]
+
+    merged = _merge_sleep_history(existing, latest)
+
+    assert merged == [
+        {
+            "startDate": "2026-03-31",
+            "totalUsage": 421,
+            "ahi": 1.2,
+            "maskPairCount": 1,
+            "leakPercentile": 7,
+            "sleepScore": 91,
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_async_update_data_merges_usage_history_from_recorder(
     hass: MagicMock, myair_client: MagicMock, monkeypatch: pytest.MonkeyPatch
@@ -152,7 +180,31 @@ async def test_async_update_data_merges_usage_history_from_recorder(
                         "start": dt_util.parse_datetime("2026-02-28T08:00:00+00:00"),
                         "change": 4.52,
                     },
-                ]
+                ],
+                "resmed_myair:23172442329_ahi": [
+                    {
+                        "start": dt_util.parse_datetime("2026-02-27T08:00:00+00:00"),
+                        "state": 1.2,
+                    }
+                ],
+                "resmed_myair:23172442329_maskpaircount": [
+                    {
+                        "start": dt_util.parse_datetime("2026-02-27T08:00:00+00:00"),
+                        "state": 2.0,
+                    }
+                ],
+                "resmed_myair:23172442329_leakpercentile": [
+                    {
+                        "start": dt_util.parse_datetime("2026-02-27T08:00:00+00:00"),
+                        "state": 5.5,
+                    }
+                ],
+                "resmed_myair:23172442329_sleepscore": [
+                    {
+                        "start": dt_util.parse_datetime("2026-02-27T08:00:00+00:00"),
+                        "state": 88.0,
+                    }
+                ],
             }
 
     monkeypatch.setattr("custom_components.resmed_myair.coordinator.get_instance", lambda hass: DummyRecorder())
@@ -170,6 +222,10 @@ async def test_async_update_data_merges_usage_history_from_recorder(
         "2026-03-02",
     ]
     assert data["sleep_records_history"][0]["totalUsage"] == 440
+    assert data["sleep_records_history"][0]["ahi"] == 1.2
+    assert data["sleep_records_history"][0]["maskPairCount"] == 2.0
+    assert data["sleep_records_history"][0]["leakPercentile"] == 5.5
+    assert data["sleep_records_history"][0]["sleepScore"] == 88.0
     assert data["sleep_records_history"][1]["totalUsage"] == 271
 
 
