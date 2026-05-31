@@ -38,9 +38,9 @@ class MyAirClient(ABC):
         """Connect to ResMed myAir."""
 
     @abstractmethod
-    async def get_user_device_data(self, initial: bool | None = False) -> MyAirDevice:
+    async def get_user_device_data(self, initial: bool = False) -> MyAirDevice:
         """Get user device data from ResMed servers."""
 
     @abstractmethod
-    async def get_sleep_records(self, initial: bool | None = False) -> list[MyAirSleepRecord]:
+    async def get_sleep_records(self, initial: bool = False) -> list[MyAirSleepRecord]:
         """Get sleep records from ResMed servers."""

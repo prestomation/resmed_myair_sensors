@@ -20,10 +20,15 @@ def _to_usage_minutes(raw_usage: Any) -> int | None:
         return raw_usage
     if isinstance(raw_usage, float | Decimal | str):
         try:
-            usage_minutes = int(Decimal(str(raw_usage)))
-        except InvalidOperation, ValueError:
+            usage_decimal = Decimal(str(raw_usage))
+            usage_minutes = int(usage_decimal)
+        except (
+            InvalidOperation,
+            ValueError,
+        ):
             return None
-        _LOGGER.warning("Coerced non-integer totalUsage value to minutes: %r", raw_usage)
+        if usage_decimal != Decimal(usage_minutes):
+            _LOGGER.info("Truncated fractional totalUsage value to minutes: %r", raw_usage)
         return usage_minutes
     return None
 

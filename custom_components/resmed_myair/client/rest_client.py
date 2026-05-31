@@ -245,7 +245,7 @@ class RESTClient(MyAirClient):
         """Run a GraphQL query through the transport client."""
         return await self._graphql.query(operation_name, query, initial=bool(initial))
 
-    async def get_sleep_records(self, initial: bool | None = False) -> list[MyAirSleepRecord]:
+    async def get_sleep_records(self, initial: bool = False) -> list[MyAirSleepRecord]:
         """Get sleep records from ResMed servers."""
         today_date: datetime.date = datetime.datetime.now(datetime.UTC).astimezone().date()
         today: str = today_date.isoformat()
@@ -309,7 +309,7 @@ class RESTClient(MyAirClient):
             typed_records.append(MyAirSleepRecord.from_api(record))
         return typed_records
 
-    async def get_user_device_data(self, initial: bool | None = False) -> MyAirDevice:
+    async def get_user_device_data(self, initial: bool = False) -> MyAirDevice:
         """Get user device data from ResMed servers."""
         query: str = """
         query getPatientWrapper {

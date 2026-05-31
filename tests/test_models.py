@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
+import logging
 
 import pytest
 
@@ -180,13 +181,29 @@ def test_sleep_record_with_non_int_usage_is_none() -> None:
 
 
 @pytest.mark.parametrize("raw_usage", [125.9, Decimal("125.9"), "125.9"])
-def test_sleep_record_coerces_numeric_usage_values(raw_usage: float | Decimal | str) -> None:
+def test_sleep_record_coerces_numeric_usage_values(
+    raw_usage: float | Decimal | str, caplog: pytest.LogCaptureFixture
+) -> None:
     """Numeric API usage values should be coerced to integer minutes."""
-    record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
+    with caplog.at_level(logging.INFO):
+        record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
 
     assert record.total_usage_minutes == 125
     assert record.friendly_usage_time == "2:05"
     assert record.has_usage is True
+    assert "Truncated fractional totalUsage value to minutes" in caplog.text
+
+
+@pytest.mark.parametrize("raw_usage", [125.0, Decimal("125.0"), "125.0"])
+def test_sleep_record_does_not_log_for_integral_numeric_usage(
+    raw_usage: float | Decimal | str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Integral numeric API usage values should not log truncation."""
+    with caplog.at_level(logging.INFO):
+        record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
+
+    assert record.total_usage_minutes == 125
+    assert "Truncated fractional totalUsage value to minutes" not in caplog.text
 
 
 def test_coordinator_data_selects_latest_record_by_start_date() -> None:
