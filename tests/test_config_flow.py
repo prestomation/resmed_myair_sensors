@@ -1,5 +1,7 @@
 """Config-flow tests that protect setup, MFA, and reauth state transitions."""
 
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from aiohttp import ClientError
@@ -27,6 +29,16 @@ from custom_components.resmed_myair.config_flow import (
 )
 from custom_components.resmed_myair.models import MyAirDevice
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+TRANSLATION_LANGUAGES = ("en", "fr")
+CONFIG_FLOW_ABORT_REASONS = (
+    "already_configured",
+    "incomplete_account",
+    "incomplete_account_verify_email",
+    "reauth_successful",
+    "wrong_account",
+)
+
 
 @pytest.fixture
 def flow(hass: MagicMock) -> MyAirConfigFlow:
@@ -35,6 +47,18 @@ def flow(hass: MagicMock) -> MyAirConfigFlow:
     flow.hass = hass
     flow.context = {}
     return flow
+
+
+@pytest.mark.parametrize("language", TRANSLATION_LANGUAGES)
+def test_config_flow_abort_reasons_have_translations(language: str) -> None:
+    """All config-flow abort reasons have localized strings."""
+    translation_path = (
+        REPO_ROOT / "custom_components/resmed_myair/translations" / f"{language}.json"
+    )
+    abort_translations = json.loads(translation_path.read_text())["config"]["abort"]
+
+    for reason in CONFIG_FLOW_ABORT_REASONS:
+        assert abort_translations[reason]
 
 
 @pytest.mark.asyncio
