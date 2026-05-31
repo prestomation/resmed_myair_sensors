@@ -760,6 +760,7 @@ async def test_async_step_reconfigure_backfills_legacy_entry_unique_id(
     flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
     flow._client = myair_client
     flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow.hass.config_entries.async_entry_for_domain_unique_id = MagicMock(return_value=None)
     flow.hass.config_entries.async_schedule_reload = MagicMock()
     myair_client.device_token = "updated-token"
     if step_name == "async_step_reconfigure_verify_mfa":
@@ -797,6 +798,230 @@ async def test_async_step_reconfigure_backfills_legacy_entry_unique_id(
     }
     assert kwargs["unique_id"] == "SN123"
     flow.hass.config_entries.async_schedule_reload.assert_called_once_with("mock_entry_id")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("step_name", "helper_name", "user_input"),
+    [
+        (
+            "async_step_reconfigure",
+            "get_device",
+            {
+                CONF_USER_NAME: "new@example.com",
+                CONF_PASSWORD: "new-password",
+                CONF_REGION: REGION_EU,
+            },
+        ),
+        (
+            "async_step_reconfigure_verify_mfa",
+            "get_mfa_device",
+            {CONF_VERIFICATION_CODE: "654321"},
+        ),
+    ],
+)
+async def test_async_step_reconfigure_aborts_on_unverified_device_identity(
+    flow: MyAirConfigFlow,
+    myair_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    step_name: str,
+    helper_name: str,
+    user_input: dict[str, str],
+) -> None:
+    """Reconfigure refuses to update an entry when device identity changes."""
+    config_entry = MockConfigEntry(
+        domain="resmed_myair",
+        title="ResMed-CPAP",
+        data={
+            CONF_USER_NAME: "old@example.com",
+            CONF_PASSWORD: "old-password",
+            CONF_REGION: REGION_NA,
+            CONF_DEVICE_TOKEN: "old-token",
+        },
+        entry_id="mock_entry_id",
+        unique_id="SN123",
+        version=2,
+    )
+    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+    flow._client = myair_client
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    if step_name == "async_step_reconfigure_verify_mfa":
+        flow._data = {
+            CONF_USER_NAME: "new@example.com",
+            CONF_PASSWORD: "new-password",
+            CONF_REGION: REGION_EU,
+            CONF_DEVICE_TOKEN: "old-token",
+        }
+    mismatched_device = MyAirDevice.from_api(
+        {
+            "serialNumber": "SN999",
+            "fgDeviceManufacturerName": "ResMed",
+            "localizedName": "Guest CPAP",
+        }
+    )
+    helper_result = (
+        (AUTHN_SUCCESS, mismatched_device, myair_client)
+        if helper_name == "get_device"
+        else (AUTHN_SUCCESS, mismatched_device)
+    )
+    monkeypatch.setattr(config_flow, helper_name, AsyncMock(return_value=helper_result))
+
+    result = await getattr(flow, step_name)(user_input)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "wrong_account"
+    flow.hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_step_reconfigure_legacy_backfill_aborts_on_duplicate_unique_id(
+    flow: MyAirConfigFlow,
+    myair_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy reconfigure refuses to backfill a serial used by another entry."""
+    legacy_entry = MockConfigEntry(
+        domain="resmed_myair",
+        title="Legacy ResMed-CPAP",
+        data={
+            CONF_USER_NAME: "old@example.com",
+            CONF_PASSWORD: "old-password",
+            CONF_REGION: REGION_NA,
+            CONF_DEVICE_TOKEN: "old-token",
+        },
+        entry_id="legacy_entry",
+        unique_id=None,
+        version=2,
+    )
+    existing_entry = MockConfigEntry(
+        domain="resmed_myair",
+        title="Existing ResMed-CPAP",
+        data={CONF_USER_NAME: "existing@example.com"},
+        entry_id="existing_entry",
+        unique_id="SN123",
+        version=2,
+    )
+    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": legacy_entry.entry_id}
+    flow._client = myair_client
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=legacy_entry)
+    flow.hass.config_entries.async_entry_for_domain_unique_id = MagicMock(
+        return_value=existing_entry
+    )
+    myair_client.device_token = "updated-token"
+    device = MyAirDevice.from_api(
+        {
+            "serialNumber": "SN123",
+            "fgDeviceManufacturerName": "ResMed",
+            "localizedName": "CPAP",
+        }
+    )
+    monkeypatch.setattr(
+        config_flow,
+        "get_device",
+        AsyncMock(return_value=(AUTHN_SUCCESS, device, myair_client)),
+    )
+
+    result = await flow.async_step_reconfigure(
+        {
+            CONF_USER_NAME: "new@example.com",
+            CONF_PASSWORD: "new-password",
+            CONF_REGION: REGION_EU,
+        }
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "already_configured"
+    flow.hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("step_name", "helper_name", "user_input", "is_email_verified", "expected_abort_reason"),
+    [
+        (
+            "async_step_reconfigure",
+            "get_device",
+            {
+                CONF_USER_NAME: "new@example.com",
+                CONF_PASSWORD: "new-password",
+                CONF_REGION: REGION_EU,
+            },
+            False,
+            "incomplete_account_verify_email",
+        ),
+        (
+            "async_step_reconfigure",
+            "get_device",
+            {
+                CONF_USER_NAME: "new@example.com",
+                CONF_PASSWORD: "new-password",
+                CONF_REGION: REGION_EU,
+            },
+            True,
+            "incomplete_account",
+        ),
+        (
+            "async_step_reconfigure_verify_mfa",
+            "get_mfa_device",
+            {CONF_VERIFICATION_CODE: "654321"},
+            False,
+            "incomplete_account_verify_email",
+        ),
+        (
+            "async_step_reconfigure_verify_mfa",
+            "get_mfa_device",
+            {CONF_VERIFICATION_CODE: "654321"},
+            True,
+            "incomplete_account",
+        ),
+    ],
+)
+async def test_async_step_reconfigure_incomplete_account_abort_variants(
+    flow: MyAirConfigFlow,
+    myair_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    step_name: str,
+    helper_name: str,
+    user_input: dict[str, str],
+    is_email_verified: bool,
+    expected_abort_reason: str,
+) -> None:
+    """Reconfigure steps preserve incomplete-account abort handling."""
+    config_entry = MockConfigEntry(
+        domain="resmed_myair",
+        title="ResMed-CPAP",
+        data={
+            CONF_USER_NAME: "old@example.com",
+            CONF_PASSWORD: "old-password",
+            CONF_REGION: REGION_NA,
+            CONF_DEVICE_TOKEN: "old-token",
+        },
+        entry_id="mock_entry_id",
+        unique_id="SN123",
+        version=2,
+    )
+    flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
+    flow._client = myair_client
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow._client.is_email_verified = AsyncMock(return_value=is_email_verified)
+    if step_name == "async_step_reconfigure_verify_mfa":
+        flow._data = {
+            CONF_USER_NAME: "new@example.com",
+            CONF_PASSWORD: "new-password",
+            CONF_REGION: REGION_EU,
+            CONF_DEVICE_TOKEN: "old-token",
+        }
+    monkeypatch.setattr(
+        config_flow,
+        helper_name,
+        AsyncMock(side_effect=IncompleteAccountError("incomplete")),
+    )
+
+    result = await getattr(flow, step_name)(user_input)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == expected_abort_reason
+    flow._client.is_email_verified.assert_awaited_once()
 
 
 @pytest.mark.asyncio
