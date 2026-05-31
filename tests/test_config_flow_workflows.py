@@ -119,6 +119,7 @@ async def test_reauth_mfa_workflow_updates_entry_and_reloads(
         title="ResMed-Bedroom CPAP",
         data=entry_data,
         entry_id="existing-entry",
+        unique_id="SN123",
         version=2,
     )
     myair_client.device_token = "new-token"

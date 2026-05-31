@@ -171,15 +171,22 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             device: Typed myAir device returned by the API.
 
         Returns:
-            Abort result when the serial number does not match the entry being repaired,
-            otherwise `None`.
+            Abort result when the serial number cannot be verified against the entry
+            being repaired, otherwise `None`.
 
         Raises:
             ParsingError: When device data does not include a serial number.
         """
         if not device.serial_number:
             raise ParsingError("Unable to get Serial Number from Device Data")
-        if self._entry.unique_id and device.serial_number != self._entry.unique_id:
+        if not self._entry.unique_id:
+            _LOGGER.error(
+                "Reauth cannot verify device serial number %s because existing entry "
+                "has no unique ID",
+                device.serial_number,
+            )
+            return self.async_abort(reason="wrong_account")
+        if device.serial_number != self._entry.unique_id:
             _LOGGER.error(
                 "Reauth device serial number %s does not match existing entry unique ID %s",
                 device.serial_number,

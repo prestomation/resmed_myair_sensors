@@ -171,11 +171,18 @@ async def test_async_step_forms_display_parametrized(
 @pytest.mark.asyncio
 async def test_async_step_reauth_success(
     flow: MyAirConfigFlow,
-    config_entry: MockConfigEntry,
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Successful reauth updates the stored credentials and completes."""
+    config_entry = MockConfigEntry(
+        domain="resmed_myair",
+        title="ResMed-CPAP",
+        data={CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA},
+        entry_id="mock_entry_id",
+        unique_id="SN123",
+        version=2,
+    )
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA}
     device = MyAirDevice.from_api(
         {
@@ -204,35 +211,55 @@ async def test_async_step_reauth_success(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("step_name", "helper_name", "user_input"),
+    ("entry_unique_id", "device_serial_number", "step_name", "helper_name", "user_input"),
     [
         (
+            "SN123",
+            "SN999",
             "async_step_reauth_confirm",
             "get_device",
             {CONF_USER_NAME: "user", CONF_PASSWORD: "pass"},
         ),
         (
+            "SN123",
+            "SN999",
+            "async_step_reauth_verify_mfa",
+            "get_mfa_device",
+            {CONF_VERIFICATION_CODE: "654321"},
+        ),
+        (
+            None,
+            "SN123",
+            "async_step_reauth_confirm",
+            "get_device",
+            {CONF_USER_NAME: "user", CONF_PASSWORD: "pass"},
+        ),
+        (
+            None,
+            "SN123",
             "async_step_reauth_verify_mfa",
             "get_mfa_device",
             {CONF_VERIFICATION_CODE: "654321"},
         ),
     ],
 )
-async def test_async_step_reauth_aborts_on_device_serial_mismatch(
+async def test_async_step_reauth_aborts_on_unverified_device_identity(
     flow: MyAirConfigFlow,
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
+    entry_unique_id: str | None,
+    device_serial_number: str,
     step_name: str,
     helper_name: str,
     user_input: dict[str, str],
 ) -> None:
-    """Reauth refuses to update an entry with credentials for another device."""
+    """Reauth refuses to update an entry when device identity is unverified."""
     config_entry = MockConfigEntry(
         domain="resmed_myair",
         title="ResMed-CPAP",
         data={CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA},
         entry_id="mock_entry_id",
-        unique_id="SN123",
+        unique_id=entry_unique_id,
         version=2,
     )
     flow._entry = config_entry
@@ -240,7 +267,7 @@ async def test_async_step_reauth_aborts_on_device_serial_mismatch(
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass", CONF_REGION: REGION_NA}
     mismatched_device = MyAirDevice.from_api(
         {
-            "serialNumber": "SN999",
+            "serialNumber": device_serial_number,
             "fgDeviceManufacturerName": "ResMed",
             "localizedName": "Guest CPAP",
         }
