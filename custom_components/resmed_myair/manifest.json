@@ -7,6 +7,7 @@
   ],
   "config_flow": true,
   "dependencies": [
+    "recorder",
     "sensor"
   ],
   "documentation": "https://github.com/prestomation/resmed_myair_sensors",
