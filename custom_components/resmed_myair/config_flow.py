@@ -36,12 +36,15 @@ from .models import MyAirDevice
 from .redaction import redact_dict
 
 _LOGGER = logging.getLogger(__name__)
-EMAIL_VERIFICATION_ERRORS: tuple[type[Exception], ...] = (
+CONNECTION_ERRORS: tuple[type[Exception], ...] = (
     AuthenticationError,
     HttpProcessingError,
-    ClientError,
     ClientResponseError,
     ParsingError,
+)
+EMAIL_VERIFICATION_ERRORS: tuple[type[Exception], ...] = (
+    *CONNECTION_ERRORS,
+    ClientError,
     TimeoutError,
     ValueError,
 )
@@ -377,12 +380,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         data=self._data,
                     )
                 return await self.async_step_verify_mfa()
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at async_step_user. %s: %s", type(e).__name__, e)
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
@@ -429,12 +427,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
                 errors["base"] = "mfa_error"
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at verify_mfa. %s: %s", type(e).__name__, e)
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
@@ -508,12 +501,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         unique_id=unique_id,
                     )
                 return await self.async_step_reauth_verify_mfa()
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at reauth_confirm. %s: %s", type(e).__name__, e)
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
@@ -563,12 +551,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
                 errors["base"] = "mfa_error"
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at reauth_verify_mfa. %s: %s", type(e).__name__, e)
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
@@ -621,12 +604,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         unique_id=unique_id,
                     )
                 return await self.async_step_reconfigure_verify_mfa()
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at reconfigure. %s: %s", type(e).__name__, e)
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
@@ -677,12 +655,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
                 errors["base"] = "mfa_error"
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error(
                     "Connection Error at reconfigure_verify_mfa. %s: %s",
                     type(e).__name__,
