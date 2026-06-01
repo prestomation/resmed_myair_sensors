@@ -1,5 +1,6 @@
 """Home Assistant sensor entities for ResMed myAir account data."""
 
+from abc import abstractmethod
 from datetime import date
 import logging
 import re
@@ -120,9 +121,6 @@ async def async_setup_entry(
 class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntity):
     """Base entity for sensors that share myAir device identity and availability."""
 
-    _missing_source_log: str = "Sensor data missing from coordinator data"
-    _parse_error_source: str = "Sensor"
-
     def __init__(
         self,
         friendly_name: str,
@@ -169,25 +167,21 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         await super().async_added_to_hass()
         self._handle_coordinator_update()
 
+
+class MyAirRawSensor(MyAirBaseSensor):
+    """Base entity for sensors that read a raw API field from a model payload."""
+
+    _missing_source_log: str = "Sensor data missing from coordinator data"
+    _parse_error_source: str = "Sensor"
+
+    @abstractmethod
     def _sensor_payload(self) -> _SensorPayload | None:
         """Return the model object that contains this sensor's raw API field.
-
-        This partial implementation raises ``NotImplementedError`` and exists for
-        sensors that use coordinator-provided device or sleep-record models with
-        the base ``_handle_coordinator_update`` implementation. Subclasses with
-        fully custom update logic, such as ``MyAirFriendlyUsageTime`` and
-        ``MyAirMostRecentSleepDate``, may intentionally skip this method and parse
-        coordinator payloads directly in their own ``_handle_coordinator_update``.
 
         Returns:
             Device or sleep-record model for raw GraphQL-backed sensors, or ``None``
             when the coordinator did not receive the required payload.
-
-        Raises:
-            NotImplementedError: If a subclass uses the base update handler without
-                implementing this payload selector.
         """
-        raise NotImplementedError
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -216,7 +210,7 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         self.async_write_ha_state()
 
 
-class MyAirSleepRecordSensor(MyAirBaseSensor):
+class MyAirSleepRecordSensor(MyAirRawSensor):
     """Expose a configured GraphQL field from the newest nightly sleep record."""
 
     _missing_source_log = "Sleep record data missing from coordinator data"
@@ -234,7 +228,7 @@ class MyAirSleepRecordSensor(MyAirBaseSensor):
         return _coordinator_data(self.coordinator).latest_sleep_record
 
 
-class MyAirDeviceSensor(MyAirBaseSensor):
+class MyAirDeviceSensor(MyAirRawSensor):
     """Expose a configured GraphQL field from the assigned CPAP device payload."""
 
     _missing_source_log = "Device data missing from coordinator data"
