@@ -204,6 +204,25 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
 
+    def _show_mfa_form(self, step_id: str, errors: Mapping[str, str]) -> ConfigFlowResult:
+        """Show an MFA verification form with the shared account placeholder.
+
+        Args:
+            step_id: Config-flow step that should receive the submitted MFA code.
+            errors: Form errors accumulated while handling the step.
+
+        Returns:
+            Home Assistant form result for the requested MFA step.
+        """
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=self._mfa_schema(),
+            description_placeholders={
+                "username": self._data.get(CONF_USER_NAME, "your email address"),
+            },
+            errors=dict(errors),
+        )
+
     def _entry_title(self, device: MyAirDevice) -> str:
         """Build a stable Home Assistant entry title from device metadata.
 
@@ -434,14 +453,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self._async_abort_incomplete_account("verify_mfa", e)
 
         _LOGGER.info("Showing Verify MFA Form")
-        return self.async_show_form(
-            step_id="verify_mfa",
-            data_schema=self._mfa_schema(),
-            description_placeholders={
-                "username": self._data.get(CONF_USER_NAME, "your email address"),
-            },
-            errors=errors,
-        )
+        return self._show_mfa_form("verify_mfa", errors)
 
     async def async_step_reauth(self, entry_data: MutableMapping[str, Any]) -> ConfigFlowResult:
         """Load the existing config entry before prompting for new credentials.
@@ -558,14 +570,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self._async_abort_incomplete_account("reauth_verify_mfa", e)
 
         _LOGGER.info("Showing Reauth Verify MFA Form")
-        return self.async_show_form(
-            step_id="reauth_verify_mfa",
-            data_schema=self._mfa_schema(),
-            description_placeholders={
-                "username": self._data.get(CONF_USER_NAME, "your email address"),
-            },
-            errors=errors,
-        )
+        return self._show_mfa_form("reauth_verify_mfa", errors)
 
     async def async_step_reconfigure(
         self, user_input: MutableMapping[str, Any] | None = None
@@ -666,11 +671,4 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self._async_abort_incomplete_account("reconfigure_verify_mfa", e)
 
         _LOGGER.info("Showing Reconfigure Verify MFA Form")
-        return self.async_show_form(
-            step_id="reconfigure_verify_mfa",
-            data_schema=self._mfa_schema(),
-            description_placeholders={
-                "username": self._data.get(CONF_USER_NAME, "your email address"),
-            },
-            errors=errors,
-        )
+        return self._show_mfa_form("reconfigure_verify_mfa", errors)
