@@ -4,6 +4,7 @@ from homeassistant.components.recorder import get_instance
 from homeassistant.const import PERCENTAGE, UnitOfVolumeFlowRate
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.recorder import DATA_INSTANCE
 from homeassistant.util.unit_conversion import VolumeFlowRateConverter
 
 from .const import DOMAIN
@@ -39,6 +40,9 @@ def async_migrate_mask_leak_statistics_metadata(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance with recorder and entity registry state.
     """
+    if DATA_INSTANCE not in hass.data:
+        return
+
     recorder_instance = get_instance(hass)
 
     for entity_id in _mask_leak_entity_ids(hass):

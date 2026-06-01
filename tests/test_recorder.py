@@ -14,11 +14,12 @@ from custom_components.resmed_myair import recorder
 MANIFEST_PATH = Path(__file__).parents[1] / "custom_components/resmed_myair/manifest.json"
 
 
-def test_manifest_depends_on_recorder() -> None:
-    """Recorder platform support loads before myAir entities publish statistics."""
+def test_manifest_loads_after_recorder_when_available() -> None:
+    """Recorder support is optional but ordered before myAir when available."""
     manifest = json.loads(MANIFEST_PATH.read_text())
 
-    assert "recorder" in manifest["dependencies"]
+    assert "recorder" in manifest["after_dependencies"]
+    assert "recorder" not in manifest["dependencies"]
 
 
 def test_async_custom_equivalent_units_maps_mask_leak_entities(
@@ -75,10 +76,24 @@ def test_async_migrate_mask_leak_statistics_metadata_updates_recorder(
     monkeypatch.setattr(recorder.er, "async_get", lambda hass: registry)
     monkeypatch.setattr(recorder, "get_instance", lambda hass: recorder_instance)
 
-    recorder.async_migrate_mask_leak_statistics_metadata(SimpleNamespace())
+    recorder.async_migrate_mask_leak_statistics_metadata(
+        SimpleNamespace(data={recorder.DATA_INSTANCE: recorder_instance})
+    )
 
     recorder_instance.async_update_statistics_metadata.assert_called_once_with(
         "sensor.cpap_mask_leak",
         new_unit_class=VolumeFlowRateConverter.UNIT_CLASS,
         new_unit_of_measurement=UnitOfVolumeFlowRate.LITERS_PER_MINUTE,
     )
+
+
+def test_async_migrate_mask_leak_statistics_metadata_skips_without_recorder(
+    monkeypatch: Any,
+) -> None:
+    """Mask leak metadata migration does not block setup when recorder is absent."""
+    recorder_instance = SimpleNamespace(async_update_statistics_metadata=MagicMock())
+    monkeypatch.setattr(recorder, "get_instance", lambda hass: recorder_instance)
+
+    recorder.async_migrate_mask_leak_statistics_metadata(SimpleNamespace(data={}))
+
+    recorder_instance.async_update_statistics_metadata.assert_not_called()
