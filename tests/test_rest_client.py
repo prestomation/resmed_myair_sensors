@@ -11,7 +11,7 @@ from multidict import CIMultiDict
 import pytest
 
 from custom_components.resmed_myair.client import rest_client as rest_client_module
-from custom_components.resmed_myair.client.auth import MyAirAuthSession
+from custom_components.resmed_myair.client.auth import MyAirAuthSession, _mfa_challenge_metadata
 from custom_components.resmed_myair.client.graphql import MyAirGraphQLClient
 from custom_components.resmed_myair.client.myair_client import (
     AuthenticationError,
@@ -106,6 +106,8 @@ def test_rest_client_init_region(
     ("property_name", "new_value"),
     [
         ("json_headers", {"Accept": "application/json"}),
+        ("region_config", EU_CONFIG),
+        ("email_factor_id", "email-factor-id"),
     ],
 )
 def test_auth_session_property_variants(
@@ -120,6 +122,51 @@ def test_auth_session_property_variants(
     setattr(auth, property_name, new_value)
 
     assert getattr(auth, property_name) == new_value
+    if property_name == "region_config":
+        assert isinstance(new_value, RegionConfig)
+        assert auth.email_factor_id == new_value.email_factor_id
+        assert auth.mfa_url == new_value.mfa_url(new_value.email_factor_id)
+
+
+@pytest.mark.parametrize(
+    ("authn_dict", "expected_factor_id", "expected_mfa_url"),
+    [
+        ({}, NA_CONFIG.email_factor_id, NA_CONFIG.mfa_url(NA_CONFIG.email_factor_id)),
+        (
+            {"_embedded": {"factors": "not-a-list"}},
+            NA_CONFIG.email_factor_id,
+            NA_CONFIG.mfa_url(NA_CONFIG.email_factor_id),
+        ),
+        (
+            {"_embedded": {"factors": []}},
+            NA_CONFIG.email_factor_id,
+            NA_CONFIG.mfa_url(NA_CONFIG.email_factor_id),
+        ),
+        (
+            {"_embedded": {"factors": [None]}},
+            NA_CONFIG.email_factor_id,
+            NA_CONFIG.mfa_url(NA_CONFIG.email_factor_id),
+        ),
+        (
+            {"_embedded": {"factors": [{"id": "factor-id", "_links": None}]}},
+            "factor-id",
+            NA_CONFIG.mfa_url("factor-id"),
+        ),
+        (
+            {"_embedded": {"factors": [{"id": "factor-id", "_links": {"verify": None}}]}},
+            "factor-id",
+            NA_CONFIG.mfa_url("factor-id"),
+        ),
+    ],
+)
+def test_mfa_challenge_metadata_handles_partial_okta_payloads(
+    authn_dict: dict[str, object], expected_factor_id: str, expected_mfa_url: str
+) -> None:
+    """MFA metadata parsing keeps regional defaults unless Okta supplies valid fields."""
+    assert _mfa_challenge_metadata(authn_dict, NA_CONFIG) == (
+        expected_factor_id,
+        expected_mfa_url,
+    )
 
 
 @pytest.mark.parametrize("case", ["device_token", "cookies"])
@@ -1284,7 +1331,13 @@ async def test_get_user_device_data_failure_variants(
     [
         ([{"maskCode": "MASK123"}], False, "MASK123"),
         ([{"maskCode": ""}], False, None),
+        ([{}, {"maskCode": "MASK123"}], False, "MASK123"),
+        ([{"maskCode": ""}, {"maskCode": "MASK123"}], False, "MASK123"),
         ([], True, None),
+        ("not-a-list", True, None),
+        ([123], True, None),
+        ([{}], True, None),
+        ([{"maskCode": 123}], True, None),
     ],
 )
 async def test_get_user_device_data_masks_variants(
@@ -1372,24 +1425,31 @@ async def test_resmed_response_error_check_not_bad_request() -> None:
 @pytest.mark.parametrize(
     "authn_dict",
     [
-        # KeyError: _embedded missing
         {
             "status": "MFA_REQUIRED",
             "stateToken": "token123",
-            # '_embedded' missing
         },
-        # TypeError: _embedded is not subscriptable
         {
             "status": "MFA_REQUIRED",
             "stateToken": "token123",
             "_embedded": None,
         },
+        {
+            "status": "MFA_REQUIRED",
+            "stateToken": "token123",
+            "_embedded": {"factors": [{"id": "", "_links": {"verify": {"href": ""}}}]},
+        },
+        {
+            "status": "MFA_REQUIRED",
+            "stateToken": "token123",
+            "_embedded": {"factors": [{"id": 123, "_links": {"verify": {"href": 456}}}]},
+        },
     ],
 )
-async def test_authn_check_email_factor_id_exceptions(
+async def test_authn_check_uses_region_mfa_defaults_for_malformed_factor_metadata(
     authn_dict: object, session: MagicMock, config_na: MyAirConfig
 ) -> None:
-    """Auth checks fall back to the region email-factor ID on lookup errors."""
+    """Auth checks fall back to regional MFA metadata when Okta omits factor details."""
     # MyAirConfig is a NamedTuple (immutable) so use _replace to change device_token
     config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
@@ -1398,9 +1458,11 @@ async def test_authn_check_email_factor_id_exceptions(
     mock_response = make_mock_aiohttp_response(json_value=authn_dict)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
 
-    # Should NOT raise, but should set _email_factor_id to region_config.email_factor_id
     result = await client._auth._authn_check()
     assert client._auth.email_factor_id == client._auth.region_config.email_factor_id
+    assert client._auth.mfa_url == client._auth.region_config.mfa_url(
+        client._auth.region_config.email_factor_id
+    )
     assert result == "MFA_REQUIRED"
 
 

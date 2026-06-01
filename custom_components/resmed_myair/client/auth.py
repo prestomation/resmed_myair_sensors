@@ -59,6 +59,50 @@ def _safe_auth_log_payload(data: Any) -> Any:
     return data
 
 
+def _mfa_challenge_metadata(
+    authn_dict: Mapping[str, Any], region_config: RegionConfig
+) -> tuple[str, str]:
+    """Resolve MFA factor metadata from an Okta authn response.
+
+    Args:
+        authn_dict: Decoded Okta authn response payload.
+        region_config: Regional endpoint configuration.
+
+    Returns:
+        Email factor ID and verification URL, falling back to regional defaults
+        when Okta omits factor metadata.
+    """
+    factor_id = region_config.email_factor_id
+    verify_url = region_config.mfa_url(factor_id)
+
+    embedded = authn_dict.get("_embedded")
+    if not isinstance(embedded, Mapping):
+        return factor_id, verify_url
+
+    factors = embedded.get("factors")
+    if not isinstance(factors, list) or not factors:
+        return factor_id, verify_url
+
+    factor = factors[0]
+    if not isinstance(factor, Mapping):
+        return factor_id, verify_url
+
+    authn_factor_id = factor.get("id")
+    if isinstance(authn_factor_id, str) and authn_factor_id:
+        factor_id = authn_factor_id
+        verify_url = region_config.mfa_url(factor_id)
+
+    links = factor.get("_links")
+    if isinstance(links, Mapping):
+        verify = links.get("verify")
+        if isinstance(verify, Mapping):
+            href = verify.get("href")
+            if isinstance(href, str) and href:
+                verify_url = f"{href}?rememberDevice=true"
+
+    return factor_id, verify_url
+
+
 class MyAirAuthSession:
     """Maintain Okta, OAuth, cookie, and token state for the myAir REST flow."""
 
@@ -179,6 +223,8 @@ class MyAirAuthSession:
             value: Region configuration to use for subsequent auth requests.
         """
         self._region_config = value
+        self._email_factor_id = value.email_factor_id
+        self._mfa_url = value.mfa_url(self._email_factor_id)
 
     @property
     def email_factor_id(self) -> str:
@@ -508,18 +554,10 @@ class MyAirAuthSession:
             if "stateToken" not in authn_dict:
                 raise AuthenticationError("Cannot get stateToken in authn step")
             self._state_token = authn_dict["stateToken"]
-            try:
-                self._email_factor_id = authn_dict["_embedded"]["factors"][0]["id"]
-            except KeyError, TypeError:
-                self._email_factor_id = self._region_config.email_factor_id
+            self._email_factor_id, self._mfa_url = _mfa_challenge_metadata(
+                authn_dict, self._region_config
+            )
             _LOGGER.debug("[authn_check] email_factor_id: %s", self._email_factor_id)
-            try:
-                self._mfa_url = (
-                    f"{authn_dict['_embedded']['factors'][0]['_links']['verify']['href']}?"
-                    "rememberDevice=true"
-                )
-            except KeyError, TypeError:
-                self._mfa_url = self._region_config.mfa_url(self._email_factor_id)
             _LOGGER.debug("[authn_check] mfa_url: %s", self._mfa_url)
             _LOGGER.info("Initial Auth Completed. Needs MFA")
         elif status == AUTHN_SUCCESS:

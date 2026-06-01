@@ -65,7 +65,7 @@ Developers can run a local smoke test against the live myAir API without Home As
 
 The script prompts for credentials when they are not provided. For repeatable local runs, create a `live_smoke_test.env` file using `live_smoke_test.env.example`.
 
-By default, output is written to `live_smoke_test_output.json` with the same fields shown in the sensor list above. Add `--raw` to include raw myAir payload values for local inspection. Known GraphQL types and fields are documented in `scripts/graphql_schema.json`.
+By default, output is written to `live_smoke_test_output.json` with the same fields shown in the sensor list above. Add `--raw` to include raw myAir payload values for local inspection. `scripts/graphql_schema.json` is a curated developer reference for observed GraphQL fields; it is not generated from endpoint introspection.
 
 ## Contributions are welcome!
 

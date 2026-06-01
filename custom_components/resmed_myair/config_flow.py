@@ -36,12 +36,15 @@ from .models import MyAirDevice
 from .redaction import redact_dict
 
 _LOGGER = logging.getLogger(__name__)
-EMAIL_VERIFICATION_ERRORS: tuple[type[Exception], ...] = (
+CONNECTION_ERRORS: tuple[type[Exception], ...] = (
     AuthenticationError,
     HttpProcessingError,
-    ClientError,
     ClientResponseError,
     ParsingError,
+)
+EMAIL_VERIFICATION_ERRORS: tuple[type[Exception], ...] = (
+    *CONNECTION_ERRORS,
+    ClientError,
     TimeoutError,
     ValueError,
 )
@@ -201,6 +204,25 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
 
+    def _show_mfa_form(self, step_id: str, errors: Mapping[str, str]) -> ConfigFlowResult:
+        """Show an MFA verification form with the shared account placeholder.
+
+        Args:
+            step_id: Config-flow step that should receive the submitted MFA code.
+            errors: Form errors accumulated while handling the step.
+
+        Returns:
+            Home Assistant form result for the requested MFA step.
+        """
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=self._mfa_schema(),
+            description_placeholders={
+                "username": self._data.get(CONF_USER_NAME, "your email address"),
+            },
+            errors=dict(errors),
+        )
+
     def _entry_title(self, device: MyAirDevice) -> str:
         """Build a stable Home Assistant entry title from device metadata.
 
@@ -306,6 +328,35 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
             kwargs["unique_id"] = unique_id
         return self.async_update_reload_and_abort(entry, **kwargs)
 
+    def _finish_entry_update(
+        self,
+        entry: ConfigEntry,
+        *,
+        unique_id: str | None,
+        debug_message: str,
+        remove_mfa_code: bool = False,
+    ) -> ConfigFlowResult:
+        """Persist auth updates, reload the entry, and finish an update flow.
+
+        Args:
+            entry: Config entry being updated.
+            unique_id: Optional unique ID to backfill on legacy entries.
+            debug_message: Message used to log the redacted update payload.
+            remove_mfa_code: Whether to discard the submitted MFA code first.
+
+        Returns:
+            Home Assistant config-flow abort result with source-specific reason.
+        """
+        if remove_mfa_code:
+            self._data.pop(CONF_VERIFICATION_CODE, None)
+        self._store_device_token()
+        _LOGGER.debug(debug_message, redact_dict(self._data))
+        return self._update_reload_and_abort(
+            entry,
+            data_updates={**self._data},
+            unique_id=unique_id,
+        )
+
     async def _async_abort_incomplete_account(
         self, step: str, error: IncompleteAccountError
     ) -> ConfigFlowResult:
@@ -377,12 +428,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         data=self._data,
                     )
                 return await self.async_step_verify_mfa()
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at async_step_user. %s: %s", type(e).__name__, e)
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
@@ -429,26 +475,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
                 errors["base"] = "mfa_error"
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at verify_mfa. %s: %s", type(e).__name__, e)
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
                 return await self._async_abort_incomplete_account("verify_mfa", e)
 
         _LOGGER.info("Showing Verify MFA Form")
-        return self.async_show_form(
-            step_id="verify_mfa",
-            data_schema=self._mfa_schema(),
-            description_placeholders={
-                "username": self._data.get(CONF_USER_NAME, "your email address"),
-            },
-            errors=errors,
-        )
+        return self._show_mfa_form("verify_mfa", errors)
 
     async def async_step_reauth(self, entry_data: MutableMapping[str, Any]) -> ConfigFlowResult:
         """Load the existing config entry before prompting for new credentials.
@@ -498,22 +532,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                         return mismatch_abort
                     serial_number: str = device.serial_number
                     _LOGGER.info("Found device with serial number %s", serial_number)
-                    self._store_device_token()
-                    _LOGGER.debug("[async_step_reauth_confirm] data: %s", redact_dict(self._data))
-
                     unique_id = device.serial_number if not self._entry.unique_id else None
-                    return self._update_reload_and_abort(
+                    return self._finish_entry_update(
                         self._entry,
-                        data_updates={**self._data},
                         unique_id=unique_id,
+                        debug_message="[async_step_reauth_confirm] data: %s",
                     )
                 return await self.async_step_reauth_verify_mfa()
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at reauth_confirm. %s: %s", type(e).__name__, e)
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
@@ -549,40 +575,23 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 if status == AUTHN_SUCCESS:
                     if mismatch_abort := self._abort_if_reauth_device_mismatch(device):
                         return mismatch_abort
-                    self._data.pop(CONF_VERIFICATION_CODE, None)
-                    self._store_device_token()
-                    _LOGGER.debug(
-                        "[async_step_reauth_verify_mfa] user_input: %s", redact_dict(self._data)
-                    )
-
                     unique_id = device.serial_number if not self._entry.unique_id else None
-                    return self._update_reload_and_abort(
+                    return self._finish_entry_update(
                         self._entry,
-                        data_updates={**self._data},
                         unique_id=unique_id,
+                        debug_message="[async_step_reauth_verify_mfa] user_input: %s",
+                        remove_mfa_code=True,
                     )
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
                 errors["base"] = "mfa_error"
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at reauth_verify_mfa. %s: %s", type(e).__name__, e)
                 errors["base"] = "mfa_error"
             except IncompleteAccountError as e:
                 return await self._async_abort_incomplete_account("reauth_verify_mfa", e)
 
         _LOGGER.info("Showing Reauth Verify MFA Form")
-        return self.async_show_form(
-            step_id="reauth_verify_mfa",
-            data_schema=self._mfa_schema(),
-            description_placeholders={
-                "username": self._data.get(CONF_USER_NAME, "your email address"),
-            },
-            errors=errors,
-        )
+        return self._show_mfa_form("reauth_verify_mfa", errors)
 
     async def async_step_reconfigure(
         self, user_input: MutableMapping[str, Any] | None = None
@@ -613,20 +622,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                     if identity_abort:
                         return identity_abort
-                    self._store_device_token()
-                    _LOGGER.debug("[async_step_reconfigure] data: %s", redact_dict(self._data))
-                    return self._update_reload_and_abort(
+                    return self._finish_entry_update(
                         entry,
-                        data_updates={**self._data},
                         unique_id=unique_id,
+                        debug_message="[async_step_reconfigure] data: %s",
                     )
                 return await self.async_step_reconfigure_verify_mfa()
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error("Connection Error at reconfigure. %s: %s", type(e).__name__, e)
                 errors["base"] = "authentication_error"
             except IncompleteAccountError as e:
@@ -664,25 +666,15 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                     if identity_abort:
                         return identity_abort
-                    self._data.pop(CONF_VERIFICATION_CODE, None)
-                    self._store_device_token()
-                    _LOGGER.debug(
-                        "[async_step_reconfigure_verify_mfa] data: %s",
-                        redact_dict(self._data),
-                    )
-                    return self._update_reload_and_abort(
+                    return self._finish_entry_update(
                         entry,
-                        data_updates={**self._data},
                         unique_id=unique_id,
+                        debug_message="[async_step_reconfigure_verify_mfa] data: %s",
+                        remove_mfa_code=True,
                     )
                 _LOGGER.error("Issue verifying MFA. Status: %s", status)
                 errors["base"] = "mfa_error"
-            except (
-                AuthenticationError,
-                HttpProcessingError,
-                ClientResponseError,
-                ParsingError,
-            ) as e:
+            except CONNECTION_ERRORS as e:
                 _LOGGER.error(
                     "Connection Error at reconfigure_verify_mfa. %s: %s",
                     type(e).__name__,
@@ -693,11 +685,4 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self._async_abort_incomplete_account("reconfigure_verify_mfa", e)
 
         _LOGGER.info("Showing Reconfigure Verify MFA Form")
-        return self.async_show_form(
-            step_id="reconfigure_verify_mfa",
-            data_schema=self._mfa_schema(),
-            description_placeholders={
-                "username": self._data.get(CONF_USER_NAME, "your email address"),
-            },
-            errors=errors,
-        )
+        return self._show_mfa_form("reconfigure_verify_mfa", errors)

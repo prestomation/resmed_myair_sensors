@@ -67,12 +67,20 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
 
         try:
             device = await self.myair_client.get_user_device_data()
-        except ParsingError:
-            _LOGGER.debug("Device data unavailable in myAir update")
+        except ParsingError as err:
+            _LOGGER.debug(
+                "Device data unavailable in myAir update. %s: %s",
+                type(err).__name__,
+                err,
+            )
 
         try:
             sleep_records = tuple(await self.myair_client.get_sleep_records())
-        except ParsingError:
-            _LOGGER.debug("Sleep record data unavailable in myAir update")
+        except ParsingError as err:
+            _LOGGER.debug(
+                "Sleep record data unavailable in myAir update. %s: %s",
+                type(err).__name__,
+                err,
+            )
 
         return MyAirCoordinatorData(device=device, sleep_records=sleep_records)

@@ -53,6 +53,42 @@ def _required_list(value: Any, message: str) -> list[Any]:
     return value
 
 
+def _optional_mask_code(patient_wrapper: Mapping[str, Any]) -> str | None:
+    """Extract a mask code from optional myAir mask metadata.
+
+    Args:
+        patient_wrapper: Decoded ``getPatientWrapper`` GraphQL payload.
+
+    Returns:
+        First non-empty mask code, or ``None`` when mask metadata is absent or malformed.
+    """
+    masks = patient_wrapper.get("masks")
+    if not isinstance(masks, list) or not masks:
+        _LOGGER.warning("Error getting User Mask Data. Missing or invalid masks payload")
+        return None
+
+    found_malformed_mask = False
+    for mask in masks:
+        if not isinstance(mask, Mapping):
+            found_malformed_mask = True
+            continue
+        if "maskCode" not in mask:
+            found_malformed_mask = True
+            continue
+
+        mask_code = mask.get("maskCode")
+        if isinstance(mask_code, str):
+            if mask_code:
+                return mask_code
+            continue
+
+        found_malformed_mask = True
+
+    if found_malformed_mask:
+        _LOGGER.warning("Error getting User Mask Data. No valid maskCode found")
+    return None
+
+
 class RESTClient(MyAirClient):
     """Coordinate myAir authentication and AppSync GraphQL data access."""
 
@@ -235,13 +271,7 @@ class RESTClient(MyAirClient):
                 devices[0], "Error getting User Device Data. Returned data is not a dict"
             )
         )
-        mask_code: str | None = None
-        try:
-            mask_code = patient_wrapper["masks"][0]["maskCode"]
-        except (KeyError, IndexError, TypeError) as e:
-            _LOGGER.warning("Error getting User Mask Data. %s: %s", type(e).__name__, e)
-        else:
-            if mask_code:
-                device["maskCode"] = mask_code
+        if mask_code := _optional_mask_code(patient_wrapper):
+            device["maskCode"] = mask_code
         _LOGGER.debug("[get_user_device_data] device: %s", redact_dict(device))
         return MyAirDevice.from_api(device)
