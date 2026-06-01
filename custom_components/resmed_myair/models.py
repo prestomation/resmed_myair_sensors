@@ -189,9 +189,11 @@ class MyAirCoordinatorData:
         Returns:
             Most recent record, or ``None`` when the coordinator has no records.
         """
-        if not self.sleep_records:
-            return None
-        return max(self.sleep_records, key=lambda record: record.start_date or date.min)
+        return max(
+            self.sleep_records,
+            key=lambda record: record.start_date or date.min,
+            default=None,
+        )
 
     @property
     def most_recent_sleep_date(self) -> date | None:
@@ -200,9 +202,11 @@ class MyAirCoordinatorData:
         Returns:
             Date of the most recent usage-bearing record, or ``None`` if none qualify.
         """
-        records_with_usage = [
-            record for record in self.sleep_records if record.start_date and record.has_usage
-        ]
-        if not records_with_usage:
-            return None
-        return max(records_with_usage, key=lambda record: record.start_date or date.min).start_date
+        return max(
+            (
+                record.start_date
+                for record in self.sleep_records
+                if record.start_date and record.has_usage
+            ),
+            default=None,
+        )
