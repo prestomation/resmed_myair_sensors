@@ -1376,24 +1376,31 @@ async def test_resmed_response_error_check_not_bad_request() -> None:
 @pytest.mark.parametrize(
     "authn_dict",
     [
-        # KeyError: _embedded missing
         {
             "status": "MFA_REQUIRED",
             "stateToken": "token123",
-            # '_embedded' missing
         },
-        # TypeError: _embedded is not subscriptable
         {
             "status": "MFA_REQUIRED",
             "stateToken": "token123",
             "_embedded": None,
         },
+        {
+            "status": "MFA_REQUIRED",
+            "stateToken": "token123",
+            "_embedded": {"factors": [{"id": "", "_links": {"verify": {"href": ""}}}]},
+        },
+        {
+            "status": "MFA_REQUIRED",
+            "stateToken": "token123",
+            "_embedded": {"factors": [{"id": 123, "_links": {"verify": {"href": 456}}}]},
+        },
     ],
 )
-async def test_authn_check_email_factor_id_exceptions(
+async def test_authn_check_uses_region_mfa_defaults_for_malformed_factor_metadata(
     authn_dict: object, session: MagicMock, config_na: MyAirConfig
 ) -> None:
-    """Auth checks fall back to the region email-factor ID on lookup errors."""
+    """Auth checks fall back to regional MFA metadata when Okta omits factor details."""
     # MyAirConfig is a NamedTuple (immutable) so use _replace to change device_token
     config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
@@ -1402,9 +1409,11 @@ async def test_authn_check_email_factor_id_exceptions(
     mock_response = make_mock_aiohttp_response(json_value=authn_dict)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
 
-    # Should NOT raise, but should set _email_factor_id to region_config.email_factor_id
     result = await client._auth._authn_check()
     assert client._auth.email_factor_id == client._auth.region_config.email_factor_id
+    assert client._auth.mfa_url == client._auth.region_config.mfa_url(
+        client._auth.region_config.email_factor_id
+    )
     assert result == "MFA_REQUIRED"
 
 
