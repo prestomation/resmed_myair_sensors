@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from .const import REGION_NA
+from custom_components.resmed_myair.const import REGION_EU, REGION_NA
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +108,13 @@ def get_region_config(region: str) -> RegionConfig:
         region: Region code configured by the user.
 
     Returns:
-        North America settings for ``REGION_NA``; Europe settings otherwise.
+        Region-specific endpoint settings.
+
+    Raises:
+        ValueError: When the region code is not supported.
     """
-    return NA_CONFIG if region == REGION_NA else EU_CONFIG
+    if region == REGION_NA:
+        return NA_CONFIG
+    if region == REGION_EU:
+        return EU_CONFIG
+    raise ValueError(f"Unsupported myAir region: {region}")

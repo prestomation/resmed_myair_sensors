@@ -1,6 +1,6 @@
 """OAuth-helper feasibility checks for ResMed myAir redirect URLs."""
 
-from custom_components.resmed_myair.client.rest_client import EU_CONFIG, NA_CONFIG
+from custom_components.resmed_myair.client.regions import EU_CONFIG, NA_CONFIG
 
 
 def test_resmed_registered_redirect_urls_are_external() -> None:
