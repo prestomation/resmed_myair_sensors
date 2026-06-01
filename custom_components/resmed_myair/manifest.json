@@ -1,6 +1,9 @@
 {
   "domain": "resmed_myair",
   "name": "ResMed myAir",
+  "after_dependencies": [
+    "recorder"
+  ],
   "codeowners": [
     "@prestomation",
     "@Snuffy2"

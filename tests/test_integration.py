@@ -84,6 +84,7 @@ async def test_async_setup_entry_multiple_calls(
     instance = mock_coordinator.return_value
     instance.async_config_entry_first_refresh = AsyncMock()
 
+    monkeypatch.setattr(resmed_module, "async_migrate_mask_leak_statistics_metadata", MagicMock())
     monkeypatch.setattr(hass.config_entries, "async_forward_entry_setups", AsyncMock())
     fwd = hass.config_entries.async_forward_entry_setups
 
@@ -94,6 +95,37 @@ async def test_async_setup_entry_multiple_calls(
     assert fwd.await_count == 2
     fwd.assert_awaited_with(config_entry, PLATFORMS)
     assert instance.async_config_entry_first_refresh.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_migrates_mask_leak_statistics_metadata(
+    hass: MagicMock,
+    config_entry: MockConfigEntry,
+    session: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Setup schedules the mask leak statistics metadata migration before platforms load."""
+    monkeypatch.setattr(
+        resmed_module, "async_create_clientsession", lambda *args, **kwargs: session
+    )
+
+    mock_coordinator = MagicMock()
+    monkeypatch.setattr(resmed_module, "MyAirDataUpdateCoordinator", mock_coordinator)
+    mock_coordinator.return_value.async_config_entry_first_refresh = AsyncMock()
+    migrate_statistics = MagicMock()
+    monkeypatch.setattr(
+        resmed_module,
+        "async_migrate_mask_leak_statistics_metadata",
+        migrate_statistics,
+    )
+
+    monkeypatch.setattr(hass.config_entries, "async_forward_entry_setups", AsyncMock())
+
+    result = await async_setup_entry(hass, config_entry)
+
+    assert result is True
+    migrate_statistics.assert_called_once_with(hass)
+    hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(config_entry, PLATFORMS)
 
 
 @pytest.mark.asyncio
@@ -469,6 +501,7 @@ async def test_force_poll_service_triggers_refresh(
     monkeypatch.setattr(
         resmed_module, "MyAirDataUpdateCoordinator", lambda *a, **k: dummy_coordinator
     )
+    monkeypatch.setattr(resmed_module, "async_migrate_mask_leak_statistics_metadata", MagicMock())
     monkeypatch.setattr(
         sensor_platform, "MyAirDataUpdateCoordinator", lambda *a, **k: dummy_coordinator
     )

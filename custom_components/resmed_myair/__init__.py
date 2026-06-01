@@ -25,6 +25,7 @@ from .const import (
     VERSION,
 )
 from .coordinator import MyAirDataUpdateCoordinator
+from .recorder import async_migrate_mask_leak_statistics_metadata
 from .redaction import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -61,6 +62,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     config_entry.runtime_data = coordinator
 
     await coordinator.async_config_entry_first_refresh()
+
+    async_migrate_mask_leak_statistics_metadata(hass)
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
     return True
