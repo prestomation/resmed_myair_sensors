@@ -5,28 +5,16 @@ import datetime
 import logging
 from typing import Any
 
-from aiohttp import ClientResponse, ClientSession
+from aiohttp import ClientSession
 
 from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
+from custom_components.resmed_myair.redaction import redact_dict
 
 from .auth import MyAirAuthSession
-from .const import (
-    AUTH_NEEDS_MFA as _AUTH_NEEDS_MFA,
-    AUTHN_SUCCESS as _AUTHN_SUCCESS,
-    REGION_NA as _REGION_NA,
-)
 from .graphql import MyAirGraphQLClient
-from .helpers import redact_dict
 from .myair_client import MyAirClient, MyAirConfig, ParsingError
-from .regions import EU_CONFIG as _EU_CONFIG, NA_CONFIG as _NA_CONFIG, RegionConfig
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-REGION_NA: str = _REGION_NA
-NA_CONFIG: RegionConfig = _NA_CONFIG
-EU_CONFIG: RegionConfig = _EU_CONFIG
-AUTH_NEEDS_MFA: str = _AUTH_NEEDS_MFA
-AUTHN_SUCCESS: str = _AUTHN_SUCCESS
 
 
 def _required_mapping(value: Any, message: str) -> Mapping[str, Any]:
@@ -82,190 +70,13 @@ class RESTClient(MyAirClient):
         self._graphql = MyAirGraphQLClient(
             session=self._session,
             auth=self._auth,
-            region_config=self._region_config,
+            region_config=self._auth.region_config,
         )
-
-    @property
-    def _country_code(self) -> str | None:
-        """Proxy the AppSync country-code cache owned by the GraphQL helper."""
-        return self._graphql.country_code
-
-    @_country_code.setter
-    def _country_code(self, value: str | None) -> None:
-        """Set the GraphQL country-code cache for compatibility.
-
-        Args:
-            value: myAir country code, or ``None`` to force token decoding later.
-        """
-        self._graphql.country_code = value
 
     @property
     def device_token(self) -> str | None:
         """Expose the remembered-device token that should be saved in config entries."""
         return self._auth.device_token
-
-    @property
-    def _cookies(self) -> dict[str, Any]:
-        """Proxy the Okta cookie jar assembled by the auth session."""
-        return self._auth.cookies
-
-    @property
-    def _json_headers(self) -> dict[str, Any]:
-        """Proxy JSON request headers used by Okta auth endpoints."""
-        return self._auth.json_headers
-
-    @_json_headers.setter
-    def _json_headers(self, value: Mapping[str, Any]) -> None:
-        """Forward JSON header overrides into the auth session.
-
-        Args:
-            value: Header mapping used for subsequent Okta JSON requests.
-        """
-        self._auth.json_headers = value
-
-    @property
-    def _region_config(self) -> RegionConfig:
-        """Proxy regional endpoint settings owned by the auth session."""
-        return self._auth.region_config
-
-    @_region_config.setter
-    def _region_config(self, value: RegionConfig) -> None:
-        """Forward regional endpoint overrides into the auth session.
-
-        Args:
-            value: Region configuration used by future auth calls.
-        """
-        self._auth.region_config = value
-
-    @property
-    def _email_factor_id(self) -> str:
-        """Proxy the Okta email factor selected for MFA verification."""
-        return self._auth.email_factor_id
-
-    @_email_factor_id.setter
-    def _email_factor_id(self, value: str) -> None:
-        """Forward MFA factor updates into the auth session.
-
-        Args:
-            value: MFA email factor ID to use for verification.
-        """
-        self._auth.email_factor_id = value
-
-    @property
-    def _mfa_url(self) -> str:
-        """Proxy the challenge-specific Okta MFA verification URL."""
-        return self._auth.mfa_url
-
-    @_mfa_url.setter
-    def _mfa_url(self, value: str) -> None:
-        """Forward MFA verification endpoint updates into the auth session.
-
-        Args:
-            value: Fully qualified Okta MFA verification URL.
-        """
-        self._auth.mfa_url = value
-
-    @property
-    def _cookie_dt(self) -> str | None:
-        """Proxy the Okta remembered-device cookie used to reduce MFA prompts."""
-        return self._auth.device_token
-
-    @_cookie_dt.setter
-    def _cookie_dt(self, value: str | None) -> None:
-        """Forward remembered-device cookie updates into the auth session.
-
-        Args:
-            value: DT cookie value, or ``None`` to clear it.
-        """
-        self._auth.device_token = value
-
-    @property
-    def _cookie_sid(self) -> str | None:
-        """Proxy the Okta browser-session cookie captured during auth."""
-        return self._auth.cookie_sid
-
-    @_cookie_sid.setter
-    def _cookie_sid(self, value: str | None) -> None:
-        """Forward Okta session-cookie updates into the auth session.
-
-        Args:
-            value: ``sid`` cookie value, or ``None`` to clear it.
-        """
-        self._auth.cookie_sid = value
-
-    @property
-    def _uses_mfa(self) -> bool:
-        """Proxy whether the current auth flow is waiting on MFA."""
-        return self._auth.uses_mfa
-
-    @_uses_mfa.setter
-    def _uses_mfa(self, value: bool) -> None:
-        """Forward MFA-required state updates into the auth session.
-
-        Args:
-            value: ``True`` when the current auth flow is waiting for MFA.
-        """
-        self._auth.uses_mfa = value
-
-    @property
-    def _access_token(self) -> str | None:
-        """Proxy the OAuth bearer token consumed by GraphQL and userinfo calls."""
-        return self._auth.access_token
-
-    @_access_token.setter
-    def _access_token(self, value: str | None) -> None:
-        """Forward OAuth bearer-token updates into the auth session.
-
-        Args:
-            value: Access token, or ``None`` before auth succeeds.
-        """
-        self._auth.access_token = value
-
-    @property
-    def _id_token(self) -> str | None:
-        """Proxy the OAuth ID token used to derive myAir country headers."""
-        return self._auth.id_token
-
-    @_id_token.setter
-    def _id_token(self, value: str | None) -> None:
-        """Forward OAuth ID-token updates into the auth session.
-
-        Args:
-            value: ID token, or ``None`` before token exchange succeeds.
-        """
-        self._auth.id_token = value
-
-    @property
-    def _state_token(self) -> str | None:
-        """Proxy the Okta state token that ties MFA calls to authn."""
-        return self._auth.state_token
-
-    @_state_token.setter
-    def _state_token(self, value: str | None) -> None:
-        """Forward Okta state-token updates into the auth session.
-
-        Args:
-            value: State token, or ``None`` when no MFA flow is active.
-        """
-        self._auth.state_token = value
-
-    @property
-    def _session_token(self) -> str | None:
-        """Proxy the Okta session token exchanged for OAuth credentials."""
-        return self._auth.session_token
-
-    @_session_token.setter
-    def _session_token(self, value: str | None) -> None:
-        """Forward Okta session-token updates into the auth session.
-
-        Args:
-            value: Session token, or ``None`` before auth succeeds.
-        """
-        self._auth.session_token = value
-
-    def _refresh_auth_error_checker(self) -> None:
-        """Route auth helper validation through RESTClient's compatibility wrapper."""
-        self._auth.set_error_checker(self._resmed_response_error_check)
 
     async def connect(self, initial: bool | None = False) -> str:
         """Authenticate with myAir or reuse an active OAuth token.
@@ -277,15 +88,7 @@ class RESTClient(MyAirClient):
         Returns:
             Okta authentication status.
         """
-        self._refresh_auth_error_checker()
-        return await self._auth.connect(
-            initial=initial,
-            get_initial_dt=self._get_initial_dt,
-            is_access_token_active=self._is_access_token_active,
-            authn_check=self._authn_check,
-            trigger_mfa=self._trigger_mfa,
-            get_access_token=self._get_access_token,
-        )
+        return await self._auth.connect(initial=initial)
 
     async def verify_mfa_and_get_access_token(self, verification_code: str) -> str:
         """Complete an MFA challenge and cache OAuth tokens.
@@ -296,90 +99,11 @@ class RESTClient(MyAirClient):
         Returns:
             Okta authentication status after MFA verification.
         """
-        self._refresh_auth_error_checker()
-        return await self._auth.verify_mfa_and_get_access_token(
-            verification_code,
-            verify_mfa=self._verify_mfa,
-            get_access_token=self._get_access_token,
-        )
+        return await self._auth.verify_mfa_and_get_access_token(verification_code)
 
     async def is_email_verified(self) -> bool:
         """Return whether Okta userinfo reports a verified email address."""
-        self._refresh_auth_error_checker()
         return await self._auth.is_email_verified()
-
-    @staticmethod
-    async def _resmed_response_error_check(
-        step: str,
-        response: ClientResponse,
-        resp_dict: MutableMapping[str, Any],
-        initial: bool | None = False,
-    ) -> None:
-        """Validate ResMed responses through the legacy static helper.
-
-        Args:
-            step: Human-readable auth or GraphQL step name for diagnostics.
-            response: aiohttp response object associated with the payload.
-            resp_dict: Decoded response payload to inspect.
-            initial: Whether the request belongs to initial config setup.
-        """
-        return await MyAirAuthSession.resmed_response_error_check(
-            step, response, resp_dict, initial
-        )
-
-    async def _extract_and_update_cookies(self, cookie_headers: list) -> None:
-        """Update remembered-device and session cookies from Okta headers.
-
-        Args:
-            cookie_headers: Raw ``Set-Cookie`` header values from Okta responses.
-        """
-        self._refresh_auth_error_checker()
-        await self._auth.extract_and_update_cookies(cookie_headers)
-
-    async def _get_initial_dt(self) -> None:
-        """Bootstrap the remembered-device cookie before primary authentication."""
-        self._refresh_auth_error_checker()
-        await self._auth.get_initial_dt(self._extract_and_update_cookies)
-
-    async def _is_access_token_active(self) -> bool:
-        """Check if the cached OAuth token can be reused.
-
-        Returns:
-            ``True`` when Okta introspection marks the token active.
-        """
-        self._refresh_auth_error_checker()
-        return await self._auth.is_access_token_active()
-
-    async def _authn_check(self) -> str:
-        """Run primary Okta username/password authentication.
-
-        Returns:
-            Okta status indicating success or an MFA requirement.
-        """
-        self._refresh_auth_error_checker()
-        return await self._auth.authn_check()
-
-    async def _trigger_mfa(self) -> None:
-        """Send an email MFA challenge for the active Okta state token."""
-        self._refresh_auth_error_checker()
-        return await self._auth.trigger_mfa()
-
-    async def _verify_mfa(self, verification_code: str) -> str:
-        """Submit an email MFA code and capture the resulting session token.
-
-        Args:
-            verification_code: MFA code supplied by the user.
-
-        Returns:
-            Okta status after verification.
-        """
-        self._refresh_auth_error_checker()
-        return await self._auth.verify_mfa(verification_code)
-
-    async def _get_access_token(self) -> None:
-        """Exchange the Okta session token for OAuth access and ID tokens."""
-        self._refresh_auth_error_checker()
-        await self._auth.get_access_token(self._extract_and_update_cookies)
 
     async def _gql_query(
         self, operation_name: str, query: str, initial: bool | None = False

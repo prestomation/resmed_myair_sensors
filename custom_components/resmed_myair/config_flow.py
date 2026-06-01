@@ -32,8 +32,8 @@ from .const import (
     REGION_NA,
     VERSION,
 )
-from .helpers import redact_dict
 from .models import MyAirDevice
+from .redaction import redact_dict
 
 _LOGGER = logging.getLogger(__name__)
 EMAIL_VERIFICATION_ERRORS: tuple[type[Exception], ...] = (

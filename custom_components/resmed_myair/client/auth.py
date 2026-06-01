@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Awaitable, Callable, Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping
 import hashlib
 from http.cookies import SimpleCookie
 import logging
@@ -16,21 +16,14 @@ from aiohttp import ClientResponse, ClientSession
 from aiohttp.http_exceptions import HttpProcessingError
 from multidict import CIMultiDict
 
-from .const import AUTH_NEEDS_MFA, AUTHN_SUCCESS
-from .helpers import redact_dict
+from custom_components.resmed_myair.const import AUTH_NEEDS_MFA, AUTHN_SUCCESS
+from custom_components.resmed_myair.redaction import redact_dict
+
 from .myair_client import AuthenticationError, IncompleteAccountError, MyAirConfig, ParsingError
 from .regions import RegionConfig, get_region_config
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
-_AsyncAuthBool = Callable[[], Awaitable[bool]]
-_AsyncAuthStatus = Callable[[], Awaitable[str]]
-_AsyncAuthVerify = Callable[[str], Awaitable[str]]
-_AsyncNoArgs = Callable[[], Awaitable[None]]
-_ErrorCheck = Callable[
-    [str, ClientResponse, MutableMapping[str, Any], bool | None], Awaitable[None]
-]
-_CookieUpdate = Callable[[list], Awaitable[None]]
 _AUTH_LOG_SECRET_KEYS: frozenset[str] = frozenset(
     {
         "Authorization",
@@ -82,7 +75,6 @@ class MyAirAuthSession:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        self._country_code: str | None = None
         self._access_token: str | None = None
         self._id_token: str | None = None
         self._state_token: str | None = None
@@ -93,7 +85,6 @@ class MyAirAuthSession:
         self._region_config: RegionConfig = get_region_config(self._config.region)
         self._email_factor_id: str = self._region_config.email_factor_id
         self._mfa_url: str = self._region_config.mfa_url(self._email_factor_id)
-        self._resmed_error_checker: _ErrorCheck = self._resmed_response_error_check
 
     @property
     def access_token(self) -> str | None:
@@ -182,7 +173,7 @@ class MyAirAuthSession:
 
     @region_config.setter
     def region_config(self, value: RegionConfig) -> None:
-        """Override regional endpoint settings for compatibility tests.
+        """Override regional endpoint settings.
 
         Args:
             value: Region configuration to use for subsequent auth requests.
@@ -250,28 +241,6 @@ class MyAirAuthSession:
         """Expose the current Okta cookies without allowing direct mutation."""
         return self._cookies
 
-    def set_error_checker(self, checker: _ErrorCheck) -> None:
-        """Inject the response validator used by RESTClient compatibility wrappers.
-
-        Args:
-            checker: Coroutine that maps ResMed response payloads to typed exceptions.
-        """
-        self._resmed_error_checker = checker
-
-    @property
-    def country_code(self) -> str | None:
-        """Expose the cached myAir country code decoded from the ID token."""
-        return self._country_code
-
-    @country_code.setter
-    def country_code(self, value: str | None) -> None:
-        """Cache the GraphQL country code derived from token claims.
-
-        Args:
-            value: myAir country code, or ``None`` to force token decoding later.
-        """
-        self._country_code = value
-
     @property
     def json_headers(self) -> dict[str, Any]:
         """Expose the JSON headers sent to Okta auth endpoints."""
@@ -286,126 +255,46 @@ class MyAirAuthSession:
         """
         self._json_headers = dict(value)
 
-    @property
-    def cookie_dt(self) -> str | None:
-        """Expose the remembered-device cookie under the legacy attribute name."""
-        return self._cookie_dt
-
-    @cookie_dt.setter
-    def cookie_dt(self, value: str | None) -> None:
-        """Set the remembered-device cookie through the legacy attribute name.
-
-        Args:
-            value: DT cookie value, or ``None`` when clearing auth state.
-        """
-        self._cookie_dt = value
-
-    @staticmethod
-    async def resmed_response_error_check(
-        step: str,
-        response: ClientResponse,
-        resp_dict: MutableMapping[str, Any],
-        initial: bool | None = False,
-    ) -> None:
-        """Validate a ResMed response without requiring a session instance.
-
-        Args:
-            step: Human-readable auth or GraphQL step name for diagnostics.
-            response: aiohttp response object that supplied the payload.
-            resp_dict: Decoded response payload to inspect.
-            initial: Whether the failing call was part of the initial config flow.
-        """
-        return await MyAirAuthSession._resmed_response_error_check(
-            step, response, resp_dict, initial
-        )
-
-    async def _run_error_check(
-        self,
-        step: str,
-        response: ClientResponse,
-        resp_dict: MutableMapping[str, Any],
-        initial: bool | None = False,
-    ) -> None:
-        """Apply the injected response validator to auth and token calls.
-
-        Args:
-            step: Human-readable auth step name for error messages.
-            response: aiohttp response object being validated.
-            resp_dict: Decoded response payload from ResMed or Okta.
-            initial: Whether the call belongs to initial setup.
-        """
-        await self._resmed_error_checker(step, response, resp_dict, initial)
-
-    async def connect(
-        self,
-        initial: bool | None = False,
-        *,
-        get_initial_dt: _AsyncNoArgs | None = None,
-        is_access_token_active: _AsyncAuthBool | None = None,
-        authn_check: _AsyncAuthStatus | None = None,
-        trigger_mfa: _AsyncNoArgs | None = None,
-        get_access_token: _AsyncNoArgs | None = None,
-    ) -> str:
+    async def connect(self, initial: bool | None = False) -> str:
         """Authenticate or reuse existing credentials for a myAir session.
 
         Args:
             initial: Whether this is the first config-flow attempt, when MFA may be
                 triggered instead of reported as a reauth failure.
-            get_initial_dt: Optional cookie bootstrap implementation for tests.
-            is_access_token_active: Optional token introspection implementation.
-            authn_check: Optional primary Okta auth implementation.
-            trigger_mfa: Optional MFA trigger implementation.
-            get_access_token: Optional OAuth token exchange implementation.
 
         Returns:
             Okta auth status, such as ``SUCCESS`` or ``MFA_REQUIRED``.
         """
-        _get_initial_dt = get_initial_dt or self._get_initial_dt
-        _is_access_token_active = is_access_token_active or self._is_access_token_active
-        _authn_check = authn_check or self._authn_check
-        _trigger_mfa = trigger_mfa or self._trigger_mfa
-        _get_access_token = get_access_token or self._get_access_token
-
         if self._cookie_dt is None:
-            await _get_initial_dt()
+            await self._get_initial_dt()
         if self._cookie_dt is None and self._uses_mfa:
             _LOGGER.warning("Device Token isn't set. This will require frequent reauthentication.")
-        if self._access_token and await _is_access_token_active():
+        if self._access_token and await self._is_access_token_active():
             return AUTHN_SUCCESS
         _LOGGER.info("Starting Authentication")
-        status: str = await _authn_check()
+        status: str = await self._authn_check()
         if status == AUTH_NEEDS_MFA:
             self._uses_mfa = True
             if initial:
-                await _trigger_mfa()
+                await self._trigger_mfa()
             else:
                 raise AuthenticationError("Need to Re-Verify MFA")
         else:
-            await _get_access_token()
+            await self._get_access_token()
         return status
 
-    async def verify_mfa_and_get_access_token(
-        self,
-        verification_code: str,
-        *,
-        verify_mfa: _AsyncAuthVerify | None = None,
-        get_access_token: _AsyncNoArgs | None = None,
-    ) -> str:
+    async def verify_mfa_and_get_access_token(self, verification_code: str) -> str:
         """Complete an MFA challenge and exchange the resulting session token.
 
         Args:
             verification_code: Email MFA code entered by the user.
-            verify_mfa: Optional MFA verification implementation for tests.
-            get_access_token: Optional OAuth exchange implementation for tests.
 
         Returns:
             Okta success status after MFA verification.
         """
-        _verify_mfa = verify_mfa or self._verify_mfa
-        _get_access_token = get_access_token or self._get_access_token
-        status: str = await _verify_mfa(verification_code)
+        status: str = await self._verify_mfa(verification_code)
         if status == AUTHN_SUCCESS:
-            await _get_access_token()
+            await self._get_access_token()
         else:
             raise AuthenticationError(f"Issue verifying MFA. Status: {status}")
         return status
@@ -434,7 +323,7 @@ class MyAirAuthSession:
             _LOGGER.debug("[is_email_verified] userinfo_res: %s", userinfo_res)
             userinfo_dict: MutableMapping[str, Any] = await userinfo_res.json()
             _LOGGER.debug("[is_email_verified] introspect_dict: %s", redact_dict(userinfo_dict))
-            await self._run_error_check("userinfo_query", userinfo_res, userinfo_dict)
+            await self.resmed_response_error_check("userinfo_query", userinfo_res, userinfo_dict)
         if userinfo_dict.get("email_verified") is True:
             return True
         return False
@@ -473,21 +362,8 @@ class MyAirAuthSession:
             bool(self._cookie_sid),
         )
 
-    async def extract_and_update_cookies(self, cookie_headers: list) -> None:
-        """Update auth cookies through the legacy RESTClient helper.
-
-        Args:
-            cookie_headers: Raw ``Set-Cookie`` header values from Okta responses.
-        """
-        await self._extract_and_update_cookies(cookie_headers)
-
-    async def _get_initial_dt(self, extract_cookies: _CookieUpdate | None = None) -> None:
-        """Prime the auth session with the remembered-device cookie.
-
-        Args:
-            extract_cookies: Optional cookie extractor used by compatibility tests.
-        """
-        _extract_cookies = extract_cookies or self._extract_and_update_cookies
+    async def _get_initial_dt(self) -> None:
+        """Prime the auth session with the remembered-device cookie."""
         initial_dt_url: str = self._region_config.authorize_url
         _LOGGER.debug("[get_initial_dt] initial_dt_url: %s", initial_dt_url)
         _LOGGER.debug("[get_initial_dt] headers: %s", redact_dict(self._json_headers))
@@ -501,15 +377,7 @@ class MyAirAuthSession:
         ) as initial_dt_res:
             _LOGGER.debug("[get_initial_dt] initial_dt_res: %s", initial_dt_res)
 
-        await _extract_cookies(initial_dt_res.headers.getall("set-cookie", []))
-
-    async def get_initial_dt(self, extract_cookies: _CookieUpdate | None = None) -> None:
-        """Prime the remembered-device cookie through the public helper.
-
-        Args:
-            extract_cookies: Optional cookie extractor used by compatibility tests.
-        """
-        await self._get_initial_dt(extract_cookies)
+        await self._extract_and_update_cookies(initial_dt_res.headers.getall("set-cookie", []))
 
     async def _is_access_token_active(self) -> bool:
         """Ask Okta introspection whether the cached access token is reusable.
@@ -541,23 +409,17 @@ class MyAirAuthSession:
             _LOGGER.debug(
                 "[is_access_token_active] introspect_dict: %s", redact_dict(introspect_dict)
             )
-            await self._run_error_check("introspect_query", introspect_res, introspect_dict)
+            await self.resmed_response_error_check(
+                "introspect_query", introspect_res, introspect_dict
+            )
 
         if introspect_dict.get("active") is True:
             _LOGGER.info("Existing Access Token is already active. Reusing")
             return True
         return False
 
-    async def is_access_token_active(self) -> bool:
-        """Check cached access-token validity through the public helper.
-
-        Returns:
-            ``True`` when the access token can be reused.
-        """
-        return await self._is_access_token_active()
-
     @staticmethod
-    async def _resmed_response_error_check(
+    async def resmed_response_error_check(
         step: str,
         response: ClientResponse,
         resp_dict: MutableMapping[str, Any],
@@ -638,7 +500,7 @@ class MyAirAuthSession:
             _LOGGER.debug("[authn_check] authn_res: %s", authn_res)
             authn_dict: MutableMapping[str, Any] = await authn_res.json()
             _LOGGER.debug("[authn_check] authn_dict: %s", _safe_auth_log_payload(authn_dict))
-            await self._run_error_check("authn", authn_res, authn_dict)
+            await self.resmed_response_error_check("authn", authn_res, authn_dict)
         if "status" not in authn_dict:
             raise AuthenticationError("Cannot get status in authn step")
         status: str = authn_dict["status"]
@@ -669,14 +531,6 @@ class MyAirAuthSession:
             raise AuthenticationError(f"Unknown status in authn step: {status}")
         return status
 
-    async def authn_check(self) -> str:
-        """Expose primary Okta auth for RESTClient compatibility tests.
-
-        Returns:
-            Okta status indicating success or MFA requirement.
-        """
-        return await self._authn_check()
-
     async def _trigger_mfa(self) -> None:
         """Ask Okta to send the email MFA challenge for the current state token."""
         json_query: dict[str, Any] = {"passCode": "", "stateToken": self._state_token}
@@ -696,12 +550,8 @@ class MyAirAuthSession:
                 "[trigger_mfa] trigger_mfa_dict: %s",
                 _safe_auth_log_payload(trigger_mfa_dict),
             )
-            await self._run_error_check("trigger_mfa", trigger_mfa_res, trigger_mfa_dict)
+            await self.resmed_response_error_check("trigger_mfa", trigger_mfa_res, trigger_mfa_dict)
         _LOGGER.info("Triggered MFA Email")
-
-    async def trigger_mfa(self) -> None:
-        """Send the email MFA challenge through the public helper."""
-        await self._trigger_mfa()
 
     async def _verify_mfa(self, verification_code: str) -> str:
         """Submit an email MFA code and store the returned session token.
@@ -735,7 +585,7 @@ class MyAirAuthSession:
                 "[verify_mfa] verify_mfa_dict: %s",
                 _safe_auth_log_payload(verify_mfa_dict),
             )
-            await self._run_error_check("verify_mfa", verify_mfa_res, verify_mfa_dict)
+            await self.resmed_response_error_check("verify_mfa", verify_mfa_res, verify_mfa_dict)
         if "status" not in verify_mfa_dict:
             raise AuthenticationError("Cannot get status in verify_mfa step")
         status: str = verify_mfa_dict["status"]
@@ -749,30 +599,12 @@ class MyAirAuthSession:
             raise AuthenticationError(f"Unknown status in verify_mfa step: {status}")
         return status
 
-    async def verify_mfa(self, verification_code: str) -> str:
-        """Verify an email MFA code through the public helper.
-
-        Args:
-            verification_code: MFA code supplied by the user.
-
-        Returns:
-            Okta status after code verification.
-        """
-        return await self._verify_mfa(verification_code)
-
-    async def _get_access_token(
-        self,
-        extract_cookies: _CookieUpdate | None = None,
-    ) -> None:
+    async def _get_access_token(self) -> None:
         """Exchange the Okta session token for OAuth access and ID tokens.
-
-        Args:
-            extract_cookies: Optional cookie extractor used by compatibility tests.
 
         Raises:
             ParsingError: When Okta redirects or token payloads omit required fields.
         """
-        _extract_cookies = extract_cookies or self._extract_and_update_cookies
         # myAir uses Authorization Code with PKCE, so we generate our verifier here
         code_verifier: str = base64.urlsafe_b64encode(os.urandom(40)).decode("utf-8")
         code_verifier = re.sub("[^a-zA-Z0-9]+", "", code_verifier)
@@ -827,7 +659,7 @@ class MyAirAuthSession:
         code: str = code_values[0]
         _LOGGER.debug("[get_access_token] received authorization code")
 
-        await _extract_cookies(code_res.headers.getall("set-cookie", []))
+        await self._extract_and_update_cookies(code_res.headers.getall("set-cookie", []))
 
         # Now we change the code for an access token
         # requests defaults to forms, which is what /token needs,
@@ -861,7 +693,7 @@ class MyAirAuthSession:
             _LOGGER.debug("[get_access_token] token_res: %s", token_res)
             token_dict: MutableMapping[str, Any] = await token_res.json()
             _LOGGER.debug("[get_access_token] token_dict: %s", redact_dict(token_dict))
-            await self._run_error_check("get_access_token", token_res, token_dict)
+            await self.resmed_response_error_check("get_access_token", token_res, token_dict)
             if "access_token" not in token_dict:
                 raise ParsingError("access_token not in token_dict")
             if "id_token" not in token_dict:
@@ -872,11 +704,3 @@ class MyAirAuthSession:
                 if self._access_token is not None:
                     _LOGGER.info("Obtained new access token")
                 self._access_token = access_token
-
-    async def get_access_token(self, extract_cookies: _CookieUpdate | None = None) -> None:
-        """Expose OAuth token exchange for RESTClient compatibility tests.
-
-        Args:
-            extract_cookies: Optional cookie extractor used by compatibility tests.
-        """
-        await self._get_access_token(extract_cookies)

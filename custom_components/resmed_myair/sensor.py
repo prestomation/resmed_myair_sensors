@@ -21,8 +21,8 @@ from .const import (
     VERSION,
 )
 from .coordinator import MyAirDataUpdateCoordinator
-from .helpers import redact_dict
 from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
+from .redaction import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 SERVICE_NAME_SANITIZER: Final[re.Pattern[str]] = re.compile(r"[^a-z0-9_]+")

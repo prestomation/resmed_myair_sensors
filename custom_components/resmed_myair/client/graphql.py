@@ -7,8 +7,9 @@ from aiohttp import ClientSession
 import jwt
 from jwt import InvalidTokenError
 
+from custom_components.resmed_myair.redaction import redact_dict
+
 from .auth import MyAirAuthSession
-from .helpers import redact_dict
 from .myair_client import ParsingError
 from .regions import RegionConfig
 

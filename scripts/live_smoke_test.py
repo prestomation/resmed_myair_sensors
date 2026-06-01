@@ -19,11 +19,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from custom_components.resmed_myair.client.const import (  # noqa: E402
-    AUTH_NEEDS_MFA,
-    AUTHN_SUCCESS,
-    REGION_NA,
-)
 from custom_components.resmed_myair.client.myair_client import (  # noqa: E402
     AuthenticationError,
     IncompleteAccountError,
@@ -31,6 +26,11 @@ from custom_components.resmed_myair.client.myair_client import (  # noqa: E402
     ParsingError,
 )
 from custom_components.resmed_myair.client.rest_client import RESTClient  # noqa: E402
+from custom_components.resmed_myair.const import (  # noqa: E402
+    AUTH_NEEDS_MFA,
+    AUTHN_SUCCESS,
+    REGION_NA,
+)
 from custom_components.resmed_myair.models import MyAirCoordinatorData  # noqa: E402
 
 DEFAULT_ENV_FILE = Path("live_smoke_test.env")

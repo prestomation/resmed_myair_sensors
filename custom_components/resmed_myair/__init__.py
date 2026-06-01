@@ -25,7 +25,7 @@ from .const import (
     VERSION,
 )
 from .coordinator import MyAirDataUpdateCoordinator
-from .helpers import redact_dict
+from .redaction import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
