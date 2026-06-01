@@ -1,5 +1,11 @@
 {
+  "purpose": "Curated developer reference for myAir GraphQL fields observed while maintaining this integration.",
   "source": "Manual schema notes from working integration queries and validation probes.",
+  "maintenance": {
+    "generated": false,
+    "authoritative": false,
+    "update_process": "Update manually when live smoke-test output, validation probes, or integration query changes confirm a field shape."
+  },
   "introspection": {
     "available": false,
     "notes": [
