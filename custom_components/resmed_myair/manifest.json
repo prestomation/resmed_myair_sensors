@@ -1,14 +1,14 @@
 {
   "domain": "resmed_myair",
   "name": "ResMed myAir",
+  "after_dependencies": [
+    "recorder"
+  ],
   "codeowners": [
     "@prestomation",
     "@Snuffy2"
   ],
   "config_flow": true,
-  "after_dependencies": [
-    "recorder"
-  ],
   "dependencies": [
     "sensor"
   ],
