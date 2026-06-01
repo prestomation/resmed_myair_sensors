@@ -11,7 +11,7 @@ from multidict import CIMultiDict
 import pytest
 
 from custom_components.resmed_myair.client import rest_client as rest_client_module
-from custom_components.resmed_myair.client.auth import MyAirAuthSession
+from custom_components.resmed_myair.client.auth import MyAirAuthSession, _mfa_challenge_metadata
 from custom_components.resmed_myair.client.graphql import MyAirGraphQLClient
 from custom_components.resmed_myair.client.myair_client import (
     AuthenticationError,
@@ -106,6 +106,8 @@ def test_rest_client_init_region(
     ("property_name", "new_value"),
     [
         ("json_headers", {"Accept": "application/json"}),
+        ("region_config", EU_CONFIG),
+        ("email_factor_id", "email-factor-id"),
     ],
 )
 def test_auth_session_property_variants(
@@ -120,6 +122,47 @@ def test_auth_session_property_variants(
     setattr(auth, property_name, new_value)
 
     assert getattr(auth, property_name) == new_value
+
+
+@pytest.mark.parametrize(
+    ("authn_dict", "expected_factor_id", "expected_mfa_url"),
+    [
+        ({}, NA_CONFIG.email_factor_id, NA_CONFIG.mfa_url(NA_CONFIG.email_factor_id)),
+        (
+            {"_embedded": {"factors": "not-a-list"}},
+            NA_CONFIG.email_factor_id,
+            NA_CONFIG.mfa_url(NA_CONFIG.email_factor_id),
+        ),
+        (
+            {"_embedded": {"factors": []}},
+            NA_CONFIG.email_factor_id,
+            NA_CONFIG.mfa_url(NA_CONFIG.email_factor_id),
+        ),
+        (
+            {"_embedded": {"factors": [None]}},
+            NA_CONFIG.email_factor_id,
+            NA_CONFIG.mfa_url(NA_CONFIG.email_factor_id),
+        ),
+        (
+            {"_embedded": {"factors": [{"id": "factor-id", "_links": None}]}},
+            "factor-id",
+            NA_CONFIG.mfa_url("factor-id"),
+        ),
+        (
+            {"_embedded": {"factors": [{"id": "factor-id", "_links": {"verify": None}}]}},
+            "factor-id",
+            NA_CONFIG.mfa_url("factor-id"),
+        ),
+    ],
+)
+def test_mfa_challenge_metadata_handles_partial_okta_payloads(
+    authn_dict: dict[str, object], expected_factor_id: str, expected_mfa_url: str
+) -> None:
+    """MFA metadata parsing keeps regional defaults unless Okta supplies valid fields."""
+    assert _mfa_challenge_metadata(authn_dict, NA_CONFIG) == (
+        expected_factor_id,
+        expected_mfa_url,
+    )
 
 
 @pytest.mark.parametrize("case", ["device_token", "cookies"])
