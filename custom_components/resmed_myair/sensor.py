@@ -172,9 +172,20 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
     def _sensor_payload(self) -> _SensorPayload | None:
         """Return the model object that contains this sensor's raw API field.
 
+        This partial implementation raises ``NotImplementedError`` and exists for
+        sensors that use coordinator-provided device or sleep-record models with
+        the base ``_handle_coordinator_update`` implementation. Subclasses with
+        fully custom update logic, such as ``MyAirFriendlyUsageTime`` and
+        ``MyAirMostRecentSleepDate``, may intentionally skip this method and parse
+        coordinator payloads directly in their own ``_handle_coordinator_update``.
+
         Returns:
             Device or sleep-record model for raw GraphQL-backed sensors, or ``None``
             when the coordinator did not receive the required payload.
+
+        Raises:
+            NotImplementedError: If a subclass uses the base update handler without
+                implementing this payload selector.
         """
         raise NotImplementedError
 
