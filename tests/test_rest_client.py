@@ -1285,6 +1285,10 @@ async def test_get_user_device_data_failure_variants(
         ([{"maskCode": "MASK123"}], False, "MASK123"),
         ([{"maskCode": ""}], False, None),
         ([], True, None),
+        ("not-a-list", True, None),
+        ([123], True, None),
+        ([{}], True, None),
+        ([{"maskCode": 123}], True, None),
     ],
 )
 async def test_get_user_device_data_masks_variants(
