@@ -223,6 +223,8 @@ class MyAirAuthSession:
             value: Region configuration to use for subsequent auth requests.
         """
         self._region_config = value
+        self._email_factor_id = value.email_factor_id
+        self._mfa_url = value.mfa_url(self._email_factor_id)
 
     @property
     def email_factor_id(self) -> str:

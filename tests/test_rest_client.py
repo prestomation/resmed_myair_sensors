@@ -122,6 +122,10 @@ def test_auth_session_property_variants(
     setattr(auth, property_name, new_value)
 
     assert getattr(auth, property_name) == new_value
+    if property_name == "region_config":
+        assert isinstance(new_value, RegionConfig)
+        assert auth.email_factor_id == new_value.email_factor_id
+        assert auth.mfa_url == new_value.mfa_url(new_value.email_factor_id)
 
 
 @pytest.mark.parametrize(
@@ -1327,6 +1331,8 @@ async def test_get_user_device_data_failure_variants(
     [
         ([{"maskCode": "MASK123"}], False, "MASK123"),
         ([{"maskCode": ""}], False, None),
+        ([{}, {"maskCode": "MASK123"}], False, "MASK123"),
+        ([{"maskCode": ""}, {"maskCode": "MASK123"}], False, "MASK123"),
         ([], True, None),
         ("not-a-list", True, None),
         ([123], True, None),

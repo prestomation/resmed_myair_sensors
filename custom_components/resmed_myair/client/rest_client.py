@@ -67,20 +67,26 @@ def _optional_mask_code(patient_wrapper: Mapping[str, Any]) -> str | None:
         _LOGGER.warning("Error getting User Mask Data. Missing or invalid masks payload")
         return None
 
-    first_mask = masks[0]
-    if not isinstance(first_mask, Mapping):
-        _LOGGER.warning("Error getting User Mask Data. First mask is not a mapping")
-        return None
+    found_malformed_mask = False
+    for mask in masks:
+        if not isinstance(mask, Mapping):
+            found_malformed_mask = True
+            continue
+        if "maskCode" not in mask:
+            found_malformed_mask = True
+            continue
 
-    if "maskCode" not in first_mask:
-        _LOGGER.warning("Error getting User Mask Data. maskCode is missing")
-        return None
+        mask_code = mask.get("maskCode")
+        if isinstance(mask_code, str):
+            if mask_code:
+                return mask_code
+            continue
 
-    mask_code = first_mask.get("maskCode")
-    if mask_code and not isinstance(mask_code, str):
-        _LOGGER.warning("Error getting User Mask Data. maskCode is not a string")
-        return None
-    return mask_code or None
+        found_malformed_mask = True
+
+    if found_malformed_mask:
+        _LOGGER.warning("Error getting User Mask Data. No valid maskCode found")
+    return None
 
 
 class RESTClient(MyAirClient):
