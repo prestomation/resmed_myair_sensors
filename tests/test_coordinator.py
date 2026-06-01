@@ -1,5 +1,6 @@
 """Coordinator tests that protect refresh, auth, and parse fallbacks."""
 
+import logging
 from unittest.mock import MagicMock
 
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -57,7 +58,10 @@ async def test_async_update_data_auth_error(hass: MagicMock, myair_client: Magic
 @pytest.mark.parametrize("failing_fetch", ["device", "sleep_records"])
 @pytest.mark.asyncio
 async def test_async_update_data_parsing_error_variants(
-    hass: MagicMock, myair_client: MagicMock, failing_fetch: str
+    hass: MagicMock,
+    myair_client: MagicMock,
+    failing_fetch: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Parsing failures degrade only the failing payload branch."""
     expected_device = MyAirDevice.from_api(
@@ -73,14 +77,23 @@ async def test_async_update_data_parsing_error_variants(
         myair_client.get_sleep_records.side_effect = ParsingError("sleep parse fail")
 
     coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
-    data = await coordinator._async_update_data()
+    with caplog.at_level(logging.DEBUG):
+        data = await coordinator._async_update_data()
 
     if failing_fetch == "device":
         assert data.device is None
         assert data.sleep_records == expected_records
+        assert (
+            "Device data unavailable in myAir update. ParsingError: device parse fail"
+            in caplog.text
+        )
     else:
         assert data.device is expected_device
         assert data.sleep_records == ()
+        assert (
+            "Sleep record data unavailable in myAir update. ParsingError: sleep parse fail"
+            in caplog.text
+        )
 
     myair_client.connect.assert_awaited_once()
     myair_client.get_user_device_data.assert_awaited_once()
