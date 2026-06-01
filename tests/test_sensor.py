@@ -22,6 +22,12 @@ from custom_components.resmed_myair.sensor import (
 from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike, coordinator_data
 
 
+def test_raw_payload_sensors_inherit_base_constructor() -> None:
+    """Raw GraphQL-backed sensors rely on the base class for HA metadata setup."""
+    assert "__init__" not in MyAirSleepRecordSensor.__dict__
+    assert "__init__" not in MyAirDeviceSensor.__dict__
+
+
 def test_mask_leak_sensor_uses_liters_per_minute_without_changing_raw_key(
     coordinator_factory: CoordinatorFactory,
 ) -> None:
