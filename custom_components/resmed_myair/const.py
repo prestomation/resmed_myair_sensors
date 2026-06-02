@@ -9,7 +9,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import Platform, UnitOfTime, UnitOfVolumeFlowRate
 
-VERSION = "v0.2.6"
+VERSION = "v0.2.7"
 
 DOMAIN = "resmed_myair"
 PLATFORMS: list[Platform] = [Platform.SENSOR]
