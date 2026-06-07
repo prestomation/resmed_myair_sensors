@@ -1,8 +1,4 @@
-"""Home Assistant Custom Component for ResMed myAir devices.
-
-It uses the myair_client which is standalone and can be used outside Home Assistant
-myair_client is a reverse engineering and can break at anytime.
-"""
+"""The ResMed myAir integration."""
 
 from collections.abc import MutableMapping
 import logging
@@ -58,14 +54,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     coordinator: MyAirDataUpdateCoordinator = MyAirDataUpdateCoordinator(
         hass=hass, config_entry=config_entry, myair_client=client
     )
-
     config_entry.runtime_data = coordinator
+    await coordinator.async_initialize()
 
     await coordinator.async_config_entry_first_refresh()
 
     async_migrate_mask_leak_statistics_metadata(hass)
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+
     return True
 
 
@@ -104,6 +101,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         Whether Home Assistant unloaded all forwarded platforms successfully.
     """
     _LOGGER.info("Unloading: %s", redact_dict(entry.data))
-    unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
