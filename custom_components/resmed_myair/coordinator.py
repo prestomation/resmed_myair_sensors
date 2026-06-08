@@ -1,6 +1,6 @@
 """Device coordinator for resmed_myair."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
 import logging
 from typing import Any
@@ -162,22 +162,24 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         records_by_date: dict[str, dict[str, Any]] = {}
 
         for row in recorder_stats.get(statistic_id, []):
-            if row.get("start") is None or row.get("change") is None:
+            change = row.get("change")
+            if row.get("start") is None or change is None:
                 continue
             start_date = _statistics_row_date(row["start"]).isoformat()
-            records_by_date.setdefault(start_date, {"startDate": start_date})[
-                "totalUsage"
-            ] = max(round(float(row["change"]) * 60), 0)
+            records_by_date.setdefault(start_date, {"startDate": start_date})["totalUsage"] = max(
+                round(float(change) * 60), 0
+            )
 
         for sensor_key, record_key in _RECORDER_STATE_FIELDS.items():
             state_statistic_id = _recorder_state_statistic_id(serial_number, sensor_key)
             for row in recorder_stats.get(state_statistic_id, []):
-                if row.get("start") is None or row.get("state") is None:
+                state = row.get("state")
+                if row.get("start") is None or state is None:
                     continue
                 start_date = _statistics_row_date(row["start"]).isoformat()
-                records_by_date.setdefault(start_date, {"startDate": start_date})[
-                    record_key
-                ] = row["state"]
+                records_by_date.setdefault(start_date, {"startDate": start_date})[record_key] = (
+                    state
+                )
 
         return [records_by_date[start_date] for start_date in sorted(records_by_date)]
 
@@ -191,7 +193,7 @@ def _coordinator_data_sleep_records(data: Any) -> tuple[MyAirSleepRecord, ...]:
 
 def _merge_sleep_history(
     existing_history: list[dict[str, Any]],
-    latest_records: list[Mapping[str, Any]],
+    latest_records: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     """Merge new cloud or recorder records into persisted sleep history."""
     merged_by_date: dict[str, dict[str, Any]] = {
@@ -216,7 +218,10 @@ def _normalize_sleep_history(history: list[dict[str, Any]]) -> list[dict[str, An
     today = dt_util.now().date()
     normalized: list[dict[str, Any]] = []
     for record in history:
-        start_date = dt_util.parse_date(record.get("startDate"))
+        raw_start_date = record.get("startDate")
+        if not isinstance(raw_start_date, str):
+            continue
+        start_date = dt_util.parse_date(raw_start_date)
         if start_date is None or start_date > today:
             continue
         normalized.append(dict(record))

@@ -1,12 +1,12 @@
 """Home Assistant sensor entities for ResMed myAir account data."""
 
 from abc import abstractmethod
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
 import logging
 import re
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
@@ -261,8 +261,9 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
                 last_imported_date = dt_util.as_local(end_ts).date()
             elif end_ts is not None:
                 last_imported_date = datetime.fromtimestamp(end_ts, tz=dt_util.UTC).date()
-            if statistic_desc.import_mode == "sum" and last_row.get("sum") is not None:
-                last_sum = float(last_row["sum"])
+            last_sum_raw = last_row.get("sum")
+            if statistic_desc.import_mode == "sum" and last_sum_raw is not None:
+                last_sum = float(last_sum_raw)
 
         statistics: list[StatisticData] = []
         running_sum = last_sum
@@ -289,14 +290,17 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         if not statistics:
             return
 
-        metadata: StatisticMetaData = {
-            "has_mean": False,
-            "has_sum": statistic_desc.import_mode == "sum",
-            "name": statistic_desc.name,
-            "source": DOMAIN,
-            "statistic_id": statistic_id,
-            "unit_of_measurement": statistic_desc.unit_of_measurement,
-        }
+        metadata = cast(
+            "StatisticMetaData",
+            {
+                "has_mean": False,
+                "has_sum": statistic_desc.import_mode == "sum",
+                "name": statistic_desc.name,
+                "source": DOMAIN,
+                "statistic_id": statistic_id,
+                "unit_of_measurement": statistic_desc.unit_of_measurement,
+            },
+        )
 
         _LOGGER.debug(
             "Importing %s nightly statistics entries for %s",
@@ -624,15 +628,18 @@ def _coerce_stat_number(value: Any) -> float | int | None:
         return value
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
-def _build_daily_usage_hours(sleep_records: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _build_daily_usage_hours(sleep_records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """Build daily usage history for frontend charts."""
     history: list[dict[str, Any]] = []
     for record in sleep_records:
-        start_date = dt_util.parse_date(record.get("startDate"))
+        raw_start_date = record.get("startDate")
+        if not isinstance(raw_start_date, str):
+            continue
+        start_date = dt_util.parse_date(raw_start_date)
         usage_minutes = record.get("totalUsage")
         if start_date is None or usage_minutes is None:
             continue
