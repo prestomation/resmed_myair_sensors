@@ -16,7 +16,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Release events must package the release tag instead of a moving
           # target_commitish branch.
