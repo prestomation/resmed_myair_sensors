@@ -292,10 +292,10 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
     await async_setup_entry(hass, entry, async_add_entities)
 
     # Check that async_add_entities was called with the correct number of sensors
-    # 1 sleep record + 1 device + 2 synthesized = 4
+    # 1 sleep record + 1 device + 5 synthesized = 7
     args, kwargs = async_add_entities.call_args
     sensors = args[0]
-    assert len(sensors) == 4
+    assert len(sensors) == 7
     # Ensure update_before_add is False; default to False when key is absent.
     assert kwargs.get("update_before_add", False) is False
 

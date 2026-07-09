@@ -60,6 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     )
 
     config_entry.runtime_data = coordinator
+    await coordinator.async_initialize()
 
     await coordinator.async_config_entry_first_refresh()
 
