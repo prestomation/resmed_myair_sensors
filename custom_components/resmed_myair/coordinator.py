@@ -29,9 +29,11 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         """Configure periodic myAir polling for a config entry.
 
         Args:
-            hass: Home Assistant instance running the coordinator.
-            config_entry: myAir config entry associated with this coordinator.
-            myair_client: Client used to authenticate and fetch myAir data.
+            hass (HomeAssistant): Home Assistant instance running the coordinator.
+            config_entry (ConfigEntry): myAir config entry associated with this
+                coordinator.
+            myair_client (MyAirClient): Client used to authenticate and fetch
+                myAir data.
         """
         _LOGGER.info("Initializing DataUpdateCoordinator for ResMed myAir")
         self.myair_client = myair_client
@@ -47,7 +49,8 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         """Refresh auth, device metadata, and recent sleep records.
 
         Returns:
-            Typed coordinator payload containing any data available from myAir.
+            MyAirCoordinatorData: Typed coordinator payload containing any data
+                available from myAir.
 
         Raises:
             ConfigEntryAuthFailed: When myAir authentication must be repaired by reauth.

@@ -21,11 +21,11 @@ def _required_mapping(value: Any, message: str) -> Mapping[str, Any]:
     """Validate that a decoded GraphQL payload member is a mapping.
 
     Args:
-        value: Payload member to validate.
-        message: Parsing error message to raise when validation fails.
+        value (Any): Payload member to validate.
+        message (str): Parsing error message to raise when validation fails.
 
     Returns:
-        The original value typed as a mapping.
+        Mapping[str, Any]: The validated payload member.
 
     Raises:
         ParsingError: When the payload member is not a mapping.
@@ -39,11 +39,11 @@ def _required_list(value: Any, message: str) -> list[Any]:
     """Validate that a decoded GraphQL payload member is a JSON array.
 
     Args:
-        value: Payload member to validate.
-        message: Parsing error message to raise when validation fails.
+        value (Any): Payload member to validate.
+        message (str): Parsing error message to raise when validation fails.
 
     Returns:
-        The original value typed as a list.
+        list[Any]: The validated payload member.
 
     Raises:
         ParsingError: When the payload member is not a list.
@@ -57,10 +57,11 @@ def _optional_mask_code(patient_wrapper: Mapping[str, Any]) -> str | None:
     """Extract a mask code from optional myAir mask metadata.
 
     Args:
-        patient_wrapper: Decoded ``getPatientWrapper`` GraphQL payload.
+        patient_wrapper (Mapping[str, Any]): Decoded ``getPatientWrapper`` GraphQL payload.
 
     Returns:
-        First non-empty mask code, or ``None`` when mask metadata is absent or malformed.
+        str | None: First non-empty mask code, or ``None`` when metadata is absent
+            or malformed.
     """
     masks = patient_wrapper.get("masks")
     if not isinstance(masks, list) or not masks:
@@ -96,8 +97,8 @@ class RESTClient(MyAirClient):
         """Create auth and GraphQL helpers around a shared aiohttp session.
 
         Args:
-            config: User credentials, region, and optional remembered-device token.
-            session: Home Assistant-managed aiohttp session.
+            config (MyAirConfig): User credentials, region, and remembered-device token.
+            session (ClientSession): Home Assistant-managed aiohttp session.
         """
         _LOGGER.debug("[RESTClient init] config: %s", redact_dict(config._asdict()))
         self._config: MyAirConfig = config
@@ -118,11 +119,11 @@ class RESTClient(MyAirClient):
         """Authenticate with myAir or reuse an active OAuth token.
 
         Args:
-            initial: Whether the call is part of config setup, where MFA can be
+            initial (bool | None): Whether the call is part of config setup, where MFA can be
                 triggered and surfaced to the user.
 
         Returns:
-            Okta authentication status.
+            str: Okta authentication status.
         """
         return await self._auth.connect(initial=initial)
 
@@ -130,15 +131,19 @@ class RESTClient(MyAirClient):
         """Complete an MFA challenge and cache OAuth tokens.
 
         Args:
-            verification_code: Email MFA code supplied by the user.
+            verification_code (str): Email MFA code supplied by the user.
 
         Returns:
-            Okta authentication status after MFA verification.
+            str: Okta authentication status after MFA verification.
         """
         return await self._auth.verify_mfa_and_get_access_token(verification_code)
 
     async def is_email_verified(self) -> bool:
-        """Return whether Okta userinfo reports a verified email address."""
+        """Return whether Okta userinfo reports a verified email address.
+
+        Returns:
+            bool: ``True`` when the account email is verified.
+        """
         return await self._auth.is_email_verified()
 
     async def _gql_query(
@@ -147,12 +152,12 @@ class RESTClient(MyAirClient):
         """Execute a myAir AppSync operation with the current auth state.
 
         Args:
-            operation_name: GraphQL operation name sent to AppSync.
-            query: GraphQL document to execute.
-            initial: Whether the query is part of config setup.
+            operation_name (str): GraphQL operation name sent to AppSync.
+            query (str): GraphQL document to execute.
+            initial (bool | None): Whether the query is part of config setup.
 
         Returns:
-            Decoded GraphQL response payload.
+            dict[str, Any]: Decoded GraphQL response payload.
         """
         return await self._graphql.query(operation_name, query, initial=bool(initial))
 
@@ -160,10 +165,13 @@ class RESTClient(MyAirClient):
         """Fetch and normalize the recent nightly sleep records.
 
         Args:
-            initial: Whether this fetch is part of config setup.
+            initial (bool): Whether this fetch is part of config setup.
 
         Returns:
-            Typed records returned by myAir for the last 30 days.
+            list[MyAirSleepRecord]: Typed records returned by myAir for the last 30 days.
+
+        Raises:
+            ParsingError: When the GraphQL response omits or malforms sleep record data.
         """
         today_date: datetime.date = datetime.datetime.now(datetime.UTC).astimezone().date()
         today: str = today_date.isoformat()
@@ -230,10 +238,13 @@ class RESTClient(MyAirClient):
         """Fetch and normalize the account's assigned flow-generator device.
 
         Args:
-            initial: Whether this fetch is part of config setup.
+            initial (bool): Whether this fetch is part of config setup.
 
         Returns:
-            Typed device data enriched with the first mask code when available.
+            MyAirDevice: Device data enriched with the first mask code when available.
+
+        Raises:
+            ParsingError: When the GraphQL response omits or malforms device data.
         """
         query: str = """
         query getPatientWrapper {

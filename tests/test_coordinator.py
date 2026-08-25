@@ -17,7 +17,12 @@ from custom_components.resmed_myair.models import (
 
 @pytest.mark.asyncio
 async def test_async_update_data_success(hass: MagicMock, myair_client: MagicMock) -> None:
-    """Successful refreshes return both device data and sleep records."""
+    """Successful refreshes return both device data and sleep records.
+
+    Args:
+        hass (MagicMock): Home Assistant instance supplied to the coordinator.
+        myair_client (MagicMock): Client double returning valid device and sleep data.
+    """
     myair_client.get_user_device_data.return_value = MyAirDevice.from_api(
         {
             "serialNumber": "1234",
@@ -44,7 +49,12 @@ async def test_async_update_data_success(hass: MagicMock, myair_client: MagicMoc
 
 @pytest.mark.asyncio
 async def test_async_update_data_auth_error(hass: MagicMock, myair_client: MagicMock) -> None:
-    """Authentication failures surface as config-entry auth errors."""
+    """Authentication failures surface as config-entry auth errors.
+
+    Args:
+        hass (MagicMock): Home Assistant instance supplied to the coordinator.
+        myair_client (MagicMock): Client double configured to reject authentication.
+    """
     myair_client.connect.side_effect = AuthenticationError("bad creds")
     coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
     # Only assert that the correct exception type is raised. The exact
@@ -63,7 +73,14 @@ async def test_async_update_data_parsing_error_variants(
     failing_fetch: str,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Parsing failures degrade only the failing payload branch."""
+    """Parsing failures degrade only the failing payload branch.
+
+    Args:
+        hass (MagicMock): Home Assistant instance supplied to the coordinator.
+        myair_client (MagicMock): Client double whose selected fetch will fail parsing.
+        failing_fetch (str): Payload branch to fail, either ``device`` or ``sleep_records``.
+        caplog (pytest.LogCaptureFixture): Captured log fixture used to verify diagnostics.
+    """
     expected_device = MyAirDevice.from_api(
         {"serialNumber": "1234", "fgDeviceManufacturerName": "ResMed"}
     )

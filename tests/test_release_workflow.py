@@ -15,7 +15,11 @@ WORKFLOW_SCRIPT_PATH = ".github/scripts/update_release_version.py"
 
 
 def _workflow_text() -> str:
-    """Return the checked-in release workflow text."""
+    """Read the checked-in release workflow used by the release assertions.
+
+    Returns:
+        str: Complete text of the repository's release workflow.
+    """
     return WORKFLOW_PATH.read_text()
 
 
@@ -23,11 +27,11 @@ def _step_block(workflow: str, step_name: str) -> str:
     """Extract a named workflow step from raw workflow text.
 
     Args:
-        workflow: Complete workflow text.
-        step_name: Name of the step to extract.
+        workflow (str): Complete workflow text to scan for the requested step.
+        step_name (str): Exact step label whose block should be returned.
 
     Returns:
-        The text block for the requested step.
+        str: Raw text block for the requested workflow step.
     """
     step_label = f"- name: {step_name}"
     assert step_label in workflow, f"{step_name} step is missing"
@@ -38,7 +42,11 @@ def _step_block(workflow: str, step_name: str) -> str:
 
 @pytest.fixture
 def release_version_script() -> ModuleType:
-    """Load the checked-in release version script as an importable module."""
+    """Load the checked-in release version script for direct behavior tests.
+
+    Returns:
+        ModuleType: Imported module object exposing the release version helpers.
+    """
     spec = util.spec_from_file_location("update_release_version", SCRIPT_PATH)
     assert spec is not None
     assert spec.loader is not None
@@ -111,7 +119,13 @@ def test_release_workflow_runs_checked_in_version_update_script() -> None:
 def test_validate_release_tag_accepts_supported_formats(
     release_version_script: ModuleType, tag_name: str
 ) -> None:
-    """Supported release tag formats pass validation."""
+    """Verify supported stable and prerelease tags pass validation.
+
+    Args:
+        release_version_script (ModuleType): Loaded module containing tag
+            validation logic.
+        tag_name (str): Candidate release tag in one of the supported formats.
+    """
     release_version_script.validate_release_tag(tag_name)
 
 
@@ -122,7 +136,13 @@ def test_validate_release_tag_accepts_supported_formats(
 def test_validate_release_tag_rejects_invalid_formats(
     release_version_script: ModuleType, tag_name: str
 ) -> None:
-    """Malformed release tags fail before version files are changed."""
+    """Verify malformed or unsafe tags are rejected before file updates.
+
+    Args:
+        release_version_script (ModuleType): Loaded module containing tag
+            validation logic.
+        tag_name (str): Candidate tag that must fail validation.
+    """
     with pytest.raises(ValueError, match="Invalid release tag"):
         release_version_script.validate_release_tag(tag_name)
 
@@ -134,7 +154,14 @@ def test_validate_release_tag_rejects_invalid_formats(
 def test_next_stable_release_tag(
     release_version_script: ModuleType, bump_type: str, expected_tag: str
 ) -> None:
-    """Stable bumps use the highest stable release and ignore prereleases."""
+    """Verify stable bumps ignore prereleases when selecting the next tag.
+
+    Args:
+        release_version_script (ModuleType): Loaded module containing release-tag
+            calculation logic.
+        bump_type (str): Semantic-version component to increment.
+        expected_tag (str): Tag expected after applying the bump to stable tags.
+    """
     tags = ["v0.1.7", "v0.2.7", "v0.3.0-beta.1", "untagged-example"]
 
     assert release_version_script.next_stable_release_tag(tags, bump_type) == expected_tag
@@ -153,7 +180,17 @@ def test_release_version_script_updates_manifest_and_const(
     const_text: str,
     expected_error: str | None,
 ) -> None:
-    """The release script rewrites files or rejects invalid const metadata."""
+    """Verify version updates succeed or reject incomplete constant metadata.
+
+    Args:
+        tmp_path (Path): Temporary directory for isolated manifest and constant
+            files.
+        release_version_script (ModuleType): Loaded module containing file-update
+            logic.
+        const_text (str): Initial contents of the synthetic constants module.
+        expected_error (str | None): Expected validation error text, or ``None``
+            for the successful update case.
+    """
     manifest_path = tmp_path / "manifest.json"
     const_path = tmp_path / "const.py"
     manifest_path.write_text(json.dumps({"domain": "resmed_myair", "version": "v0.1.0"}))

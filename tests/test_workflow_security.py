@@ -11,10 +11,10 @@ def _workflow_text(workflow_path: str) -> str:
     """Read a workflow file from the repository root.
 
     Args:
-        workflow_path: Repository-relative workflow path.
+        workflow_path (str): Repository-relative path of the workflow under test.
 
     Returns:
-        The workflow text.
+        str: Complete text of the selected workflow file.
     """
     return (REPO_ROOT / workflow_path).read_text()
 
@@ -23,11 +23,11 @@ def _step_blocks(workflow: str, step_name: str) -> list[str]:
     """Extract every named workflow step from raw workflow text.
 
     Args:
-        workflow: Complete workflow text.
-        step_name: Name of the step to extract.
+        workflow (str): Complete workflow text to scan for named steps.
+        step_name (str): Exact step label whose blocks should be collected.
 
     Returns:
-        Text blocks for every matching step.
+        list[str]: Raw text block for each matching workflow step.
     """
     step_label = f"- name: {step_name}"
     step_blocks: list[str] = []
@@ -57,7 +57,14 @@ def _step_blocks(workflow: str, step_name: str) -> list[str]:
 def test_read_only_workflows_disable_persisted_checkout_credentials(
     workflow_path: str, checkout_step_name: str
 ) -> None:
-    """Read-only workflows do not leave a write-capable token in git config."""
+    """Verify read-only workflows do not persist checkout credentials.
+
+    Args:
+        workflow_path (str): Repository-relative workflow path in the read-only
+            validation set.
+        checkout_step_name (str): Checkout step label whose credential setting is
+            protected by this assertion.
+    """
     checkout_blocks = _step_blocks(_workflow_text(workflow_path), checkout_step_name)
 
     for checkout_block in checkout_blocks:
@@ -73,7 +80,12 @@ def test_read_only_workflows_disable_persisted_checkout_credentials(
     ],
 )
 def test_read_only_workflows_use_contents_read_permissions(workflow_path: str) -> None:
-    """Read-only validation workflows request only repository read access."""
+    """Verify validation workflows request repository contents access only for reading.
+
+    Args:
+        workflow_path (str): Repository-relative path of the validation workflow
+            whose top-level permissions are inspected.
+    """
     workflow = _workflow_text(workflow_path)
 
     assert "permissions:" in workflow

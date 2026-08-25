@@ -32,7 +32,14 @@ from tests.conftest import CoordinatorFactory, CoordinatorLike, coordinator_data
 def _coordinator_payload(
     coordinator: CoordinatorLike,
 ) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
-    """Create mutable payload copies from typed coordinator data."""
+    """Create mutable payload copies from typed coordinator data.
+
+    Args:
+        coordinator (CoordinatorLike): Coordinator whose current payload is copied.
+
+    Returns:
+        tuple[dict[str, object] | None, list[dict[str, object]]]: Independent device and sleep-record payloads.
+    """
     device = dict(coordinator.data.device.raw) if coordinator.data.device else None
     sleep_records = [dict(record.raw) for record in coordinator.data.sleep_records]
     return device, sleep_records
@@ -45,7 +52,14 @@ async def test_async_setup_entry_refresh_failure(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Setup propagates refresh failures before forwarding platforms."""
+    """Setup propagates refresh failures before forwarding platforms.
+
+    Args:
+        hass (MagicMock): Home Assistant instance receiving the setup call.
+        config_entry (MockConfigEntry): Integration entry being initialized.
+        session (MagicMock): HTTP session returned by the patched session factory.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for setup dependencies.
+    """
     # Replace async_create_clientsession to return the provided session
     monkeypatch.setattr(
         resmed_module, "async_create_clientsession", lambda *args, **kwargs: session
@@ -74,7 +88,14 @@ async def test_async_setup_entry_multiple_calls(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Setup remains idempotent across repeated calls for the same entry."""
+    """Setup remains idempotent across repeated calls for the same entry.
+
+    Args:
+        hass (MagicMock): Home Assistant instance receiving both setup calls.
+        config_entry (MockConfigEntry): Integration entry initialized repeatedly.
+        session (MagicMock): HTTP session returned by the patched session factory.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for setup dependencies.
+    """
     monkeypatch.setattr(
         resmed_module, "async_create_clientsession", lambda *args, **kwargs: session
     )
@@ -104,7 +125,14 @@ async def test_async_setup_entry_migrates_mask_leak_statistics_metadata(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Setup schedules the mask leak statistics metadata migration before platforms load."""
+    """Setup schedules the mask leak statistics metadata migration before platforms load.
+
+    Args:
+        hass (MagicMock): Home Assistant instance receiving the setup call.
+        config_entry (MockConfigEntry): Integration entry being initialized.
+        session (MagicMock): HTTP session returned by the patched session factory.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for setup dependencies.
+    """
     monkeypatch.setattr(
         resmed_module, "async_create_clientsession", lambda *args, **kwargs: session
     )
@@ -132,7 +160,12 @@ async def test_async_setup_entry_migrates_mask_leak_statistics_metadata(
 async def test_most_recent_sleep_date_sensor_with_future_date(
     hass: MagicMock, coordinator_factory: CoordinatorFactory
 ) -> None:
-    """Most-recent sleep date sensors preserve future-dated records."""
+    """Most-recent sleep date sensors preserve future-dated records.
+
+    Args:
+        hass (MagicMock): Home Assistant instance attached to the sensor.
+        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator payload.
+    """
     future = (datetime.now(UTC).date() + timedelta(days=10)).isoformat()
 
     coordinator = coordinator_factory(
@@ -164,7 +197,16 @@ async def test_async_unload_entry_variants(
     expected_result: object,
     expected_runtime_data: object,
 ) -> None:
-    """Unload returns the platform result without clearing runtime data."""
+    """Unload returns the platform result without clearing runtime data.
+
+    Args:
+        hass (MagicMock): Home Assistant instance receiving the unload calls.
+        config_entry (MockConfigEntry): Integration entry whose platforms are unloaded.
+        unload_return (bool): Result returned by the patched platform unload operation.
+        initial_runtime_data (object): Runtime data present before unloading.
+        expected_result (object): Expected result from each unload call.
+        expected_runtime_data (object): Runtime data expected after unloading.
+    """
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=unload_return)
     config_entry.runtime_data = initial_runtime_data
     result1 = await async_unload_entry(hass, config_entry)
@@ -181,7 +223,12 @@ async def test_async_unload_entry_variants(
 async def test_sleep_record_sensor_multiple_updates(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Sleep-record sensors follow successive coordinator payload updates."""
+    """Sleep-record sensors follow successive coordinator payload updates.
+
+    Args:
+        hass (MagicMock): Home Assistant instance attached to the sensor.
+        coordinator (CoordinatorLike): Coordinator whose sleep record is updated.
+    """
     key = "CPAP Usage Minutes"
     desc = SLEEP_RECORD_SENSOR_DESCRIPTIONS[key]
     sensor = MyAirSleepRecordSensor(key, desc, coordinator)
@@ -211,7 +258,12 @@ async def test_sleep_record_sensor_multiple_updates(
 async def test_device_sensor_multiple_updates(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Device sensors follow successive coordinator payload updates."""
+    """Device sensors follow successive coordinator payload updates.
+
+    Args:
+        hass (MagicMock): Home Assistant instance attached to the sensor.
+        coordinator (CoordinatorLike): Coordinator whose device payload is updated.
+    """
     key = "CPAP Sleep Data Last Collected"
     desc = DEVICE_SENSOR_DESCRIPTIONS[key]
     sensor = MyAirDeviceSensor(key, desc, coordinator)
@@ -243,7 +295,12 @@ async def test_device_sensor_multiple_updates(
 async def test_friendly_usage_time_sensor_multiple_updates(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Friendly usage sensors reformat minutes after each data change."""
+    """Friendly usage sensors reformat minutes after each data change.
+
+    Args:
+        hass (MagicMock): Home Assistant instance attached to the sensor.
+        coordinator (CoordinatorLike): Coordinator whose usage minutes are updated.
+    """
     sensor = MyAirFriendlyUsageTime(coordinator)
     sensor.hass = hass
     sensor.entity_id = "sensor.test_friendly_usage"
@@ -271,7 +328,12 @@ async def test_friendly_usage_time_sensor_multiple_updates(
 async def test_most_recent_sleep_date_sensor_multiple_updates(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Most-recent sleep date sensors advance as new usable records appear."""
+    """Most-recent sleep date sensors advance as new usable records appear.
+
+    Args:
+        hass (MagicMock): Home Assistant instance attached to the sensor.
+        coordinator (CoordinatorLike): Coordinator receiving additional sleep records.
+    """
     sensor = MyAirMostRecentSleepDate(coordinator)
     sensor.hass = hass
     sensor.entity_id = "sensor.test_recent_sleep"
@@ -341,7 +403,17 @@ async def test_sensor_becomes_unavailable_on_missing_data(
     data_field: str,
     empty_value: object,
 ) -> None:
-    """Entities go unavailable when the backing payload disappears."""
+    """Entities go unavailable when the backing payload disappears.
+
+    Args:
+        hass (MagicMock): Home Assistant instance attached to the sensor.
+        coordinator (CoordinatorLike): Coordinator whose payload is emptied.
+        sensor_class (type[object]): Sensor class under test.
+        key (str | None): Entity key passed to raw sensors, when applicable.
+        desc (object): Sensor description passed to raw sensors.
+        data_field (str): Coordinator field to clear during the test.
+        empty_value (object): Empty replacement value for the selected field.
+    """
     sensor = sensor_class(key, desc, coordinator)
     sensor.hass = hass
     sensor.entity_id = f"sensor.test_{key.replace(' ', '_').lower()}"
@@ -436,7 +508,18 @@ async def test_sensor_handles_empty_or_missing_data(
     expected_available: bool,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Entities remain safe when their coordinator payload is empty."""
+    """Entities remain safe when their coordinator payload is empty.
+
+    Args:
+        hass (MagicMock): Home Assistant instance attached to the sensor.
+        sensor_class (type[object]): Sensor class exercised by the parameter set.
+        key (str | None): Entity key passed to raw sensors, when applicable.
+        desc (object): Sensor description passed to raw sensors.
+        coordinator_data (dict[str, object]): Empty or incomplete payload under test.
+        expected_native_value (object): Native value expected from the empty payload.
+        expected_available (bool): Whether the sensor should remain available.
+        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
+    """
     coordinator = coordinator_factory(data=coordinator_data)
     if sensor_class in (MyAirSleepRecordSensor, MyAirDeviceSensor):
         sensor = sensor_class(key, desc, coordinator)
@@ -452,7 +535,12 @@ async def test_sensor_handles_empty_or_missing_data(
 
 # Home Assistant calls this through an AsyncMock side effect during setup tests.
 async def fake_forward_entry_setups(config_entry: MockConfigEntry, platforms: list[str]) -> None:
-    """Forward sensor platform setup calls using the test config entry."""
+    """Forward sensor platform setup calls using the test config entry.
+
+    Args:
+        config_entry (MockConfigEntry): Entry whose sensor platform is forwarded.
+        platforms (list[str]): Platform names requested by integration setup.
+    """
     # Use the hass from config_entry, which is set by Home Assistant during setup
     hass = config_entry.hass
     if "sensor" in platforms:
@@ -466,7 +554,14 @@ async def test_force_poll_service_triggers_refresh(
     coordinator_factory: CoordinatorFactory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The force-poll service directly triggers a coordinator refresh."""
+    """The force-poll service directly triggers a coordinator refresh.
+
+    Args:
+        hass (MagicMock): Home Assistant instance receiving setup and service calls.
+        config_entry (MockConfigEntry): Integration entry whose service is registered.
+        coordinator_factory (CoordinatorFactory): Factory creating the refreshable coordinator.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for integration dependencies.
+    """
     # Use the centralized factory to create a mock coordinator with the
     # attributes tests expect (async_refresh, async_config_entry_first_refresh, .data)
     dummy_coordinator = coordinator_factory(mock=True)
@@ -482,11 +577,11 @@ async def test_force_poll_service_triggers_refresh(
         """Capture service registration arguments for force-poll assertions.
 
         Args:
-            domain: Home Assistant service domain being registered.
-            name: Service name derived from the account username.
-            func: Service callback registered by the integration.
-            *args: Additional Home Assistant service registration arguments.
-            **kwargs: Additional Home Assistant service registration options.
+            domain (str): Home Assistant service domain being registered.
+            name (str): Service name derived from the account username.
+            func (object): Service callback registered by the integration.
+            args (object): Additional Home Assistant service registration arguments.
+            kwargs (object): Additional Home Assistant service registration options.
         """
         registered[name] = func
         domains.append(domain)
@@ -526,7 +621,12 @@ async def test_force_poll_service_triggers_refresh(
 async def test_sensor_unique_id_and_device_info(
     hass: MagicMock, coordinator: CoordinatorLike
 ) -> None:
-    """Sensors expose stable unique IDs and manufacturer device metadata."""
+    """Sensors expose stable unique IDs and manufacturer device metadata.
+
+    Args:
+        hass (MagicMock): Home Assistant instance attached to the sensor.
+        coordinator (CoordinatorLike): Coordinator providing the sensor payload.
+    """
     key = "CPAP Usage Minutes"
     desc = SLEEP_RECORD_SENSOR_DESCRIPTIONS[key]
     sensor = MyAirSleepRecordSensor(key, desc, coordinator)
@@ -543,15 +643,21 @@ async def test_sensor_unique_id_and_device_info(
 async def test_async_setup_entry_registers_all_sensors(
     hass: MagicMock, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Setup registers every device, sleep, and synthesized sensor entity."""
+    """Setup registers every device, sleep, and synthesized sensor entity.
+
+    Args:
+        hass (MagicMock): Home Assistant instance receiving platform setup.
+        config_entry (MockConfigEntry): Integration entry being set up.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for the coordinator.
+    """
     added_entities = []
 
     def fake_add_entities(entities: list[object], update_before_add: bool) -> None:
         """Collect entities that setup passes to Home Assistant.
 
         Args:
-            entities: Sensor entities created by ``async_setup_entry``.
-            update_before_add: Whether HA should update entities before adding them.
+            entities (list[object]): Sensor entities created by ``async_setup_entry``.
+            update_before_add (bool): Whether HA should update entities before adding them.
         """
         assert isinstance(update_before_add, bool)
         added_entities.extend(entities)
@@ -597,11 +703,26 @@ async def test_sensor_setup_registers_valid_force_poll_service_names(
     username: str,
     expected_service_name: str,
 ) -> None:
-    """Sensor setup sanitizes account usernames into valid HA service names."""
+    """Sensor setup sanitizes account usernames into valid HA service names.
+
+    Args:
+        hass (MagicMock): Home Assistant instance receiving platform setup.
+        config_entry (MockConfigEntry): Base entry used to construct each case.
+        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for sensor descriptions.
+        username (str): Account username to sanitize into a service name.
+        expected_service_name (str): Service name expected after sanitization.
+    """
     registered_services: list[tuple[str, str, object]] = []
 
     def register_service(domain: str, service: str, handler: object) -> None:
-        """Collect service registrations from the platform setup flow."""
+        """Collect service registrations from the platform setup flow.
+
+        Args:
+            domain (str): Home Assistant domain registering the service.
+            service (str): Sanitized service name registered by the platform.
+            handler (object): Callback associated with the registered service.
+        """
         registered_services.append((domain, service, handler))
 
     coordinator = coordinator_factory(mock=True)

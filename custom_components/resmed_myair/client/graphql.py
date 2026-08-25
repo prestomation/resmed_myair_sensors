@@ -25,9 +25,9 @@ class MyAirGraphQLClient:
         """Bind GraphQL requests to the shared session and auth state.
 
         Args:
-            session: Shared aiohttp client session.
-            auth: Auth session that owns tokens.
-            region_config: Region endpoint configuration.
+            session (ClientSession): Shared aiohttp client session.
+            auth (MyAirAuthSession): Auth session that owns tokens.
+            region_config (RegionConfig): Region endpoint configuration.
         """
         self._session = session
         self._auth = auth
@@ -44,7 +44,8 @@ class MyAirGraphQLClient:
         """Cache the myAir country code used for AppSync headers.
 
         Args:
-            value: myAir country code, or ``None`` to force token decoding later.
+            value (str | None): myAir country code, or ``None`` to force token
+                decoding later.
         """
         self._country_code = value
 
@@ -52,12 +53,12 @@ class MyAirGraphQLClient:
         """Post a myAir GraphQL operation and validate ResMed errors.
 
         Args:
-            operation_name: GraphQL operation name.
-            query: GraphQL query text.
-            initial: Whether this query is part of initial config flow.
+            operation_name (str): GraphQL operation name.
+            query (str): GraphQL query text.
+            initial (bool): Whether this query is part of initial config flow.
 
         Returns:
-            Decoded GraphQL response payload.
+            dict[str, Any]: Decoded GraphQL response payload.
         """
         headers = self._headers()
         json_query: dict[str, Any] = {
@@ -87,7 +88,7 @@ class MyAirGraphQLClient:
         """Build AppSync headers from regional constants and token claims.
 
         Returns:
-            Headers accepted by ResMed's myAir GraphQL endpoint.
+            dict[str, str]: Headers accepted by ResMed's myAir GraphQL endpoint.
 
         Raises:
             ParsingError: When no country code can be derived for AppSync.
@@ -114,7 +115,8 @@ class MyAirGraphQLClient:
         """Decode the unsigned ID token claim used by ResMed's country header.
 
         Returns:
-            myAir country code, or ``None`` when no ID token is available yet.
+            str | None: myAir country code, or ``None`` when no ID token is
+                available yet.
 
         Raises:
             ParsingError: When the ID token cannot be decoded or lacks the claim.

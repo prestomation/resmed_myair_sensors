@@ -26,10 +26,10 @@ def _device(serial_number: str = "SN123") -> MyAirDevice:
     """Return a typed myAir device for config-flow workflow tests.
 
     Args:
-        serial_number: Device serial number returned by the fake myAir API.
+        serial_number (str): Device serial number returned by the fake myAir API.
 
     Returns:
-        Device model used by setup and reauth flow assertions.
+        MyAirDevice: Device model used by setup and reauth flow assertions.
     """
     return MyAirDevice.from_api(
         {
@@ -44,11 +44,11 @@ def _flow(hass: MagicMock, context: dict[str, str] | None = None) -> MyAirConfig
     """Create a config flow bound to the test Home Assistant instance.
 
     Args:
-        hass: Test Home Assistant instance.
-        context: Optional config-flow context.
+        hass (MagicMock): Test Home Assistant instance.
+        context (dict[str, str] | None): Optional config-flow context.
 
     Returns:
-        Configured myAir config flow.
+        MyAirConfigFlow: Configured myAir config flow.
     """
     flow = MyAirConfigFlow()
     flow.hass = hass
@@ -62,7 +62,13 @@ async def test_initial_setup_mfa_workflow_sets_unique_id_and_persists_token(
     myair_client: RESTClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Initial setup carries state from login to MFA and registers the device serial."""
+    """Verify initial setup carries login state through MFA and registers the device serial.
+
+    Args:
+        hass (MagicMock): Home Assistant double used for config-entry operations.
+        myair_client (RESTClient): Client carrying MFA state and the remembered token.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for setup and MFA helpers.
+    """
     myair_client.device_token = "remembered-device-token"
     get_device = AsyncMock(return_value=("MFA_REQUIRED", None, myair_client))
     get_mfa_device = AsyncMock(return_value=(AUTHN_SUCCESS, _device()))
@@ -108,7 +114,13 @@ async def test_reauth_mfa_workflow_updates_entry_and_reloads(
     myair_client: RESTClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Reauth carries stored data through confirm, MFA, update, and reload."""
+    """Verify reauth carries stored data through confirm, MFA, update, and reload.
+
+    Args:
+        hass (MagicMock): Home Assistant double used for entry lookup and updates.
+        myair_client (RESTClient): Client carrying the replacement remembered token.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for setup and MFA helpers.
+    """
     entry_data = {
         CONF_USER_NAME: "old@example.com",
         CONF_PASSWORD: "old-password",
@@ -173,7 +185,13 @@ async def test_reconfigure_mfa_workflow_updates_entry_and_reloads(
     myair_client: RESTClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Reconfigure carries updated setup data through MFA, update, and reload."""
+    """Verify reconfigure carries updated setup data through MFA, update, and reload.
+
+    Args:
+        hass (MagicMock): Home Assistant double used for entry lookup and updates.
+        myair_client (RESTClient): Client carrying the replacement remembered token.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for setup and MFA helpers.
+    """
     entry_data = {
         CONF_USER_NAME: "old@example.com",
         CONF_PASSWORD: "old-password",

@@ -47,10 +47,10 @@ class RegionConfig:
         """Build the email-factor MFA endpoint for an auth challenge.
 
         Args:
-            email_factor_id: Optional factor ID discovered from authn.
+            email_factor_id (str | None): Optional factor ID discovered from authn.
 
         Returns:
-            Fully qualified Okta MFA verification URL.
+            str: Fully qualified Okta MFA verification URL.
         """
         factor_id = email_factor_id or self.email_factor_id
         return (
@@ -105,10 +105,10 @@ def get_region_config(region: str) -> RegionConfig:
     """Resolve a user-selected region code to endpoint settings.
 
     Args:
-        region: Region code configured by the user.
+        region (str): Region code configured by the user.
 
     Returns:
-        Region-specific endpoint settings.
+        RegionConfig: Region-specific endpoint settings.
 
     Raises:
         ValueError: When the region code is not supported.

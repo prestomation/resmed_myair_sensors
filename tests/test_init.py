@@ -22,7 +22,13 @@ async def test_async_migrate_entry_versions(
     version: int,
     expected_update: dict[str, object] | None,
 ) -> None:
-    """Config-entry migration only updates entries that need a default region."""
+    """Config-entry migration only updates entries that need a default region.
+
+    Args:
+        hass (MagicMock): Home Assistant instance whose entry registry is being migrated.
+        version (int): Config-entry schema version under test.
+        expected_update (dict[str, object] | None): Expected replacement data, if migration applies.
+    """
     entry = MockConfigEntry(
         domain="resmed_myair", title="ResMed-CPAP", data={"foo": "bar"}, version=version
     )

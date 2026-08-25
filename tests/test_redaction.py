@@ -30,11 +30,20 @@ from custom_components.resmed_myair.redaction import REDACTED, redact_dict
     ],
 )
 def test_redact_dict_redacts_sensitive_values(data: object, expected: object) -> None:
-    """Sensitive keys are redacted across nested, claim, and immutable mappings."""
+    """Redact sensitive keys across nested, claim, and immutable mappings.
+
+    Args:
+        data (object): Mapping or nested value containing sensitive fields.
+        expected (object): Redacted structure expected from the helper.
+    """
     assert redact_dict(data) == expected
 
 
 @pytest.mark.parametrize("value", ["plain", None])
 def test_redact_dict_returns_non_collection_values_unchanged(value: object) -> None:
-    """Scalar values pass through the redactor unchanged."""
+    """Leave scalar values unchanged when they pass through the redactor.
+
+    Args:
+        value (object): Non-collection value supplied to the redaction helper.
+    """
     assert redact_dict(value) is value

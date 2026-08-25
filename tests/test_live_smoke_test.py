@@ -21,7 +21,12 @@ SPEC.loader.exec_module(live_smoke_test)
 
 
 def test_load_env_file_parses_assignments_and_quoted_values(tmp_path: Path) -> None:
-    """Env-file loading accepts comments, blank lines, exports, and quotes."""
+    """Verify env-file parsing keeps valid assignments and strips shell syntax.
+
+    Args:
+        tmp_path (Path): Isolated pytest directory in which to create the env
+            fixture.
+    """
     env_file = tmp_path / "live_smoke_test.env"
     env_file.write_text(
         """# local credentials
@@ -103,7 +108,11 @@ def test_build_default_payload_matches_readme_sensor_fields() -> None:
 
 
 def test_write_json_payload_serializes_dates(tmp_path: Path) -> None:
-    """Output writing serializes date values and creates parent directories."""
+    """Verify JSON output converts dates and creates missing parent directories.
+
+    Args:
+        tmp_path (Path): Isolated pytest directory for the nested output file.
+    """
     output_file = tmp_path / "nested" / "live_smoke_test_output.json"
 
     live_smoke_test.write_json_payload(output_file, {"date": date(2026, 5, 30)})

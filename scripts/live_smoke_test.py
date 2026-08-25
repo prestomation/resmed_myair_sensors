@@ -46,10 +46,11 @@ def load_env_file(path: Path) -> dict[str, str]:
     """Load simple KEY=VALUE assignments from an env file.
 
     Args:
-        path: Env file to parse.
+        path (Path): Env file to parse.
 
     Returns:
-        Parsed environment assignments. Missing files return an empty mapping.
+        dict[str, str]: Parsed environment assignments. Missing files return an
+            empty mapping.
     """
     if not path.exists():
         return {}
@@ -86,18 +87,18 @@ def _get_setting(
     """Resolve one setting from env file, process env, default, or prompt.
 
     Args:
-        env_values: Values loaded from the optional env file.
-        key: Environment variable name to resolve.
-        prompt: Prompt shown when interactive input is needed.
-        secret: Whether to use `getpass` for prompt input.
-        default: Optional fallback value.
-        no_prompt: Whether missing values should fail instead of prompting.
+        env_values (Mapping[str, str]): Values loaded from the optional env file.
+        key (str): Environment variable name to resolve.
+        prompt (str): Prompt shown when interactive input is needed.
+        secret (bool): Whether to use `getpass` for prompt input.
+        default (str | None): Optional fallback value.
+        no_prompt (bool): Whether missing values should fail instead of prompting.
 
     Returns:
-        Resolved setting value.
+        str: Resolved setting value.
 
     Raises:
-        ValueError: If no value is available and prompts are disabled.
+        ValueError: If no setting is available and prompts are disabled.
     """
     value = env_values.get(key) or os.environ.get(key) or default
     if value:
@@ -113,11 +114,12 @@ def build_config(env_values: Mapping[str, str], no_prompt: bool = False) -> MyAi
     """Build a myAir client config from env values or interactive prompts.
 
     Args:
-        env_values: Values loaded from the optional env file.
-        no_prompt: Whether missing credentials should raise instead of prompting.
+        env_values (Mapping[str, str]): Values loaded from the optional env file.
+        no_prompt (bool): Whether missing credentials should raise instead of
+            prompting.
 
     Returns:
-        Config consumed by the existing REST client.
+        MyAirConfig: Config consumed by the existing REST client.
     """
     return MyAirConfig(
         username=_get_setting(env_values, ENV_USERNAME, "myAir username", no_prompt=no_prompt),
@@ -143,10 +145,10 @@ def _serialize_value(value: Any) -> Any:
     """Convert date-like values before JSON serialization.
 
     Args:
-        value: Value passed by `json.dumps`.
+        value (Any): Value passed by `json.dumps`.
 
     Returns:
-        JSON-compatible representation.
+        Any: JSON-compatible representation.
 
     Raises:
         TypeError: If the value is unsupported by this serializer.
@@ -160,8 +162,8 @@ def write_json_payload(path: Path, payload: Mapping[str, Any]) -> None:
     """Write a stable JSON payload to disk.
 
     Args:
-        path: Output path to create.
-        payload: JSON-compatible payload to serialize.
+        path (Path): Output path to create.
+        payload (Mapping[str, Any]): JSON-compatible payload to serialize.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -179,12 +181,13 @@ def build_default_payload(
     """Build the default smoke-test output from README sensor fields.
 
     Args:
-        data: Device and sleep records returned by myAir.
-        status: Final authentication status.
-        region: myAir region used for the request.
+        data (MyAirCoordinatorData): Device and sleep records returned by myAir.
+        status (str): Final authentication status.
+        region (str): myAir region used for the request.
 
     Returns:
-        JSON-compatible payload containing the README sensor values.
+        dict[str, Any]: JSON-compatible payload containing the README sensor
+            values.
     """
     device = data.device
     latest_record = data.latest_sleep_record
@@ -229,10 +232,10 @@ def build_raw_payload(data: MyAirCoordinatorData) -> dict[str, Any]:
     """Build a raw payload for local inspection.
 
     Args:
-        data: Device and sleep records returned by myAir.
+        data (MyAirCoordinatorData): Device and sleep records returned by myAir.
 
     Returns:
-        Raw device and sleep-record payloads from myAir.
+        dict[str, Any]: Raw device and sleep-record payloads from myAir.
     """
     return {
         "device": data.device.raw if data.device else None,
@@ -244,12 +247,13 @@ async def _authenticate(client: RESTClient, env_values: Mapping[str, str], no_pr
     """Authenticate, prompting for MFA when the account requires it.
 
     Args:
-        client: Client to authenticate.
-        env_values: Values loaded from the optional env file.
-        no_prompt: Whether missing MFA codes should raise instead of prompting.
+        client (RESTClient): Client to authenticate.
+        env_values (Mapping[str, str]): Values loaded from the optional env file.
+        no_prompt (bool): Whether missing MFA codes should raise instead of
+            prompting.
 
     Returns:
-        Final authentication status.
+        str: Final authentication status.
     """
     status = await client.connect(initial=True)
     if status != AUTH_NEEDS_MFA:
@@ -274,13 +278,18 @@ async def run_live_smoke_test(
     """Run the live myAir smoke test and return the selected output payload.
 
     Args:
-        config: myAir credentials and region.
-        env_values: Values loaded from the optional env file.
-        include_raw: Whether to include raw payload values.
-        no_prompt: Whether missing MFA codes should raise instead of prompting.
+        config (MyAirConfig): myAir credentials and region.
+        env_values (Mapping[str, str]): Values loaded from the optional env file.
+        include_raw (bool): Whether to include raw payload values.
+        no_prompt (bool): Whether missing MFA codes should raise instead of
+            prompting.
 
     Returns:
-        JSON-compatible smoke-test output.
+        dict[str, Any]: JSON-compatible smoke-test output.
+
+    Raises:
+        AuthenticationError: If authentication finishes with an unexpected
+            status.
     """
     async with ClientSession() as session:
         client = RESTClient(config, session)
@@ -303,7 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Create the command-line parser for the smoke-test script.
 
     Returns:
-        Configured argument parser.
+        argparse.ArgumentParser: Configured argument parser.
     """
     parser = argparse.ArgumentParser(
         description="Run a manual live smoke test against ResMed myAir.",
@@ -337,10 +346,10 @@ async def async_main(argv: list[str] | None = None) -> int:
     """Run the smoke-test CLI asynchronously.
 
     Args:
-        argv: Optional argument list for tests.
+        argv (list[str] | None): Optional argument list for tests.
 
     Returns:
-        Process exit code.
+        int: Process exit code.
     """
     args = build_parser().parse_args(argv)
     env_values = load_env_file(args.env_file)
@@ -360,10 +369,10 @@ def main(argv: list[str] | None = None) -> int:
     """Run the smoke-test CLI.
 
     Args:
-        argv: Optional argument list for tests.
+        argv (list[str] | None): Optional argument list for tests.
 
     Returns:
-        Process exit code.
+        int: Process exit code.
     """
     try:
         return asyncio.run(async_main(argv))

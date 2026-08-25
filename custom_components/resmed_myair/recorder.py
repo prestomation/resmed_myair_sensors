@@ -16,11 +16,11 @@ def _mask_leak_entity_ids(hass: HomeAssistant) -> list[str]:
     """Return registered myAir mask leak entity IDs.
 
     Args:
-        hass: Home Assistant instance with the entity registry.
+        hass (HomeAssistant): Home Assistant instance with the entity registry.
 
     Returns:
-        Entity IDs for the mask leak sensor whose previous unit metadata may
-        need migration.
+        list[str]: Entity IDs for the mask leak sensor whose previous unit
+            metadata may need migration.
     """
     entity_registry = er.async_get(hass)
 
@@ -38,7 +38,8 @@ def async_migrate_mask_leak_statistics_metadata(hass: HomeAssistant) -> None:
     """Relabel legacy mask leak statistics metadata to the corrected unit.
 
     Args:
-        hass: Home Assistant instance with recorder and entity registry state.
+        hass (HomeAssistant): Home Assistant instance with recorder and entity
+            registry state.
     """
     if DATA_INSTANCE not in hass.data:
         return
@@ -58,11 +59,12 @@ def async_custom_equivalent_units(hass: HomeAssistant) -> dict[str, dict[str | N
     """Return custom equivalent units for long-term statistics migrations.
 
     Args:
-        hass: Home Assistant instance with the entity registry.
+        hass (HomeAssistant): Home Assistant instance with the entity registry.
 
     Returns:
-        Entity-specific mappings from the old mask-leak unit to the supported
-        volume flow rate unit. The value conversion is 1:1.
+        dict[str, dict[str | None, str]]: Entity-specific mappings from the old
+            mask-leak unit to the supported volume flow rate unit. The value
+            conversion is 1:1.
     """
     return {
         entity_id: {PERCENTAGE: UnitOfVolumeFlowRate.LITERS_PER_MINUTE}
