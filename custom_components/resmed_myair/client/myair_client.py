@@ -35,7 +35,7 @@ class MyAirClient(ABC):
         """Authenticate or validate cached credentials before data fetches.
 
         Returns:
-            Provider-specific auth status string.
+            str: Provider-specific auth status string.
         """
 
     @abstractmethod
@@ -43,10 +43,12 @@ class MyAirClient(ABC):
         """Fetch the account's assigned flow-generator device.
 
         Args:
-            initial: Whether the fetch is part of initial setup rather than polling.
+            initial (bool): Whether the fetch is part of initial setup rather than
+                polling.
 
         Returns:
-            Typed device metadata used for entity identity and device info.
+            MyAirDevice: Typed device metadata used for entity identity and device
+                info.
         """
 
     @abstractmethod
@@ -54,8 +56,10 @@ class MyAirClient(ABC):
         """Fetch recent nightly therapy records for sensor state.
 
         Args:
-            initial: Whether the fetch is part of initial setup rather than polling.
+            initial (bool): Whether the fetch is part of initial setup rather than
+                polling.
 
         Returns:
-            Typed sleep records ordered as returned by the transport implementation.
+            list[MyAirSleepRecord]: Typed sleep records ordered as returned by the
+                transport implementation.
         """

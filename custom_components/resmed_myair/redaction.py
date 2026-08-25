@@ -12,10 +12,11 @@ def redact_dict(data: Any | None) -> Any | None:
     """Redact sensitive values from nested dictionaries and lists.
 
     Args:
-        data: Value to redact.
+        data (Any | None): Value to redact.
 
     Returns:
-        A redacted copy of mappings/lists, or the original scalar value.
+        Any | None: A redacted copy of mappings/lists, or the original scalar
+            value.
     """
     if not isinstance(data, Mapping | list):
         return data

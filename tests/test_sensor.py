@@ -25,7 +25,11 @@ from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike, coordina
 def test_mask_leak_sensor_uses_liters_per_minute_without_changing_raw_key(
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Mask leak keeps its legacy raw key while exposing the correct flow unit."""
+    """Mask leak keeps its legacy raw key while exposing the correct flow unit.
+
+    Args:
+        coordinator_factory (CoordinatorFactory): Factory creating a device-backed coordinator.
+    """
     description = SLEEP_RECORD_SENSOR_DESCRIPTIONS["CPAP Mask Leak"]
     coordinator = coordinator_factory(data=coordinator_data(device={"serialNumber": "SN123"}))
 
@@ -38,7 +42,11 @@ def test_mask_leak_sensor_uses_liters_per_minute_without_changing_raw_key(
 
 @pytest.mark.parametrize("raw_data", [None, {"unexpected": "payload"}])
 def test_coordinator_data_uses_empty_payload_for_untyped_data(raw_data: object) -> None:
-    """Untyped startup coordinator payloads collapse to empty typed data."""
+    """Untyped startup coordinator payloads collapse to empty typed data.
+
+    Args:
+        raw_data (object): Untyped coordinator value supplied during startup.
+    """
     coordinator = MagicMock()
     coordinator.data = raw_data
 
@@ -64,7 +72,15 @@ def test_friendly_usage_time_all_branches(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Friendly usage sensors format minutes and handle missing records."""
+    """Friendly usage sensors format minutes and handle missing records.
+
+    Args:
+        data (dict[str, object]): Coordinator payload for the parameterized case.
+        expected_native (object): Native value expected when the sensor is available.
+        expected_available (bool): Whether the sensor should report available data.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for state writes.
+        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
+    """
     coordinator = coordinator_factory(data=data)
     sensor = MyAirFriendlyUsageTime(coordinator)
     monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
@@ -104,7 +120,15 @@ def test_most_recent_sleep_date_all_branches(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Most-recent sleep date sensors select the latest usable record."""
+    """Most-recent sleep date sensors select the latest usable record.
+
+    Args:
+        data (dict[str, object]): Coordinator payload for the parameterized case.
+        expected_native (object): Date string expected when a usable record exists.
+        expected_available (bool): Whether the sensor should report available data.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for state writes.
+        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
+    """
     coordinator = coordinator_factory(data=data)
     sensor = MyAirMostRecentSleepDate(coordinator)
     monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
@@ -136,7 +160,17 @@ def test_sleep_record_sensor_handle_coordinator_update(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Sleep-record sensors parse raw values and optional dates correctly."""
+    """Sleep-record sensors parse raw values and optional dates correctly.
+
+    Args:
+        sleep_records (list[dict[str, object]] | None): Records supplied to the coordinator.
+        sensor_key (str): Raw record key selected by the sensor description.
+        device_class (SensorDeviceClass | None): Optional class controlling date parsing.
+        expected_value (object): Native value expected after parsing the raw record.
+        expected_available (bool): Whether the sensor should report available data.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for date parsing and state writes.
+        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
+    """
     # Patch dt_util.parse_date to return a sentinel for test
     if device_class == SensorDeviceClass.DATE:
         parsed_date = object()
@@ -176,7 +210,14 @@ def test_sensor_is_available_when_raw_key_value_is_none(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Raw device and sleep-record keys with null values still count as available data."""
+    """Raw device and sleep-record keys with null values still count as available data.
+
+    Args:
+        sensor_class (type[MyAirSleepRecordSensor | MyAirDeviceSensor]): Sensor class under test.
+        coordinator_payload (dict[str, object]): Payload containing a null raw value.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for state writes.
+        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
+    """
     coordinator = coordinator_factory(data=coordinator_payload)
     sensor = sensor_class("Test", SensorEntityDescription(key="foo"), coordinator)
     monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
@@ -233,7 +274,18 @@ def test_myair_device_sensor_parametrized(
     monkeypatch: pytest.MonkeyPatch,
     coordinator_factory: CoordinatorFactory,
 ) -> None:
-    """Device sensors parse datetimes only when the entity class requires it."""
+    """Device sensors parse datetimes only when the entity class requires it.
+
+    Args:
+        device_data (dict[str, object] | None): Device payload for the parameterized case.
+        sensor_key (str): Raw device key selected by the sensor description.
+        device_class (SensorDeviceClass | None): Optional class controlling timestamp parsing.
+        expected_native (object): Native value expected after parsing the device payload.
+        expected_available (bool): Whether the sensor should report available data.
+        patch_parse_datetime (bool): Whether to replace the datetime parser with a sentinel.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for parsing and state writes.
+        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
+    """
     # Patch dt_util.parse_datetime if needed
     if patch_parse_datetime:
         monkeypatch.setattr(
@@ -261,7 +313,15 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
     config_entry: MockConfigEntry,
     service_registry_shim: ServiceRegistryShimLike,
 ) -> None:
-    """Setup adds sensor entities and registers the force-poll service."""
+    """Setup adds sensor entities and registers the force-poll service.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for sensor setup dependencies.
+        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
+        hass (MagicMock): Home Assistant instance receiving platform setup.
+        config_entry (MockConfigEntry): Fixture preparing shared config-entry helpers.
+        service_registry_shim (ServiceRegistryShimLike): Registry shim capturing the force-poll service.
+    """
     async_add_entities = MagicMock()
     coordinator = coordinator_factory(mock=True)
     # This test will create its own local MockConfigEntry (below) because
@@ -320,7 +380,13 @@ def test_myair_device_sensor_handle_coordinator_update_keyerror(
     coordinator_factory: CoordinatorFactory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Missing device keys leave the sensor unavailable and log the failure."""
+    """Missing device keys leave the sensor unavailable and log the failure.
+
+    Args:
+        caplog (pytest.LogCaptureFixture): Captured log fixture used to verify the error message.
+        coordinator_factory (CoordinatorFactory): Factory creating the device-backed coordinator.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for state writes.
+    """
     coordinator = coordinator_factory(mock=True)
     coordinator.data = coordinator_data(device={"serialNumber": "SN123"})
     desc = SensorEntityDescription(key="missing_key")

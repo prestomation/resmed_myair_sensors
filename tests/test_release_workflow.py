@@ -1,4 +1,4 @@
-"""Release-workflow tests that protect versioning and tag-update behavior."""
+"""Release-workflow tests that protect dispatch and versioning behavior."""
 
 from importlib import util
 import json
@@ -15,7 +15,11 @@ WORKFLOW_SCRIPT_PATH = ".github/scripts/update_release_version.py"
 
 
 def _workflow_text() -> str:
-    """Return the checked-in release workflow text."""
+    """Read the checked-in release workflow used by the release assertions.
+
+    Returns:
+        str: Complete text of the repository's release workflow.
+    """
     return WORKFLOW_PATH.read_text()
 
 
@@ -23,11 +27,11 @@ def _step_block(workflow: str, step_name: str) -> str:
     """Extract a named workflow step from raw workflow text.
 
     Args:
-        workflow: Complete workflow text.
-        step_name: Name of the step to extract.
+        workflow (str): Complete workflow text to scan for the requested step.
+        step_name (str): Exact step label whose block should be returned.
 
     Returns:
-        The text block for the requested step.
+        str: Raw text block for the requested workflow step.
     """
     step_label = f"- name: {step_name}"
     assert step_label in workflow, f"{step_name} step is missing"
@@ -38,7 +42,11 @@ def _step_block(workflow: str, step_name: str) -> str:
 
 @pytest.fixture
 def release_version_script() -> ModuleType:
-    """Load the checked-in release version script as an importable module."""
+    """Load the checked-in release version script for direct behavior tests.
+
+    Returns:
+        ModuleType: Imported module object exposing the release version helpers.
+    """
     spec = util.spec_from_file_location("update_release_version", SCRIPT_PATH)
     assert spec is not None
     assert spec.loader is not None
@@ -55,59 +63,120 @@ def release_version_script() -> ModuleType:
             sys.modules["update_release_version"] = previous_module
 
 
-def test_edited_release_checkout_uses_release_tag() -> None:
-    """Edited release runs continue from the published release tag."""
+def test_release_workflow_is_dispatch_only() -> None:
+    """Release creation requires an explicit manual dispatch."""
     workflow = _workflow_text()
+    trigger_block = workflow.split("permissions:", 1)[0]
 
-    assert (
-        "github.event_name == 'release' && github.event.release.tag_name || github.ref" in workflow
-    )
+    assert "workflow_dispatch:" in trigger_block
+    assert "\n  release:" not in trigger_block
+    assert "bump:" in trigger_block
+    assert "tag:" in trigger_block
+    assert "prerelease:" in trigger_block
 
 
-def test_release_workflow_serializes_tag_updates() -> None:
-    """Tag-updating release runs serialize via workflow concurrency."""
+def test_release_workflow_serializes_tag_creation() -> None:
+    """Release runs serialize without cancelling an in-progress publication."""
     workflow = _workflow_text()
 
     assert "concurrency:" in workflow
-    assert "${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}" in workflow
-    assert "cancel-in-progress: true" in workflow
+    assert "group: release" in workflow
+    assert "cancel-in-progress: false" in workflow
 
 
-def test_published_release_checkout_uses_release_tag() -> None:
-    """Published release builds check out the tag created for that release."""
-    checkout_block = _step_block(_workflow_text(), "Checkout Repository")
-
-    assert "github.event.release.tag_name" in checkout_block
-    assert "github.event.release.target_commitish" not in checkout_block
-
-
-@pytest.mark.parametrize(
-    "step_name",
-    [
-        "Update Release Version Files",
-        "Update Release with Version Changes Commit",
-    ],
-)
-def test_release_shell_steps_use_tag_environment_variable(step_name: str) -> None:
-    """Shell steps quote the release tag before moving or pushing it."""
+def test_release_workflow_limits_write_permission_to_release_job() -> None:
+    """Only the release job receives permission to publish tags and releases."""
     workflow = _workflow_text()
-    step_block = _step_block(workflow, step_name)
 
-    assert "TAG_NAME: ${{ github.event.release.tag_name }}" in step_block
-    assert "${{ github.event.release.tag_name }}" not in step_block.split("run: |", 1)[1]
+    assert "permissions:\n  contents: read" in workflow
+    assert "release:\n    permissions:\n      contents: write" in workflow
 
-    assert 'git tag -f "$TAG_NAME"' in workflow
-    assert 'git push -f origin "$TAG_NAME"' in workflow
+
+def test_release_workflow_validates_default_branch_before_checkout() -> None:
+    """Manual releases must target the repository default branch."""
+    workflow = _workflow_text()
+
+    assert workflow.index("- name: Validate dispatch ref") < workflow.index(
+        "- name: Checkout selected revision"
+    )
+    assert '[[ "$RELEASE_REF" != "$DEFAULT_BRANCH" ]]' in workflow
 
 
 def test_release_workflow_runs_checked_in_version_update_script() -> None:
     """Release workflow delegates version-file edits to the checked-in script."""
     workflow = _workflow_text()
-    step_block = _step_block(workflow, "Update Release Version Files")
+    step_block = _step_block(workflow, "Create versioned release commit and annotated tag")
 
-    assert f"python {WORKFLOW_SCRIPT_PATH}" in step_block
-    assert '--tag-name "$TAG_NAME"' in step_block
+    assert f"python3 {WORKFLOW_SCRIPT_PATH}" in step_block
+    assert '--tag-name "$RELEASE_TAG"' in step_block
     assert "python - <<'PY'" not in workflow
+
+
+def test_explicit_release_tag_prerelease_status_must_match_input() -> None:
+    """Explicit tags are validated and classified before release output is written."""
+    workflow = _workflow_text()
+    step_block = _step_block(workflow, "Resolve release tag")
+
+    validation = '--tag-name "$EXPLICIT_TAG" --check-only'
+    status_check = '[[ "$tag_is_prerelease" != "$IS_PRERELEASE" ]]'
+    output = 'echo "release-tag=$EXPLICIT_TAG" >> "$GITHUB_OUTPUT"'
+    assert step_block.index(validation) < step_block.index(status_check) < step_block.index(output)
+    assert '[[ "$EXPLICIT_TAG" =~ ^v[0-9]+(\\.[0-9]+){1,3}$ ]]' in step_block
+
+
+@pytest.mark.parametrize(
+    "tag_name",
+    ["v0.2.8", "v0.3.0-beta.1", "v0.2.7.1", "v0.3.0b1"],
+)
+def test_validate_release_tag_accepts_supported_formats(
+    release_version_script: ModuleType, tag_name: str
+) -> None:
+    """Verify supported stable and prerelease tags pass validation.
+
+    Args:
+        release_version_script (ModuleType): Loaded module containing tag
+            validation logic.
+        tag_name (str): Candidate release tag in one of the supported formats.
+    """
+    release_version_script.validate_release_tag(tag_name)
+
+
+@pytest.mark.parametrize(
+    "tag_name",
+    ["", "0.2.8", "v0", "v0.2.8 beta", "v0.2.8;echo-bad"],
+)
+def test_validate_release_tag_rejects_invalid_formats(
+    release_version_script: ModuleType, tag_name: str
+) -> None:
+    """Verify malformed or unsafe tags are rejected before file updates.
+
+    Args:
+        release_version_script (ModuleType): Loaded module containing tag
+            validation logic.
+        tag_name (str): Candidate tag that must fail validation.
+    """
+    with pytest.raises(ValueError, match="Invalid release tag"):
+        release_version_script.validate_release_tag(tag_name)
+
+
+@pytest.mark.parametrize(
+    ("bump_type", "expected_tag"),
+    [("patch", "v0.2.8"), ("minor", "v0.3.0"), ("major", "v1.0.0")],
+)
+def test_next_stable_release_tag(
+    release_version_script: ModuleType, bump_type: str, expected_tag: str
+) -> None:
+    """Verify stable bumps ignore prereleases when selecting the next tag.
+
+    Args:
+        release_version_script (ModuleType): Loaded module containing release-tag
+            calculation logic.
+        bump_type (str): Semantic-version component to increment.
+        expected_tag (str): Tag expected after applying the bump to stable tags.
+    """
+    tags = ["v0.1.7", "v0.2.7", "v0.3.0-beta.1", "untagged-example"]
+
+    assert release_version_script.next_stable_release_tag(tags, bump_type) == expected_tag
 
 
 @pytest.mark.parametrize(
@@ -123,7 +192,17 @@ def test_release_version_script_updates_manifest_and_const(
     const_text: str,
     expected_error: str | None,
 ) -> None:
-    """The version update script rewrites files or rejects invalid const metadata."""
+    """Verify version updates succeed or reject incomplete constant metadata.
+
+    Args:
+        tmp_path (Path): Temporary directory for isolated manifest and constant
+            files.
+        release_version_script (ModuleType): Loaded module containing file-update
+            logic.
+        const_text (str): Initial contents of the synthetic constants module.
+        expected_error (str | None): Expected validation error text, or ``None``
+            for the successful update case.
+    """
     manifest_path = tmp_path / "manifest.json"
     const_path = tmp_path / "const.py"
     manifest_path.write_text(json.dumps({"domain": "resmed_myair", "version": "v0.1.0"}))
@@ -147,26 +226,3 @@ def test_release_version_script_updates_manifest_and_const(
     assert json.loads(manifest_path.read_text())["version"] == "v1.2.3"
     assert manifest_path.read_text().endswith("\n")
     assert 'VERSION = "v1.2.3"' in const_path.read_text()
-
-
-def test_edited_release_does_not_force_move_tag() -> None:
-    """Edited releases skip version commits and avoid force-moving tags."""
-    workflow = _workflow_text()
-
-    guarded_steps = [
-        "Commit & Push Version Changes",
-        "Update Release with Version Changes Commit",
-    ]
-
-    for step_name in guarded_steps:
-        step_label = f"- name: {step_name}"
-        assert step_label in workflow, f"{step_name} step is missing"
-        step_index = workflow.index(step_label)
-        assert "github.event.action == 'published'" in workflow[step_index:], (
-            f"{step_name} must be guarded to published release events"
-        )
-        condition_index = workflow.index(
-            "github.event.action == 'published'",
-            step_index,
-        )
-        assert condition_index > step_index

@@ -13,11 +13,11 @@ def _copy_script_harness(tmp_path: Path, script_name: str) -> Path:
     """Copy one shell script plus a fake setup script into a temporary repo.
 
     Args:
-        tmp_path: Temporary directory supplied by pytest.
-        script_name: Name of the shell helper under `scripts`.
+        tmp_path (Path): Temporary directory supplied by pytest.
+        script_name (str): Name of the shell helper under `scripts`.
 
     Returns:
-        Temporary repository root.
+        Path: Temporary repository root containing the copied harness.
     """
     repo = tmp_path / "repo"
     scripts = repo / "scripts"
@@ -41,10 +41,15 @@ echo setup >> setup.log
 
 
 def test_test_script_runs_setup_when_venv_is_missing(tmp_path: Path) -> None:
-    """Test helper bootstraps the venv before invoking pytest."""
+    """Verify the test wrapper bootstraps its venv before invoking pytest.
+
+    Args:
+        tmp_path (Path): Temporary directory used as the isolated repository
+            harness.
+    """
     repo = _copy_script_harness(tmp_path, "test")
 
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [str(repo / "scripts" / "test"), "tests/test_example.py"],
         check=False,
         capture_output=True,
@@ -59,10 +64,15 @@ def test_test_script_runs_setup_when_venv_is_missing(tmp_path: Path) -> None:
 
 
 def test_lint_script_runs_setup_when_tools_are_missing(tmp_path: Path) -> None:
-    """Lint helper bootstraps missing lint tools before running prek."""
+    """Verify the lint wrapper installs missing tools before running prek.
+
+    Args:
+        tmp_path (Path): Temporary directory used as the isolated repository
+            harness.
+    """
     repo = _copy_script_harness(tmp_path, "lint")
 
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [str(repo / "scripts" / "lint")],
         check=False,
         capture_output=True,
@@ -77,14 +87,19 @@ def test_lint_script_runs_setup_when_tools_are_missing(tmp_path: Path) -> None:
 
 
 def test_live_smoke_test_script_runs_setup_when_venv_is_missing(tmp_path: Path) -> None:
-    """Live-smoke wrapper bootstraps the venv before invoking the Python script."""
+    """Verify the live-smoke wrapper bootstraps its venv before execution.
+
+    Args:
+        tmp_path (Path): Temporary directory used as the isolated repository
+            harness.
+    """
     repo = _copy_script_harness(tmp_path, "live_smoke_test")
     (repo / "scripts" / "live_smoke_test.py").write_text(
         "raise SystemExit(0)\n",
         encoding="utf-8",
     )
 
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [str(repo / "scripts" / "live_smoke_test"), "--help"],
         check=False,
         capture_output=True,

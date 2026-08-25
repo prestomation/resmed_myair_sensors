@@ -44,7 +44,14 @@ CONFIG_FLOW_ABORT_REASONS = (
 
 @pytest.fixture
 def flow(hass: MagicMock) -> MyAirConfigFlow:
-    """Return a configured `MyAirConfigFlow` bound to the test Home Assistant."""
+    """Return a configured `MyAirConfigFlow` bound to the test Home Assistant.
+
+    Args:
+        hass (MagicMock): Home Assistant double used as the flow's runtime.
+
+    Returns:
+        MyAirConfigFlow: Flow with the Home Assistant instance and empty context attached.
+    """
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow.context = {}
@@ -60,13 +67,13 @@ def _credential_data(
     """Return config-entry credential data for tests.
 
     Args:
-        username: myAir account username.
-        password: myAir account password.
-        region: myAir region code.
-        device_token: Optional remembered-device token.
+        username (str): myAir account username stored in the entry.
+        password (str): myAir account password stored in the entry.
+        region (str): myAir region code stored in the entry.
+        device_token (str | None): Optional remembered-device token to include.
 
     Returns:
-        Credential data shaped like a config-entry payload.
+        dict[str, str]: Credential data shaped like a config-entry payload.
     """
     data = {
         CONF_USER_NAME: username,
@@ -88,13 +95,13 @@ def _reconfigure_entry(
     """Return a config entry shaped for reconfigure flow tests.
 
     Args:
-        unique_id: Existing config-entry unique ID, or `None` for legacy entries.
-        entry_id: Config-entry ID to expose through flow context.
-        title: Config-entry title.
-        username: Stored account username.
+        unique_id (str | None): Existing config-entry unique ID, or `None` for legacy entries.
+        entry_id (str): Config-entry ID to expose through flow context.
+        title (str): Config-entry title shown by the test entry.
+        username (str): Stored myAir account username.
 
     Returns:
-        Mock config entry with myAir credential data.
+        MockConfigEntry: Config entry with myAir credential data.
     """
     return MockConfigEntry(
         domain="resmed_myair",
@@ -117,11 +124,12 @@ def _prepare_reconfigure_flow(
     """Wire a config flow to an entry for reconfigure tests.
 
     Args:
-        flow: Config flow under test.
-        config_entry: Entry returned by Home Assistant's known-entry lookup.
-        myair_client: REST client double held by the flow.
-        existing_unique_id_entry: Optional entry returned for duplicate unique ID lookup.
-        flow_data: Optional transient flow data to preload.
+        flow (MyAirConfigFlow): Config flow under test.
+        config_entry (MockConfigEntry): Entry returned by Home Assistant's known-entry lookup.
+        myair_client (MagicMock): REST client double held by the flow.
+        existing_unique_id_entry (MockConfigEntry | None): Optional entry returned for duplicate
+            unique ID lookup.
+        flow_data (dict[str, str] | None): Optional transient flow data to preload.
     """
     flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
     flow._client = myair_client
@@ -136,7 +144,11 @@ def _prepare_reconfigure_flow(
 
 @pytest.mark.parametrize("language", TRANSLATION_LANGUAGES)
 def test_config_flow_abort_reasons_have_translations(language: str) -> None:
-    """All config-flow abort reasons have localized strings."""
+    """Verify every supported abort reason is translated for the selected language.
+
+    Args:
+        language (str): Translation language code selected by the parameterized case.
+    """
     translation_path = (
         REPO_ROOT / "custom_components/resmed_myair/translations" / f"{language}.json"
     )
@@ -150,7 +162,13 @@ def test_config_flow_abort_reasons_have_translations(language: str) -> None:
 async def test_async_step_user_success(
     flow: MyAirConfigFlow, myair_client: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A successful user step creates an entry with the discovered device."""
+    """Verify a successful user step creates an entry with the discovered device.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow receiving the successful credentials.
+        myair_client (MagicMock): Client returned after successful device discovery.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the device lookup helper.
+    """
     user_input: dict[str, str] = {
         CONF_USER_NAME: "user",
         CONF_PASSWORD: "pass",
@@ -179,7 +197,12 @@ async def test_async_step_user_success(
 async def test_async_step_user_auth_error(
     flow: MyAirConfigFlow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Authentication failures keep the user step on the form with an error."""
+    """Verify authentication failures keep the user step on the form with an error.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow receiving invalid credentials.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the failing device lookup helper.
+    """
     user_input: dict[str, str] = {
         CONF_USER_NAME: "user",
         CONF_PASSWORD: "badpass",
@@ -204,7 +227,14 @@ async def test_async_step_verify_mfa_error(
     monkeypatch: pytest.MonkeyPatch,
     is_restclient: bool,
 ) -> None:
-    """MFA failures map to the correct form error for client types."""
+    """Verify MFA failures map to the correct form error for each client type.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow handling the MFA submission.
+        myair_client (RESTClient): Real-client-shaped double for the REST branch case.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the failing MFA helper.
+        is_restclient (bool): Whether this parameter case supplies a `RESTClient` instance.
+    """
     flow._client = myair_client if is_restclient else MagicMock()
     flow._data = {CONF_USER_NAME: "user"}
     user_input: dict[str, str] = {CONF_VERIFICATION_CODE: "bad"}
@@ -247,7 +277,17 @@ async def test_async_step_forms_display_parametrized(
     myair_client: MagicMock,
     config_entry: MockConfigEntry,
 ) -> None:
-    """User and MFA steps both render their forms when called without input."""
+    """Verify each selected user or MFA step renders its form without input.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow whose selected step is exercised.
+        step_name (str): Config-flow method name used by this parameter case.
+        pre_setup (bool): Whether this case preloads client and credential state.
+        expected_step_id (str): Form step ID expected for the selected method.
+        source (str | None): Optional flow source, set for reconfigure cases.
+        myair_client (MagicMock): Client used when the case requires preloaded state.
+        config_entry (MockConfigEntry): Existing entry used by reconfigure cases.
+    """
     if source == SOURCE_RECONFIGURE:
         flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": config_entry.entry_id}
         flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
@@ -265,7 +305,11 @@ async def test_async_step_forms_display_parametrized(
 async def test_config_flow_private_auth_helpers_handle_missing_state(
     flow: MyAirConfigFlow,
 ) -> None:
-    """Auth helper methods handle missing transient client state safely."""
+    """Verify auth helpers handle missing transient client state safely.
+
+    Args:
+        flow (MyAirConfigFlow): Flow whose empty client and data state is exercised.
+    """
     flow._client = None
     flow._data = {}
 
@@ -283,7 +327,13 @@ async def test_async_step_reauth_success(
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Successful reauth updates the stored credentials and completes."""
+    """Verify successful reauth updates stored credentials and completes.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow performing the reauthentication.
+        myair_client (MagicMock): Authenticated client carrying the replacement token.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for successful device lookup.
+    """
     config_entry = MockConfigEntry(
         domain="resmed_myair",
         title="ResMed-CPAP",
@@ -348,7 +398,18 @@ async def test_async_step_reauth_aborts_on_unverified_device_identity(
     helper_name: str,
     user_input: dict[str, str],
 ) -> None:
-    """Reauth refuses to update an entry when device identity is unverified."""
+    """Verify reauth refuses to update an entry with an unverified device identity.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow performing the reauthentication.
+        myair_client (MagicMock): Client associated with the existing entry.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the selected auth helper.
+        entry_unique_id (str | None): Existing entry serial used for identity comparison.
+        device_serial_number (str): Serial returned by the mismatched account case.
+        step_name (str): Reauth step method selected by this parameter case.
+        helper_name (str): Auth helper patched for the selected step.
+        user_input (dict[str, str]): Credentials or MFA code submitted by the case.
+    """
     config_entry = MockConfigEntry(
         domain="resmed_myair",
         title="ResMed-CPAP",
@@ -407,7 +468,16 @@ async def test_async_step_reauth_backfills_legacy_entry_unique_id(
     helper_name: str,
     user_input: dict[str, str],
 ) -> None:
-    """Reauth repairs legacy MFA-created entries that have no unique ID."""
+    """Verify reauth backfills a missing unique ID on a legacy entry.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow performing the reauthentication.
+        myair_client (MagicMock): Client carrying the refreshed device token.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the selected auth helper.
+        step_name (str): Reauth step method selected by this parameter case.
+        helper_name (str): Auth helper patched for the selected step.
+        user_input (dict[str, str]): Credentials or MFA code submitted by the case.
+    """
     config_entry = MockConfigEntry(
         domain="resmed_myair",
         title="ResMed-CPAP",
@@ -490,6 +560,17 @@ async def test_async_step_reauth_incomplete_account_parametrized(
     This single test exercises both `async_step_reauth_confirm` and
     `async_step_reauth_verify_mfa` branches with the combinations used
     previously in two separate tests.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the selected auth helper.
+        step_name (str): Reauth step method selected by this parameter case.
+        is_email_verified (bool | str | None): Email-check result, including parse-error case.
+        client_exists (bool): Whether the case supplies an authenticated client.
+        expected_abort_reason (str): Abort reason expected for the account state.
+        no_client_shows_form (bool): Whether a missing client should leave the form displayed.
+        hass (MagicMock): Home Assistant double attached to the temporary flow.
+        config_entry (MockConfigEntry): Existing entry used by the reauth flow.
+        myair_client (MagicMock): Client double used by cases that check email verification.
     """
     flow = MyAirConfigFlow()
     flow.hass = hass
@@ -542,7 +623,14 @@ async def test_async_step_reauth_verify_mfa_error(
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Reauth MFA failures return the form with an MFA error."""
+    """Verify reauth MFA failures return the form with an MFA error.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow handling the reauth MFA submission.
+        config_entry (MockConfigEntry): Existing entry attached to the flow.
+        myair_client (MagicMock): Client holding the failed MFA challenge.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the failing MFA helper.
+    """
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user", CONF_PASSWORD: "pass"}
     flow._entry = config_entry
@@ -575,7 +663,7 @@ async def test_async_step_reauth_verify_mfa_error(
     ],
 )
 async def test_get_device_variants(
-    connect_return: str | None,
+    connect_return: str | Exception | None,
     get_user_device_data_return: dict[str, object] | None,
     expected_status: str | None,
     expected_device: dict[str, object] | None,
@@ -585,7 +673,21 @@ async def test_get_device_variants(
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`get_device` handles connection outcomes and device payload variants."""
+    """Verify `get_device` handles connection outcomes and device payload variants.
+
+    Args:
+        connect_return (str | Exception | None): Connection status, exception,
+            or `None` returned by the client case.
+        get_user_device_data_return (dict[str, object] | None): Device payload returned after
+            successful authentication, or `None` for no device.
+        expected_status (str | None): Status expected from `get_device` for the case.
+        expected_device (dict[str, object] | None): Device payload expected in the result.
+        raises (type[BaseException] | None): Exception type expected for the failure case.
+        hass (MagicMock): Home Assistant double passed to client-session creation.
+        session (MagicMock): Client session returned by the patched session factory.
+        myair_client (MagicMock): REST client double configured for this case.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for client construction dependencies.
+    """
     mock_client = myair_client
     if isinstance(connect_return, Exception):
         mock_client.connect = AsyncMock(side_effect=connect_return)
@@ -650,7 +752,20 @@ async def test_get_mfa_device_variants(
     raises: type[BaseException] | None,
     myair_client: MagicMock,
 ) -> None:
-    """`get_mfa_device` handles MFA outcomes and follow-up device fetches."""
+    """Verify `get_mfa_device` handles MFA outcomes and follow-up device fetches.
+
+    Args:
+        verify_return (str): MFA status returned by the client in the success path.
+        get_user_device_data_return (dict[str, object] | None): Device payload returned after
+            MFA, or `None` for a missing device.
+        verify_side_effect (type[BaseException] | None): Exception type raised during MFA, if any.
+        get_user_device_data_side_effect (type[BaseException] | None): Exception type raised
+            while fetching the device, if any.
+        expected_status (str | None): Status expected from `get_mfa_device` for the case.
+        expected_device (dict[str, object] | None): Device payload expected in the result.
+        raises (type[BaseException] | None): Exception type expected for the failure case.
+        myair_client (MagicMock): REST client double configured for this case.
+    """
     mock_client = myair_client
     if verify_side_effect:
         mock_client.verify_mfa_and_get_access_token = AsyncMock(side_effect=verify_side_effect)
@@ -683,7 +798,13 @@ async def test_get_mfa_device_variants(
 async def test_get_device_passes_device_token(
     hass: MagicMock, myair_client: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`get_device` forwards the device token into `MyAirConfig`."""
+    """Verify `get_device` forwards the remembered token into `MyAirConfig`.
+
+    Args:
+        hass (MagicMock): Home Assistant double passed to `get_device`.
+        myair_client (MagicMock): Client returned after constructing the config.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for config and client factories.
+    """
     mock_client = myair_client
     mock_client.connect = AsyncMock(return_value=AUTHN_SUCCESS)
     mock_client.get_user_device_data = AsyncMock(return_value=MyAirDevice.from_api({}))
@@ -716,7 +837,17 @@ async def test_async_step_verify_mfa_status_variants(
     monkeypatch: pytest.MonkeyPatch,
     config_entry: MockConfigEntry,
 ) -> None:
-    """Non-success MFA statuses keep the flow on the correct error form."""
+    """Verify non-success MFA statuses keep each selected flow on its error form.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow handling the MFA status.
+        step_name (str): MFA step method selected by this parameter case.
+        expected_step_id (str): Form step ID expected for the selected method.
+        source (str | None): Optional flow source, set for reconfigure cases.
+        myair_client (MagicMock): Client double receiving the failed MFA response.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the MFA helper.
+        config_entry (MockConfigEntry): Existing entry used by reauth or reconfigure cases.
+    """
     flow._client = myair_client
     flow._data = {CONF_USER_NAME: "user"}
     if source == SOURCE_RECONFIGURE:
@@ -741,7 +872,12 @@ async def test_async_step_verify_mfa_status_variants(
 async def test_async_step_reauth_calls_confirm(
     hass: MagicMock, config_entry: MockConfigEntry
 ) -> None:
-    """The reauth entry route loads entry data before calling confirm."""
+    """Verify the reauth route loads entry data before calling confirm.
+
+    Args:
+        hass (MagicMock): Home Assistant double used for entry lookup.
+        config_entry (MockConfigEntry): Existing entry returned by the lookup.
+    """
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow.context = {"source": SOURCE_REAUTH, "entry_id": "123"}
@@ -765,7 +901,13 @@ async def test_async_step_reconfigure_success_updates_entry_and_schedules_reload
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Reconfigure validates the same device before updating setup data."""
+    """Verify reconfigure validates the same device before updating setup data.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow performing the reconfiguration.
+        myair_client (MagicMock): Client carrying the refreshed device token.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for successful device lookup.
+    """
     config_entry = _reconfigure_entry()
     device = MyAirDevice.from_api(
         {
@@ -838,7 +980,16 @@ async def test_async_step_reconfigure_backfills_legacy_entry_unique_id(
     helper_name: str,
     user_input: dict[str, str],
 ) -> None:
-    """Reconfigure repairs legacy entries that have no unique ID."""
+    """Verify reconfigure backfills a missing unique ID on a legacy entry.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow performing the reconfiguration.
+        myair_client (MagicMock): Client carrying the refreshed device token.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the selected auth helper.
+        step_name (str): Reconfigure step method selected by this parameter case.
+        helper_name (str): Auth helper patched for the selected step.
+        user_input (dict[str, str]): Updated credentials or MFA code submitted by the case.
+    """
     flow_data = (
         _credential_data("new@example.com", "new-password", REGION_EU, "old-token")
         if step_name == "async_step_reconfigure_verify_mfa"
@@ -902,7 +1053,16 @@ async def test_async_step_reconfigure_aborts_on_unverified_device_identity(
     helper_name: str,
     user_input: dict[str, str],
 ) -> None:
-    """Reconfigure refuses to update an entry when device identity changes."""
+    """Verify reconfigure refuses to update an entry when device identity changes.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow performing the reconfiguration.
+        myair_client (MagicMock): Client associated with the existing entry.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the selected auth helper.
+        step_name (str): Reconfigure step method selected by this parameter case.
+        helper_name (str): Auth helper patched for the selected step.
+        user_input (dict[str, str]): Updated credentials or MFA code submitted by the case.
+    """
     flow_data = (
         _credential_data("new@example.com", "new-password", REGION_EU, "old-token")
         if step_name == "async_step_reconfigure_verify_mfa"
@@ -937,7 +1097,13 @@ async def test_async_step_reconfigure_legacy_backfill_aborts_on_duplicate_unique
     myair_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Legacy reconfigure refuses to backfill a serial used by another entry."""
+    """Verify legacy reconfigure refuses a serial already used by another entry.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow performing the reconfiguration.
+        myair_client (MagicMock): Client carrying the refreshed device token.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for successful device lookup.
+    """
     legacy_entry = _reconfigure_entry(
         unique_id=None,
         entry_id="legacy_entry",
@@ -1033,7 +1199,18 @@ async def test_async_step_reconfigure_incomplete_account_abort_variants(
     is_email_verified: bool,
     expected_abort_reason: str,
 ) -> None:
-    """Reconfigure steps preserve incomplete-account abort handling."""
+    """Verify reconfigure steps preserve incomplete-account abort handling.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow performing the reconfiguration.
+        myair_client (MagicMock): Client whose email-verification result drives the case.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the selected failing auth helper.
+        step_name (str): Reconfigure step method selected by this parameter case.
+        helper_name (str): Auth helper patched to raise an incomplete-account error.
+        user_input (dict[str, str]): Updated credentials or MFA code submitted by the case.
+        is_email_verified (bool): Email-verification result used to choose the abort reason.
+        expected_abort_reason (str): Abort reason expected for the account state.
+    """
     flow_data = (
         _credential_data("new@example.com", "new-password", REGION_EU, "old-token")
         if step_name == "async_step_reconfigure_verify_mfa"
@@ -1059,7 +1236,12 @@ async def test_async_step_reconfigure_incomplete_account_abort_variants(
 async def test_async_step_user_not_device_or_not_authn_success(
     monkeypatch: pytest.MonkeyPatch, hass: MagicMock
 ) -> None:
-    """A non-success device lookup advances the flow to MFA verification."""
+    """Verify a non-success device lookup advances the flow to MFA verification.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the device lookup helper.
+        hass (MagicMock): Home Assistant double attached to the temporary flow.
+    """
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {}
@@ -1105,7 +1287,18 @@ async def test_async_step_verify_mfa_parsing_error_variants(
     source: str | None,
     needs_entry: bool,
 ) -> None:
-    """Parsing errors keep MFA verification on the active form."""
+    """Verify parsing errors keep MFA verification on the active form.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow handling the MFA submission.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the failing MFA helper.
+        config_entry (MockConfigEntry): Existing entry for reauth and reconfigure cases.
+        myair_client (MagicMock): Client holding the active MFA challenge.
+        step_name (str): MFA step method selected by this parameter case.
+        expected_step_id (str): Form step ID expected for the selected method.
+        source (str | None): Optional flow source, set for reconfigure cases.
+        needs_entry (bool): Whether the selected case needs an existing entry attached.
+    """
     flow._data = {}
     flow._client = myair_client
     if needs_entry:
@@ -1129,7 +1322,11 @@ async def test_async_step_verify_mfa_parsing_error_variants(
 
 @pytest.mark.asyncio
 async def test_async_step_reauth_no_entry(hass: MagicMock) -> None:
-    """Reauth aborts when the referenced config entry no longer exists."""
+    """Verify reauth raises when the referenced config entry no longer exists.
+
+    Args:
+        hass (MagicMock): Home Assistant double configured to report a missing entry.
+    """
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow.hass.config_entries.async_get_known_entry = MagicMock(
@@ -1220,7 +1417,19 @@ async def test_async_step_device_missing_serial_number_variants(
     expected_error: str,
     needs_entry: bool,
 ) -> None:
-    """Missing device serial numbers keep the active auth form open."""
+    """Verify missing device serial numbers keep the active auth form open.
+
+    Args:
+        flow (MyAirConfigFlow): Config flow handling the selected auth step.
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the selected auth helper.
+        config_entry (MockConfigEntry): Existing entry for reauth and reconfigure cases.
+        step_name (str): Auth step method selected by this parameter case.
+        user_input (dict[str, str]): Credentials or MFA code submitted by the case.
+        flow_data (dict[str, str]): Transient flow data preloaded before the step.
+        expected_step_id (str): Form step ID expected for the selected method.
+        expected_error (str): Form error expected when the serial is absent.
+        needs_entry (bool): Whether the selected case needs an existing entry attached.
+    """
     flow._data = flow_data
     if needs_entry:
         flow._entry = config_entry
@@ -1266,7 +1475,15 @@ async def test_async_step_reauth_confirm_exceptions(
     hass: MagicMock,
     config_entry: MockConfigEntry,
 ) -> None:
-    """Reauth confirm maps client exceptions to the expected error path."""
+    """Verify reauth confirm maps each client exception to the expected error path.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the failing device helper.
+        exception (object): Exception instance supplied by the parameterized case.
+        expected_error (object): Form error expected for the exception case.
+        hass (MagicMock): Home Assistant double attached to the flow.
+        config_entry (MockConfigEntry): Existing entry being reauthenticated.
+    """
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {
@@ -1391,7 +1608,20 @@ async def test_async_step_initial_incomplete_account_abort_variants(
     hass: MagicMock,
     myair_client: MagicMock,
 ) -> None:
-    """Initial auth and MFA incomplete-account branches converge on abort reasons."""
+    """Verify initial auth and MFA incomplete-account branches converge on abort reasons.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the selected auth helper.
+        step_name (str): Initial auth step method selected by this parameter case.
+        helper_path (str): Import path of the helper patched to raise the account error.
+        user_input (dict[str, str]): Credentials or MFA code submitted by the case.
+        flow_data (dict[str, str]): Transient data preloaded before the step.
+        is_email_verified (bool | str | None): Email-check result, including parse-error case.
+        client_exists (bool): Whether the case supplies an authenticated client.
+        expected_abort_reason (str): Abort reason expected for the account state.
+        hass (MagicMock): Home Assistant double attached to the temporary flow.
+        myair_client (MagicMock): Client double used by cases that check email verification.
+    """
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = flow_data
@@ -1429,7 +1659,14 @@ async def test_async_step_user_incomplete_account_email_check_transport_error(
     myair_client: MagicMock,
     email_error: Exception,
 ) -> None:
-    """Transient email-check transport failures still preserve the abort."""
+    """Verify transient email-check transport failures still preserve the abort.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch manager for the device lookup helper.
+        hass (MagicMock): Home Assistant double attached to the flow.
+        myair_client (MagicMock): Client whose email check raises the transport error.
+        email_error (Exception): Transport exception supplied by this parameterized case.
+    """
     flow = MyAirConfigFlow()
     flow.hass = hass
     flow._data = {CONF_USER_NAME: "user"}

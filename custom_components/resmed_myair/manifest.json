@@ -5,8 +5,8 @@
     "recorder"
   ],
   "codeowners": [
-    "@prestomation",
-    "@Snuffy2"
+    "@Snuffy2",
+    "@prestomation"
   ],
   "config_flow": true,
   "dependencies": [
@@ -19,5 +19,5 @@
   "requirements": [
     "PyJWT"
   ],
-  "version": "v0.2.7"
+  "version": "v0.0.0"
 }

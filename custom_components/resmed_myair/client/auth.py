@@ -43,10 +43,10 @@ def _safe_auth_log_payload(data: Any) -> Any:
     """Remove auth-flow-only secret keys before debug logging.
 
     Args:
-        data: Payload that may contain Okta or OAuth credentials.
+        data (Any): Payload that may contain Okta or OAuth credentials.
 
     Returns:
-        A copy with known secret-bearing fields omitted recursively.
+        Any: A copy with known secret-bearing fields omitted recursively.
     """
     if isinstance(data, Mapping):
         return {
@@ -65,11 +65,11 @@ def _mfa_challenge_metadata(
     """Resolve MFA factor metadata from an Okta authn response.
 
     Args:
-        authn_dict: Decoded Okta authn response payload.
-        region_config: Regional endpoint configuration.
+        authn_dict (Mapping[str, Any]): Decoded Okta authn response payload.
+        region_config (RegionConfig): Regional endpoint configuration.
 
     Returns:
-        Email factor ID and verification URL, falling back to regional defaults
+        tuple[str, str]: Email factor ID and verification URL, falling back to regional defaults
         when Okta omits factor metadata.
     """
     factor_id = region_config.email_factor_id
@@ -110,8 +110,8 @@ class MyAirAuthSession:
         """Prepare regional endpoints and mutable credential state for login.
 
         Args:
-            config: Parsed user config.
-            session: Shared aiohttp client session.
+            config (MyAirConfig): Parsed user config.
+            session (ClientSession): Shared aiohttp client session.
         """
         self._config: MyAirConfig = config
         self._session: ClientSession = session
@@ -140,7 +140,7 @@ class MyAirAuthSession:
         """Replace the bearer token after an OAuth exchange or test setup.
 
         Args:
-            value: New access token, or ``None`` to clear cached auth state.
+            value (str | None): New access token, or ``None`` to clear cached auth state.
         """
         self._access_token = value
 
@@ -154,7 +154,7 @@ class MyAirAuthSession:
         """Replace the ID token used to derive GraphQL country headers.
 
         Args:
-            value: New ID token, or ``None`` when token exchange has not completed.
+            value (str | None): New ID token, or ``None`` when token exchange has not completed.
         """
         self._id_token = value
 
@@ -168,7 +168,7 @@ class MyAirAuthSession:
         """Store the Okta state token returned by primary authentication.
 
         Args:
-            value: State token from Okta authn, or ``None`` to reset MFA state.
+            value (str | None): State token from Okta authn, or ``None`` to reset MFA state.
         """
         self._state_token = value
 
@@ -182,7 +182,7 @@ class MyAirAuthSession:
         """Store the Okta session token produced by password or MFA auth.
 
         Args:
-            value: Session token from Okta, or ``None`` before auth succeeds.
+            value (str | None): Session token from Okta, or ``None`` before auth succeeds.
         """
         self._session_token = value
 
@@ -196,7 +196,7 @@ class MyAirAuthSession:
         """Persist the remembered-device DT cookie from Okta responses.
 
         Args:
-            value: DT cookie value, or ``None`` when no remembered device is available.
+            value (str | None): DT cookie value, or ``None`` when no remembered device is available.
         """
         self._cookie_dt = value
 
@@ -220,7 +220,7 @@ class MyAirAuthSession:
         """Override regional endpoint settings.
 
         Args:
-            value: Region configuration to use for subsequent auth requests.
+            value (RegionConfig): Region configuration to use for subsequent auth requests.
         """
         self._region_config = value
         self._email_factor_id = value.email_factor_id
@@ -236,7 +236,7 @@ class MyAirAuthSession:
         """Store the MFA factor discovered from Okta authn metadata.
 
         Args:
-            value: Email factor ID to use for MFA verification requests.
+            value (str): Email factor ID to use for MFA verification requests.
         """
         self._email_factor_id = value
 
@@ -250,7 +250,7 @@ class MyAirAuthSession:
         """Store the verification URL advertised by the current MFA challenge.
 
         Args:
-            value: Fully qualified Okta factor verification URL.
+            value (str): Fully qualified Okta factor verification URL.
         """
         self._mfa_url = value
 
@@ -264,7 +264,7 @@ class MyAirAuthSession:
         """Store the Okta ``sid`` cookie for subsequent auth calls.
 
         Args:
-            value: Session cookie value, or ``None`` when unavailable.
+            value (str | None): Session cookie value, or ``None`` when unavailable.
         """
         self._cookie_sid = value
 
@@ -278,7 +278,7 @@ class MyAirAuthSession:
         """Record whether the active auth flow is waiting for MFA.
 
         Args:
-            value: ``True`` when Okta returned ``MFA_REQUIRED``.
+            value (bool): ``True`` when Okta returned ``MFA_REQUIRED``.
         """
         self._uses_mfa = value
 
@@ -297,7 +297,7 @@ class MyAirAuthSession:
         """Replace JSON headers while preserving an owned mutable copy.
 
         Args:
-            value: Header mapping used for subsequent JSON requests.
+            value (Mapping[str, Any]): Header mapping used for subsequent JSON requests.
         """
         self._json_headers = dict(value)
 
@@ -305,11 +305,14 @@ class MyAirAuthSession:
         """Authenticate or reuse existing credentials for a myAir session.
 
         Args:
-            initial: Whether this is the first config-flow attempt, when MFA may be
+            initial (bool | None): Whether this is the first config-flow attempt, when MFA may be
                 triggered instead of reported as a reauth failure.
 
         Returns:
-            Okta auth status, such as ``SUCCESS`` or ``MFA_REQUIRED``.
+            str: Okta auth status, such as ``SUCCESS`` or ``MFA_REQUIRED``.
+
+        Raises:
+            AuthenticationError: When MFA is required outside the initial config flow.
         """
         if self._cookie_dt is None:
             await self._get_initial_dt()
@@ -333,10 +336,13 @@ class MyAirAuthSession:
         """Complete an MFA challenge and exchange the resulting session token.
 
         Args:
-            verification_code: Email MFA code entered by the user.
+            verification_code (str): Email MFA code entered by the user.
 
         Returns:
-            Okta success status after MFA verification.
+            str: Okta success status after MFA verification.
+
+        Raises:
+            AuthenticationError: When MFA verification does not produce a success status.
         """
         status: str = await self._verify_mfa(verification_code)
         if status == AUTHN_SUCCESS:
@@ -349,7 +355,7 @@ class MyAirAuthSession:
         """Check Okta userinfo for the account email-verification flag.
 
         Returns:
-            ``True`` when Okta reports the email address has been verified.
+            bool: ``True`` when Okta reports the email address has been verified.
         """
         userinfo_url: str = self._region_config.userinfo_url
         headers: dict[str, Any] = {
@@ -378,7 +384,7 @@ class MyAirAuthSession:
         """Parse remembered-device and session cookies from response headers.
 
         Args:
-            cookie_headers: Raw ``Set-Cookie`` header values from Okta responses.
+            cookie_headers (list): Raw ``Set-Cookie`` header values from Okta responses.
         """
         cookies: dict[str, Any] = {}
         for header in cookie_headers:
@@ -429,7 +435,7 @@ class MyAirAuthSession:
         """Ask Okta introspection whether the cached access token is reusable.
 
         Returns:
-            ``True`` when Okta marks the cached access token active.
+            bool: ``True`` when Okta marks the cached access token active.
         """
         introspect_url: str = self._region_config.introspect_url
         headers: dict[str, Any] = {
@@ -474,10 +480,10 @@ class MyAirAuthSession:
         """Map ResMed and Okta error payloads to integration exceptions.
 
         Args:
-            step: Human-readable auth or GraphQL step name for diagnostics.
-            response: aiohttp response object associated with the payload.
-            resp_dict: Decoded response payload to inspect.
-            initial: Whether a GraphQL unauthorized response occurred during setup.
+            step (str): Human-readable auth or GraphQL step name for diagnostics.
+            response (ClientResponse): aiohttp response object associated with the payload.
+            resp_dict (MutableMapping[str, Any]): Decoded response payload to inspect.
+            initial (bool | None): Whether a GraphQL unauthorized response occurred during setup.
 
         Raises:
             AuthenticationError: When credentials or auth state are rejected.
@@ -523,7 +529,7 @@ class MyAirAuthSession:
         """Submit username and password to Okta and capture next auth state.
 
         Returns:
-            Okta status indicating success or that MFA is required.
+            str: Okta status indicating success or that MFA is required.
 
         Raises:
             AuthenticationError: When the authn payload is missing required state.
@@ -595,10 +601,10 @@ class MyAirAuthSession:
         """Submit an email MFA code and store the returned session token.
 
         Args:
-            verification_code: MFA code supplied by the user.
+            verification_code (str): MFA code supplied by the user.
 
         Returns:
-            Okta status after code verification.
+            str: Okta status after code verification.
 
         Raises:
             AuthenticationError: When Okta omits expected status or session data.

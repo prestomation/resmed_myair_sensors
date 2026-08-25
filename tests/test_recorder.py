@@ -25,7 +25,11 @@ def test_manifest_loads_after_recorder_when_available() -> None:
 def test_async_custom_equivalent_units_maps_mask_leak_entities(
     monkeypatch: Any,
 ) -> None:
-    """Mask leak statistics migrate from percent to liters per minute."""
+    """Mask leak statistics migrate from percent to liters per minute.
+
+    Args:
+        monkeypatch (Any): Pytest patch fixture used to provide the entity registry.
+    """
     registry = SimpleNamespace(
         entities={
             "sensor.cpap_mask_leak": SimpleNamespace(
@@ -57,7 +61,11 @@ def test_async_custom_equivalent_units_maps_mask_leak_entities(
 def test_async_migrate_mask_leak_statistics_metadata_updates_recorder(
     monkeypatch: Any,
 ) -> None:
-    """Mask leak statistics metadata is relabeled to the new flow-rate unit."""
+    """Mask leak statistics metadata is relabeled to the new flow-rate unit.
+
+    Args:
+        monkeypatch (Any): Pytest patch fixture used to provide recorder and registry doubles.
+    """
     registry = SimpleNamespace(
         entities={
             "sensor.cpap_mask_leak": SimpleNamespace(
@@ -90,7 +98,11 @@ def test_async_migrate_mask_leak_statistics_metadata_updates_recorder(
 def test_async_migrate_mask_leak_statistics_metadata_skips_without_recorder(
     monkeypatch: Any,
 ) -> None:
-    """Mask leak metadata migration does not block setup when recorder is absent."""
+    """Mask leak metadata migration does not block setup when recorder is absent.
+
+    Args:
+        monkeypatch (Any): Pytest patch fixture used to provide a recorder lookup double.
+    """
     recorder_instance = SimpleNamespace(async_update_statistics_metadata=MagicMock())
     monkeypatch.setattr(recorder, "get_instance", lambda hass: recorder_instance)
 

@@ -61,7 +61,11 @@ def test_negative_usage_is_clamped_for_friendly_display() -> None:
 
 @pytest.mark.parametrize("raw_usage", ["not-a-number", "NaN"])
 def test_invalid_usage_values_are_ignored(raw_usage: str) -> None:
-    """Malformed usage values are ignored instead of becoming sleep duration."""
+    """Malformed usage values are ignored instead of becoming sleep duration.
+
+    Args:
+        raw_usage (str): Malformed payload value whose handling is under test.
+    """
     record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
 
     assert record.total_usage_minutes is None
@@ -142,7 +146,16 @@ def test_models_with_missing_payloads_use_safe_defaults(
     raw_payload: dict[str, object] | None,
     expected_values: dict[str, object],
 ) -> None:
-    """Empty model payloads collapse to safe empty or `None` values."""
+    """Empty model payloads collapse to safe empty or `None` values.
+
+    Args:
+        factory (Callable[[dict[str, object] | None], object]): Model factory
+            used for the payload shape in this case.
+        raw_payload (dict[str, object] | None): Empty or missing payload passed
+            to the model factory.
+        expected_values (dict[str, object]): Safe field values expected from the
+            constructed model.
+    """
     model = factory(raw_payload)
 
     for attribute, expected_value in expected_values.items():
@@ -175,7 +188,12 @@ def test_device_fields_with_non_string_optional_values_are_none() -> None:
 def test_sleep_record_with_unparsable_start_date_has_none_start_date(
     raw_start_date: int | str,
 ) -> None:
-    """Unparsable `startDate` values leave the parsed date unset."""
+    """Unparsable `startDate` values leave the parsed date unset.
+
+    Args:
+        raw_start_date (int | str): Date payload value selected to exercise
+            parsing failure while preserving usage data.
+    """
     record = MyAirSleepRecord.from_api({"startDate": raw_start_date, "totalUsage": 30})
 
     assert record.start_date is None
@@ -224,7 +242,16 @@ def test_sleep_record_coerces_numeric_usage_values(
     logs_truncation: bool,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Numeric usage values are coerced and only fractional values log truncation."""
+    """Numeric usage values are coerced and only fractional values log truncation.
+
+    Args:
+        raw_usage (float | Decimal | str): Numeric representation passed to the
+            usage parser.
+        logs_truncation (bool): Whether this representation is expected to emit
+            the fractional-minute truncation log.
+        caplog (pytest.LogCaptureFixture): Captured log fixture used to inspect
+            truncation diagnostics.
+    """
     with caplog.at_level(logging.INFO):
         record = MyAirSleepRecord.from_api({"startDate": "2024-07-18", "totalUsage": raw_usage})
 

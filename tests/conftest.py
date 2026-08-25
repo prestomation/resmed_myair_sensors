@@ -24,7 +24,7 @@ from custom_components.resmed_myair.models import (
     MyAirSleepRecord,
 )
 
-type JSONValue = str | int | float | bool | None | dict[str, JSONValue] | list[JSONValue]
+type JSONValue = str | int | float | bool | dict[str, JSONValue] | list[JSONValue] | None
 type HeadersValue = Mapping[str, str] | CIMultiDict[str] | None
 
 
@@ -37,11 +37,11 @@ class CoordinatorLike(Protocol):
         """Accept Home Assistant listener registration on coordinator doubles.
 
         Args:
-            *args: Listener callback arguments supplied by `CoordinatorEntity`.
-            **kwargs: Listener registration options supplied by Home Assistant.
+            args (object): Listener callback arguments supplied by `CoordinatorEntity`.
+            kwargs (object): Listener registration options supplied by Home Assistant.
 
         Returns:
-            Callable that removes the listener when invoked.
+            Callable[[], None]: A callback that removes the registered listener.
         """
 
 
@@ -56,11 +56,13 @@ class CoordinatorFactory(Protocol):
         """Create the requested coordinator shape for a test.
 
         Args:
-            mock: Whether the caller needs async refresh methods on a mock object.
-            data: Optional payload for a data-backed coordinator double.
+            mock (bool): Whether the caller needs async refresh methods on a mock object.
+            data (dict[str, object] | MyAirCoordinatorData | None): Optional payload for a
+                data-backed coordinator double.
 
         Returns:
-            Coordinator double matching the requested test scenario.
+            CoordinatorLike | MagicMock: Coordinator double matching the requested test
+                scenario.
         """
 
 
@@ -71,12 +73,14 @@ def coordinator_data(
     """Build typed coordinator data for sensor and integration tests.
 
     Args:
-        device: Optional raw device payload to convert into typed model data.
-        sleep_records: Optional raw sleep-record payloads to convert into typed
+        device (dict[str, object] | None): Optional raw device payload to convert into typed
             model data.
+        sleep_records (list[dict[str, object]] | None): Optional raw sleep-record payloads to
+            convert into typed model data.
 
     Returns:
-        A `MyAirCoordinatorData` instance populated from the provided payloads.
+        MyAirCoordinatorData: A coordinator-data instance populated from the provided
+            payloads.
     """
     return MyAirCoordinatorData(
         device=MyAirDevice.from_api(device) if device is not None else None,
@@ -88,11 +92,11 @@ def _coordinator_data_from_mapping(data: dict[str, object] | None = None) -> MyA
     """Build typed coordinator data from legacy mapping payloads.
 
     Args:
-        data: Optional mapping containing raw `device` and `sleep_records`
-            members.
+        data (dict[str, object] | None): Optional mapping containing raw `device` and
+            `sleep_records` members.
 
     Returns:
-        A `MyAirCoordinatorData` instance with normalized model objects.
+        MyAirCoordinatorData: Coordinator data with normalized model objects.
     """
     if data is None:
         data = {
@@ -148,16 +152,20 @@ class ServiceRegistryShimLike(Protocol):
         """Check whether setup registered a named service.
 
         Args:
-            domain: Home Assistant service domain.
-            service: Service name within the domain.
+            domain (str): Home Assistant service domain.
+            service (str): Service name within the domain.
 
         Returns:
-            Whether the in-memory registry contains that service.
+            bool: Whether the in-memory registry contains that service.
         """
 
 
 def _ensure_config_entries_helpers(hass: Any) -> None:
-    """Patch `hass.config_entries` with the async helpers the suite expects."""
+    """Patch `hass.config_entries` with the async helpers the suite expects.
+
+    Args:
+        hass (Any): Home Assistant test instance whose config-entry manager is patched.
+    """
     if not hasattr(hass, "config_entries") or hass.config_entries is None:
         hass.config_entries = MagicMock()
         # Provide the async_forward_entry_setups helper as awaitable
@@ -210,12 +218,12 @@ def make_mock_aiohttp_response(
     """Create a `ClientResponse`-shaped mock for aiohttp-based tests.
 
     Args:
-        json_value: Value returned by the mocked `json()` coroutine.
-        headers: Optional header mapping to expose on the mock response.
-        status: HTTP status code to assign to the mock response.
+        json_value (JSONValue): Value returned by the mocked `json()` coroutine.
+        headers (HeadersValue): Optional header mapping to expose on the mock response.
+        status (int): HTTP status code to assign to the mock response.
 
     Returns:
-        A `MagicMock` that behaves like an aiohttp response object.
+        MagicMock: A mock that behaves like an aiohttp response object.
     """
     mock_res = MagicMock(spec=ClientResponse)
     mock_res.json = AsyncMock(return_value=json_value)
@@ -247,12 +255,12 @@ def make_mock_aiohttp_context_manager(
     """Return an async context manager that yields a mock aiohttp response.
 
     Args:
-        json_value: JSON payload or prebuilt response object to yield.
-        headers: Optional header mapping for the generated response mock.
-        status: HTTP status code to assign to the generated response mock.
+        json_value (JSONValue | MagicMock): JSON payload or prebuilt response object to yield.
+        headers (HeadersValue): Optional header mapping for the generated response mock.
+        status (int): HTTP status code to assign to the generated response mock.
 
     Returns:
-        An `AsyncMock` that can back `session.get()` or `session.post()`.
+        AsyncMock: An async context manager that can back `session.get()` or `session.post()`.
     """
     # If caller passed a prebuilt MagicMock response, return a context manager that yields it.
     if isinstance(json_value, MagicMock):
@@ -268,13 +276,24 @@ def make_mock_aiohttp_context_manager(
 
 @pytest.fixture
 def session() -> MagicMock:
-    """Return a `ClientSession`-spec mock for request-layer tests."""
+    """Return a `ClientSession`-spec mock for request-layer tests.
+
+    Returns:
+        MagicMock: A mock constrained to the `ClientSession` interface.
+    """
     return MagicMock(spec=ClientSession)
 
 
 @pytest.fixture
 def config_entry(hass: Any) -> MockConfigEntry:
-    """Return a default `MockConfigEntry` and wire it into Home Assistant."""
+    """Return a default `MockConfigEntry` and wire it into Home Assistant.
+
+    Args:
+        hass (Any): Home Assistant test instance receiving the config entry.
+
+    Returns:
+        MockConfigEntry: A configured North American test entry.
+    """
     data = {
         CONF_USER_NAME: "test@example.com",
         CONF_PASSWORD: "dummy_password",
@@ -307,7 +326,11 @@ def config_entry(hass: Any) -> MockConfigEntry:
 
 @pytest.fixture(autouse=True)
 def configure_hass(hass: Any) -> None:
-    """Patch the shared `hass` fixture with the async helpers tests expect."""
+    """Patch the shared `hass` fixture with the async helpers tests expect.
+
+    Args:
+        hass (Any): Home Assistant test instance whose helpers are patched.
+    """
     # Centralize and reuse the guarded setup logic.
     _ensure_config_entries_helpers(hass)
 
@@ -319,7 +342,15 @@ def configure_hass(hass: Any) -> None:
 
 @pytest.fixture
 def service_registry_shim(hass: Any, monkeypatch: pytest.MonkeyPatch) -> ServiceRegistryShimLike:
-    """Provide a lightweight `hass.services` shim for service-registration tests."""
+    """Provide a lightweight `hass.services` shim for service-registration tests.
+
+    Args:
+        hass (Any): Home Assistant test instance whose service registry is replaced.
+        monkeypatch (pytest.MonkeyPatch): Fixture used to install the in-memory registry.
+
+    Returns:
+        ServiceRegistryShimLike: In-memory registry that records registered handlers.
+    """
 
     class _ServiceEntry:
         """Store callbacks registered for a single Home Assistant service."""
@@ -336,7 +367,15 @@ def service_registry_shim(hass: Any, monkeypatch: pytest.MonkeyPatch) -> Service
             self._services: dict[str, dict[str, _ServiceEntry]] = {}
 
         def has_service(self, domain: str, service: str) -> bool:
-            """Return whether a service has been registered for a domain."""
+            """Return whether a service has been registered for a domain.
+
+            Args:
+                domain (str): Home Assistant service domain to inspect.
+                service (str): Service name to find within the domain.
+
+            Returns:
+                bool: Whether the requested service is registered.
+            """
             return domain in self._services and service in self._services[domain]
 
         def async_register(
@@ -351,12 +390,12 @@ def service_registry_shim(hass: Any, monkeypatch: pytest.MonkeyPatch) -> Service
             """Register a handler for the requested domain and service.
 
             Args:
-                domain: Home Assistant service domain being registered.
-                service: Service name within the domain.
-                func: Handler callback to store for later assertions.
-                schema: Optional service schema accepted for API compatibility.
-                *a: Additional positional arguments accepted for API compatibility.
-                **kw: Additional keyword arguments accepted for API compatibility.
+                domain (str): Home Assistant service domain being registered.
+                service (str): Service name within the domain.
+                func (Callable[..., object]): Handler callback to store for later assertions.
+                schema (object | None): Optional service schema accepted for API compatibility.
+                a (object): Additional positional arguments accepted for API compatibility.
+                kw (object): Additional keyword arguments accepted for API compatibility.
             """
             domain_map = self._services.setdefault(domain, {})
             entry = domain_map.get(service)
@@ -372,7 +411,11 @@ def service_registry_shim(hass: Any, monkeypatch: pytest.MonkeyPatch) -> Service
 
 @pytest.fixture
 def myair_client() -> MagicMock:
-    """Return a `RESTClient`-spec mock with the async methods coordinators call."""
+    """Return a `RESTClient`-spec mock with the async methods coordinators call.
+
+    Returns:
+        MagicMock: Mock REST client with coordinator-facing async methods.
+    """
     # Use spec=RESTClient so tests that isinstance-check against RESTClient continue to work
     client = MagicMock(spec=RESTClient)
     client.connect = AsyncMock()
@@ -383,25 +426,47 @@ def myair_client() -> MagicMock:
 
 @pytest.fixture
 def config_na() -> MyAirConfig:
-    """Return an NA-region `MyAirConfig` for REST client tests."""
+    """Return an NA-region `MyAirConfig` for REST client tests.
+
+    Returns:
+        MyAirConfig: Configuration populated with deterministic North American test values.
+    """
     return MyAirConfig(username="user", password="pass", region=REGION_NA, device_token="token")
 
 
 @pytest.fixture
 def config_eu() -> MyAirConfig:
-    """Return an EU-region `MyAirConfig` for REST client tests."""
+    """Return an EU-region `MyAirConfig` for REST client tests.
+
+    Returns:
+        MyAirConfig: Configuration populated with deterministic European test values.
+    """
     return MyAirConfig(username="user", password="pass", region=REGION_EU, device_token="token")
 
 
 @pytest.fixture
 def coordinator(coordinator_factory: CoordinatorFactory) -> CoordinatorLike | MagicMock:
-    """Return the default dataful coordinator from the shared factory."""
+    """Return the default dataful coordinator from the shared factory.
+
+    Args:
+        coordinator_factory (CoordinatorFactory): Factory used to construct the coordinator.
+
+    Returns:
+        CoordinatorLike | MagicMock: Data-backed coordinator test double.
+    """
     return coordinator_factory()
 
 
 @pytest.fixture
 def coordinator_mock(coordinator_factory: CoordinatorFactory) -> MagicMock:
-    """Return a mock coordinator with async refresh hooks."""
+    """Return a mock coordinator with async refresh hooks.
+
+    Args:
+        coordinator_factory (CoordinatorFactory): Factory used to construct the coordinator.
+
+    Returns:
+        MagicMock: Coordinator mock with awaitable refresh methods.
+    """
     return coordinator_factory(mock=True)
 
 
@@ -410,8 +475,7 @@ def coordinator_factory() -> CoordinatorFactory:
     """Build coordinator doubles for tests.
 
     Returns:
-        A callable that can create a dataful dummy coordinator or an async
-        mock coordinator, depending on the requested flags.
+        CoordinatorFactory: Callable that creates dataful or async-mock coordinator doubles.
     """
 
     def _make(
@@ -420,11 +484,13 @@ def coordinator_factory() -> CoordinatorFactory:
         """Create either an async mock coordinator or a data-backed dummy.
 
         Args:
-            mock: Whether to return a ``MagicMock`` with async refresh methods.
-            data: Optional mapping or typed payload for the dummy coordinator.
+            mock (bool): Whether to return a `MagicMock` with async refresh methods.
+            data (dict[str, object] | MyAirCoordinatorData | None): Optional mapping or typed
+                payload for the dummy coordinator.
 
         Returns:
-            Coordinator test double suitable for sensor and setup tests.
+            CoordinatorLike | MagicMock: Coordinator test double suitable for sensor and setup
+                tests.
         """
         if mock:
             m = MagicMock()
@@ -446,15 +512,20 @@ def coordinator_factory() -> CoordinatorFactory:
                 """Store the typed payload exposed through ``coordinator.data``.
 
                 Args:
-                    d: Typed coordinator payload used by sensor tests.
+                    d (MyAirCoordinatorData): Typed coordinator payload used by sensor tests.
                 """
                 self.data = d
 
             def async_add_listener(self, *args: object, **kwargs: object) -> Callable[[], None]:
                 """Accept listener registration and return a no-op unsubscribe callback.
 
+                Args:
+                    args (object): Listener callback arguments supplied by the entity.
+                    kwargs (object): Listener registration options supplied by Home Assistant.
+
                 Returns:
-                    Callable matching Home Assistant's listener-removal contract.
+                    Callable[[], None]: No-op callback matching Home Assistant's
+                        listener-removal contract.
                 """
                 return lambda: None
 

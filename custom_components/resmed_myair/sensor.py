@@ -34,10 +34,12 @@ def _coordinator_data(coordinator: MyAirDataUpdateCoordinator) -> MyAirCoordinat
     """Normalize coordinator payloads before sensors read typed fields.
 
     Args:
-        coordinator: Integration coordinator whose data may be unset during startup.
+        coordinator (MyAirDataUpdateCoordinator): Integration coordinator whose
+            data may be unset during startup.
 
     Returns:
-        Existing typed data, or an empty payload that keeps entity updates defensive.
+        MyAirCoordinatorData: Existing typed data, or an empty payload that keeps
+            entity updates defensive.
     """
     if isinstance(coordinator.data, MyAirCoordinatorData):
         return coordinator.data
@@ -48,12 +50,13 @@ def _parse_native_value(value: Any | None, description: SensorEntityDescription)
     """Convert raw API strings for Home Assistant date and timestamp sensors.
 
     Args:
-        value: Raw value taken from a device or sleep-record payload.
-        description: Entity description that declares any HA device class.
+        value (Any | None): Raw value taken from a device or sleep-record payload.
+        description (SensorEntityDescription): Entity description that declares any
+            HA device class.
 
     Returns:
-        Parsed date/datetime values for matching device classes; otherwise the
-        original value.
+        Any | None: Parsed date/datetime values for matching device classes;
+            otherwise the original value.
     """
     if isinstance(value, str) and description.device_class == SensorDeviceClass.DATE:
         return dt_util.parse_date(value)
@@ -70,9 +73,12 @@ async def async_setup_entry(
     """Create all myAir sensor entities and register the manual refresh service.
 
     Args:
-        hass: Home Assistant instance receiving the entities and service.
-        config_entry: Loaded myAir config entry with coordinator runtime data.
-        async_add_entities: Home Assistant callback used to add entity instances.
+        hass (HomeAssistant): Home Assistant instance receiving the entities and
+            service.
+        config_entry (ConfigEntry): Loaded myAir config entry with coordinator
+            runtime data.
+        async_add_entities (AddEntitiesCallback): Home Assistant callback used to
+            add entity instances.
     """
     _LOGGER.debug(
         "[sensor async_setup_entry] config_entry.data: %s", redact_dict(config_entry.data)
@@ -110,8 +116,8 @@ async def async_setup_entry(
     async def refresh(_: Any) -> None:
         """Refresh coordinator data when the per-account force-poll service runs.
 
-        Args:
-            _: Service call payload; unused because refresh needs no parameters.
+        The service payload is deliberately ignored because polling accepts no
+        caller-provided parameters.
         """
         await coordinator.async_refresh()
 
@@ -134,9 +140,11 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         value exposed by the concrete sensor.
 
         Args:
-            friendly_name: Entity name shown in Home Assistant.
-            sensor_desc: Home Assistant metadata and the myAir field key.
-            coordinator: Data coordinator containing typed device and sleep snapshots.
+            friendly_name (str): Entity name shown in Home Assistant.
+            sensor_desc (SensorEntityDescription): Home Assistant metadata and the
+                myAir field key.
+            coordinator (MyAirDataUpdateCoordinator): Data coordinator containing
+                typed device and sleep snapshots.
         """
         super().__init__(coordinator)
         self.sensor_key: Final[str] = sensor_desc.key
@@ -179,8 +187,9 @@ class MyAirRawSensor(MyAirBaseSensor):
         """Return the model object that contains this sensor's raw API field.
 
         Returns:
-            Device or sleep-record model for raw GraphQL-backed sensors, or ``None``
-            when the coordinator did not receive the required payload.
+            _SensorPayload | None: Device or sleep-record model for raw
+                GraphQL-backed sensors, or ``None`` when the coordinator did not
+                receive the required payload.
         """
 
     @callback
@@ -220,8 +229,8 @@ class MyAirSleepRecordSensor(MyAirRawSensor):
         """Select the latest dated sleep record from the coordinator snapshot.
 
         Returns:
-            Most recent sleep record available for raw sleep metrics, or ``None``
-            before the API has returned any sleep history.
+            _SensorPayload | None: Most recent sleep record available for raw sleep
+                metrics, or ``None`` before the API has returned any sleep history.
         """
         # The API always returns the previous month of data, so the client stores this
         # We assume this is ordered temporally and grab the last one: the latest one
@@ -238,8 +247,9 @@ class MyAirDeviceSensor(MyAirRawSensor):
         """Select the device metadata payload from the coordinator snapshot.
 
         Returns:
-            Device payload used for raw device-backed sensors, or ``None`` before
-            the API has returned the account's active flow generator.
+            _SensorPayload | None: Device payload used for raw device-backed
+                sensors, or ``None`` before the API has returned the account's
+                active flow generator.
         """
         return _coordinator_data(self.coordinator).device
 
@@ -257,7 +267,8 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
         of a raw myAir GraphQL key, so it keeps its own update handler.
 
         Args:
-            coordinator: Data coordinator that supplies sleep records.
+            coordinator (MyAirDataUpdateCoordinator): Data coordinator that supplies
+                sleep records.
         """
         desc = SensorEntityDescription(key="usageTime")
 
@@ -296,7 +307,8 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
         latest night with actual CPAP use rather than the latest API row.
 
         Args:
-            coordinator: Data coordinator that supplies sleep records.
+            coordinator (MyAirDataUpdateCoordinator): Data coordinator that supplies
+                sleep records.
         """
         desc = SensorEntityDescription(
             key="mostRecentSleepDate", device_class=SensorDeviceClass.DATE

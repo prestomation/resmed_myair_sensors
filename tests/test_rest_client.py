@@ -53,7 +53,17 @@ def test_get_region_config_returns_expected_settings(
     expected_redirect_url: str,
     expected_authn_url: str,
 ) -> None:
-    """Region lookups return the expected ResMed endpoint set."""
+    """Region lookups return the expected ResMed endpoint set.
+
+    Args:
+        region (str): Region identifier whose endpoint configuration is under
+            test.
+        expected_product (str): Product label expected for the selected region.
+        expected_redirect_url (str): OAuth redirect endpoint expected for the
+            selected region.
+        expected_authn_url (str): Authentication endpoint expected for the
+            selected region.
+    """
     config = get_region_config(region)
 
     assert isinstance(config, RegionConfig)
@@ -81,7 +91,16 @@ def test_rest_client_owns_collaborator_wrappers(
     attribute_name: str,
     expected_type: type[object],
 ) -> None:
-    """RESTClient builds dedicated auth and GraphQL wrappers."""
+    """RESTClient builds dedicated auth and GraphQL wrappers.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used to construct the
+            REST client.
+        session (MagicMock): HTTP session stand-in passed to both wrappers.
+        attribute_name (str): Collaborator attribute selected for this case.
+        expected_type (type[object]): Wrapper type expected on the selected
+            client attribute.
+    """
     client = RESTClient(config_na, session)
 
     assert isinstance(getattr(client, attribute_name), expected_type)
@@ -94,7 +113,14 @@ def test_rest_client_owns_collaborator_wrappers(
 def test_rest_client_init_region(
     region: str, expected_config: RegionConfig, session: MagicMock
 ) -> None:
-    """RESTClient initialization selects the expected regional settings."""
+    """RESTClient initialization selects the expected regional settings.
+
+    Args:
+        region (str): Region used to build the client configuration.
+        expected_config (RegionConfig): Regional auth settings expected after
+            initialization.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+    """
     config = MyAirConfig(username="user", password="pass", region=region, device_token="token")
     client = RESTClient(config, session)
     assert client._auth.region_config == expected_config
@@ -116,7 +142,15 @@ def test_auth_session_property_variants(
     property_name: str,
     new_value: object,
 ) -> None:
-    """Auth session properties expose owned mutable request state."""
+    """Auth session properties expose owned mutable request state.
+
+    Args:
+        config_na (MyAirConfig): Base configuration used to construct the auth
+            session.
+        session (MagicMock): HTTP session stand-in used by the auth session.
+        property_name (str): Auth property selected for the assignment case.
+        new_value (object): Replacement value whose propagation is verified.
+    """
     auth = MyAirAuthSession(config_na, session)
 
     setattr(auth, property_name, new_value)
@@ -162,7 +196,16 @@ def test_auth_session_property_variants(
 def test_mfa_challenge_metadata_handles_partial_okta_payloads(
     authn_dict: dict[str, object], expected_factor_id: str, expected_mfa_url: str
 ) -> None:
-    """MFA metadata parsing keeps regional defaults unless Okta supplies valid fields."""
+    """MFA metadata parsing keeps regional defaults unless Okta supplies valid fields.
+
+    Args:
+        authn_dict (dict[str, object]): Partial Okta authentication payload
+            selected for the metadata parsing case.
+        expected_factor_id (str): Factor identifier expected after applying the
+            payload and regional fallback.
+        expected_mfa_url (str): Verification endpoint expected for the selected
+            factor metadata.
+    """
     assert _mfa_challenge_metadata(authn_dict, NA_CONFIG) == (
         expected_factor_id,
         expected_mfa_url,
@@ -171,7 +214,14 @@ def test_mfa_challenge_metadata_handles_partial_okta_payloads(
 
 @pytest.mark.parametrize("case", ["device_token", "cookies"])
 def test_properties_variants(case: str, config_na: MyAirConfig, session: MagicMock) -> None:
-    """Device-token and cookie properties mirror the client state."""
+    """Device-token and cookie properties mirror the client state.
+
+    Args:
+        case (str): Property scenario selected for this parametrized case.
+        config_na (MyAirConfig): Client configuration containing the initial
+            device token.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+    """
     client = RESTClient(config_na, session)
     if case == "device_token":
         assert client.device_token == "token"
@@ -221,7 +271,23 @@ async def test_extract_and_update_cookies_variants(
     config_na: MyAirConfig,
     session: MagicMock,
 ) -> None:
-    """Cookie extraction updates state, handles casing, and logs rotations safely."""
+    """Cookie extraction updates state, handles casing, and logs rotations safely.
+
+    Args:
+        initial_dt (str | None): Existing device-token cookie before extraction.
+        initial_sid (str | None): Existing session cookie before extraction.
+        cookie_headers (list[str]): Response cookie headers selected for this
+            extraction case.
+        expected_dt (str | None): Device-token value expected after extraction.
+        expected_sid (str | None): Session-cookie value expected after
+            extraction.
+        expect_warn (bool): Whether the case should log a token-rotation
+            warning.
+        caplog (pytest.LogCaptureFixture): Captured logs used to verify safe
+            cookie-rotation diagnostics.
+        config_na (MyAirConfig): Base client configuration for the auth session.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+    """
     # MyAirConfig is a NamedTuple (immutable) so use _replace to change device_token
     config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
@@ -276,7 +342,14 @@ async def test_extract_and_update_cookies_variants(
 async def test_resmed_response_error_check_variants(
     status: int, resp_dict: dict[str, object], expected_exception: type[BaseException]
 ) -> None:
-    """Response error parsing maps auth and incomplete-account failures correctly."""
+    """Response error parsing maps auth and incomplete-account failures correctly.
+
+    Args:
+        status (int): HTTP status selected for the response-error case.
+        resp_dict (dict[str, object]): Error payload returned by the endpoint.
+        expected_exception (type[BaseException]): Exception class expected for
+            the payload and status combination.
+    """
     response = MagicMock(spec=ClientResponse)
     response.status = status
     response.headers = CIMultiDict()
@@ -332,7 +405,22 @@ async def test_authn_check_variants(
     expect_mfa_url_prefix: str | None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Auth checks handle success and MFA-required payloads."""
+    """Auth checks handle success and MFA-required payloads.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the auth check.
+        session (MagicMock): HTTP session stand-in for the auth request.
+        json_value (dict[str, object]): Authentication response payload for the
+            status scenario.
+        expected_status (str | None): Status expected from the auth check.
+        expect_session_token (str | None): Session token expected for success.
+        expect_state_token (str | None): State token expected for MFA flow.
+        expect_email_factor_id (str | None): MFA factor identifier expected for
+            the MFA payload.
+        expect_mfa_url_prefix (str | None): Verification URL prefix expected for
+            the MFA payload.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response helpers.
+    """
     client = RESTClient(config_na, session)
     mock_response = make_mock_aiohttp_response(json_value=json_value)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
@@ -358,7 +446,14 @@ async def test_authn_check_invalid_status_raises(
     json_value: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Invalid auth status payloads raise `AuthenticationError`."""
+    """Invalid auth status payloads raise `AuthenticationError`.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the auth check.
+        session (MagicMock): HTTP session stand-in for the auth request.
+        json_value (dict[str, object]): Invalid authentication response payload.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response helpers.
+    """
     client = RESTClient(config_na, session)
     mock_response = make_mock_aiohttp_response(json_value=json_value)
     session.post.return_value = make_mock_aiohttp_context_manager(mock_response)
@@ -383,7 +478,17 @@ async def test_verify_mfa_and_get_access_token_variants(
     expected_status: str | None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """MFA verification either returns the status or raises on failure."""
+    """MFA verification either returns the status or raises on failure.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the MFA flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        verify_return (str): Stubbed status returned by MFA verification.
+        expect_exception (bool): Whether the returned status should trigger an
+            authentication error.
+        expected_status (str | None): Status expected when verification succeeds.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for MFA methods.
+    """
     client = RESTClient(config_na, session)
     # use monkeypatch to replace instance methods
     client_verify = AsyncMock(return_value=verify_return)
@@ -403,7 +508,15 @@ async def test_verify_mfa_and_get_access_token_variants(
 async def test_connect_access_token_active_variants(
     config_na: MyAirConfig, session: MagicMock, cookie_dt: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Active access tokens short-circuit connect to `AUTHN_SUCCESS`."""
+    """Active access tokens short-circuit connect to `AUTHN_SUCCESS`.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the connection.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        cookie_dt (str): Existing device-token cookie used by this case.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for access-token
+            checks and auth calls.
+    """
     client = RESTClient(config_na, session)
     client._auth.device_token = cookie_dt
     client._auth.access_token = "token"
@@ -419,7 +532,13 @@ async def test_connect_access_token_active_variants(
 async def test_connect_authn_success(
     config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Connect performs auth checks before requesting a new access token."""
+    """Connect performs auth checks before requesting a new access token.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the connection.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for the auth flow.
+    """
     client = RESTClient(config_na, session)
     client._auth.device_token = "dt"
     client._auth.access_token = None
@@ -449,7 +568,19 @@ async def test_connect_needs_mfa_parametrized(
     expect_raises: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Connect triggers MFA only on the initial auth path that requires it."""
+    """Connect triggers MFA only on the initial auth path that requires it.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the connection.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        initial (bool): Whether the connection is using the initial-auth path.
+        expect_trigger (bool): Whether MFA triggering should occur in this case.
+        expect_result (object): Successful connection result expected by the
+            case.
+        expect_raises (bool): Whether refresh handling should raise an auth
+            error for the MFA status.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for auth methods.
+    """
     client = RESTClient(config_na, session)
     client._auth.device_token = "dt"
     client._auth.access_token = None
@@ -487,7 +618,17 @@ async def test_connect_initial_dt_and_warning_variants(
     expect_warn: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Connect fetches an initial DT cookie and warns when MFA is active."""
+    """Connect fetches an initial DT cookie and warns when MFA is active.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the connection.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        caplog (pytest.LogCaptureFixture): Captured logs used to inspect the MFA
+            warning.
+        uses_mfa (bool): Whether the auth session is configured for MFA.
+        expect_warn (bool): Whether the missing-device-token warning is expected.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for auth methods.
+    """
     client = RESTClient(config_na, session)
     client._auth.device_token = None
     client._auth.uses_mfa = uses_mfa
@@ -524,7 +665,19 @@ async def test_connect_status_needs_mfa_parametrized(
     expect_raises: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Connect handles `AUTH_NEEDS_MFA` consistently across initial and refresh paths."""
+    """Connect handles `AUTH_NEEDS_MFA` consistently across initial and refresh paths.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the connection.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        initial (bool): Whether the connection is using the initial-auth path.
+        expect_trigger (bool): Whether MFA triggering should occur in this case.
+        expect_result (object): Successful connection result expected by the
+            case.
+        expect_raises (bool): Whether refresh handling should raise an auth
+            error for the MFA status.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for auth methods.
+    """
     client = RESTClient(config_na, session)
     client._auth.device_token = "cookie"
     client._auth.access_token = None
@@ -605,7 +758,16 @@ async def test_authn_check_raises_variants(
     match: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Auth payloads missing required tokens raise `AuthenticationError`."""
+    """Auth payloads missing required tokens raise `AuthenticationError`.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the auth check.
+        session (MagicMock): HTTP session stand-in for the auth request.
+        json_value (dict[str, object]): Authentication payload missing a
+            required token.
+        match (object): Error-message pattern expected for the missing token.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response helpers.
+    """
     client = RESTClient(config_na, session)
 
     mock_response = make_mock_aiohttp_response(json_value=json_value)
@@ -641,7 +803,18 @@ async def test_mfa_methods_success_variants(
     expected: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """MFA trigger and verification helpers succeed on valid payloads."""
+    """MFA trigger and verification helpers succeed on valid payloads.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the MFA flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        method (object): Auth helper selected by the parametrized case.
+        resp_json (object): Successful response payload returned by the helper.
+        call_arg (object): Optional verification code passed to the helper.
+        post_assert (object): Whether the case should assert the POST call.
+        expected (object): Expected status returned by verification.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response checks.
+    """
     client = RESTClient(config_na, session)
     client._auth.state_token = "dummy_state_token"
     client._auth.mfa_url = "https://example.com/mfa"
@@ -673,7 +846,13 @@ async def test_json_headers_assignment_forwards_to_auth_trigger_mfa(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Setting RESTClient._json_headers updates delegated auth request headers."""
+    """Assign auth JSON headers and verify the delegated request uses them.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the auth flow.
+        session (MagicMock): HTTP session stand-in used for the MFA request.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response checks.
+    """
     client = RESTClient(config_na, session)
     client._auth.state_token = "dummy_state_token"
     client._auth.mfa_url = "https://example.com/mfa"
@@ -695,7 +874,15 @@ async def test_verify_mfa_debug_logs_do_not_expose_mfa_secrets(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """MFA debug logging avoids verification code and state token values."""
+    """MFA debug logging avoids verification code and state token values.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the MFA flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        caplog (pytest.LogCaptureFixture): Captured debug logs inspected for
+            secret values.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response checks.
+    """
     client = RESTClient(config_na, session)
     client._auth.state_token = "dummy_state_token"
     client._auth.mfa_url = "https://example.com/mfa"
@@ -719,7 +906,15 @@ async def test_trigger_mfa_debug_logs_do_not_expose_auth_flow_secrets(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """MFA trigger debug logging avoids state, session, and passcode values."""
+    """MFA trigger debug logging avoids state, session, and passcode values.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the MFA flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        caplog (pytest.LogCaptureFixture): Captured debug logs inspected for
+            secret values.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response checks.
+    """
     client = RESTClient(config_na, session)
     client._auth.state_token = "dummy_state_token"
     client._auth.mfa_url = "https://example.com/mfa"
@@ -761,7 +956,16 @@ async def test_get_access_token_debug_logs_do_not_expose_oauth_secrets(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OAuth debug logging avoids session token, auth code, and verifier values."""
+    """OAuth debug logging avoids session token, auth code, and verifier values.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the OAuth flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        caplog (pytest.LogCaptureFixture): Captured debug logs inspected for
+            secret values.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for OAuth responses
+            and cookie extraction.
+    """
     client = RESTClient(config_na, session)
     client._auth.session_token = "dummy_session_token"
 
@@ -809,7 +1013,15 @@ async def test_verify_mfa_raises_variants(
     match: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Invalid MFA verification responses raise `AuthenticationError`."""
+    """Invalid MFA verification responses raise `AuthenticationError`.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the MFA flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        json_value (dict[str, object]): Invalid verification response payload.
+        match (object): Error-message pattern expected for the invalid payload.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response checks.
+    """
     client = RESTClient(config_na, session)
     client._auth.state_token = "dummy_state_token"
     client._auth.mfa_url = "https://example.com/mfa"
@@ -829,7 +1041,14 @@ async def test_verify_mfa_raises_variants(
 async def test_get_access_token_success(
     config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Successful token exchange stores the access and ID tokens."""
+    """Successful token exchange stores the access and ID tokens.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the OAuth flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for redirect parsing,
+            cookies, and response checks.
+    """
     client = RESTClient(config_na, session)
     client._auth.session_token = "dummy_session_token"
     client._auth.json_headers = {"Content-Type": "application/json"}
@@ -890,7 +1109,21 @@ async def test_get_access_token_raises_on_invalid_authorization_redirect(
     parsed_fragment: dict[str, list[str]],
     match_msg: str,
 ) -> None:
-    """Invalid authorization redirects raise `ParsingError` before token exchange."""
+    """Invalid authorization redirects raise `ParsingError` before token exchange.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the OAuth flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for redirect parsing
+            and response checks.
+        redirect_location (str | None): Location header value selected for the
+            redirect case.
+        fragment (str): URL fragment supplied to the parser stub.
+        parsed_fragment (dict[str, list[str]]): Parsed fragment mapping used by
+            the authorization-code branch.
+        match_msg (str): Error-message pattern expected from the invalid
+            redirect.
+    """
     client = RESTClient(config_na, session)
     client._auth.session_token = "dummy_session_token"
     client._auth.json_headers = {"Content-Type": "application/json"}
@@ -931,7 +1164,17 @@ async def test_get_access_token_raises_on_missing_token_variants(
     match_msg: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Token responses missing required keys raise `ParsingError`."""
+    """Token responses missing required keys raise `ParsingError`.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the OAuth flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        token_json (object): Token response missing one required token field.
+        match_msg (object): Error-message pattern expected for the missing
+            token field.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for redirect parsing
+            and response checks.
+    """
     client = RESTClient(config_na, session)
     client._auth.session_token = "dummy_session_token"
     client._auth.json_headers = {"Content-Type": "application/json"}
@@ -983,7 +1226,18 @@ async def test_gql_query_variants(
     expected_country: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """GraphQL queries decode country data and surface JWT failures."""
+    """GraphQL queries decode country data and surface JWT failures.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the query.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        jwt_behavior (object): JWT decoder scenario selected for the query case.
+        post_json (object): GraphQL response payload returned by the POST stub.
+        expect_exception (bool): Whether the decoder scenario should fail.
+        expected_country (object): Country value expected after JWT decoding.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for JWT and HTTP
+            behavior.
+    """
     client = RESTClient(config_na, session)
     client._auth.access_token = "access"
     client._auth.id_token = "idtoken"
@@ -1012,8 +1266,11 @@ async def test_gql_query_variants(
             """Simulate a JWT decoder failure while preserving monkeypatch signature.
 
             Args:
-                *a: Positional arguments passed by the GraphQL client.
-                **k: Keyword arguments passed by the GraphQL client.
+                *a (object): Positional arguments passed by the GraphQL client.
+                **k (object): Keyword arguments passed by the GraphQL client.
+
+            Returns:
+                Never: This helper always raises instead of returning.
 
             Raises:
                 ValueError: Always raised to drive the parsing-error branch.
@@ -1049,7 +1306,16 @@ async def test_gql_query_failure_variants(
     match: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """GraphQL query failures cover JWT decode, missing country, and missing ID token."""
+    """GraphQL query failures cover JWT decode, missing country, and missing ID token.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the query.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        id_token (object): Optional ID token selected for the failure case.
+        jwt_behavior (object): Decoder behavior selected for the token case.
+        match (object): Error-message pattern expected from the failure.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for JWT behavior.
+    """
     client = RESTClient(config_na, session)
     client._auth.access_token = "access"
     client._auth.id_token = id_token
@@ -1063,13 +1329,16 @@ async def test_gql_query_failure_variants(
                 """Raise the configured JWT decode error for this parameter set.
 
                 Args:
-                    *a: Positional arguments passed by the GraphQL client.
-                    **k: Keyword arguments passed by the GraphQL client.
+                    *a (object): Positional arguments passed by the GraphQL client.
+                    **k (object): Keyword arguments passed by the GraphQL client.
+
+                Returns:
+                    Never: This helper always raises instead of returning.
 
                 Raises:
-                    Exception: The specific side effect supplied by the test case.
+                    ValueError: The decode error supplied by the test case.
                 """
-                raise jwt_behavior["side_effect"]
+                raise ValueError(str(jwt_behavior["side_effect"]))
 
             monkeypatch.setattr(
                 "custom_components.resmed_myair.client.graphql.jwt.decode",
@@ -1092,7 +1361,12 @@ async def test_gql_query_failure_variants(
 
 @pytest.mark.asyncio
 async def test_gql_query_graphql_error(config_na: MyAirConfig, session: MagicMock) -> None:
-    """GraphQL unauthorized responses map to `ParsingError`."""
+    """GraphQL unauthorized responses map to `ParsingError`.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the query.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+    """
     client = RESTClient(config_na, session)
     client._auth.access_token = "access"
     client._auth.id_token = None
@@ -1194,7 +1468,16 @@ async def test_data_fetch_success_variants(
     expected: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Data fetch helpers return typed models for sleep records and device data."""
+    """Data fetch helpers return typed models for sleep records and device data.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the data fetch.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        method_name (object): Client method selected by the data shape case.
+        mock_response (object): GraphQL response payload supplied to the method.
+        expected (object): Parsed model values expected from the response.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for the GraphQL query.
+    """
     client = RESTClient(config_na, session)
     client._auth.access_token = "access"
     client._graphql.country_code = "US"
@@ -1217,14 +1500,30 @@ async def test_data_fetch_success_variants(
 async def test_get_sleep_records_uses_local_date_range(
     config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Sleep-record queries use the local month window."""
+    """Sleep-record queries use the local month window.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the query.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for deterministic time
+            and GraphQL responses.
+    """
 
     class FixedDateTime(datetime.datetime):
         """DateTime class with deterministic now() for query-window assertions."""
 
         @classmethod
         def now(cls, tz: datetime.tzinfo | None = None) -> datetime.datetime:
-            """Return a fixed timezone-aware timestamp for the date window."""
+            """Return a fixed timezone-aware timestamp for the date window.
+
+            Args:
+                tz (datetime.tzinfo | None): Time zone applied to the fixed
+                    timestamp.
+
+            Returns:
+                datetime.datetime: Fixed timestamp used by the query-window
+                    assertion.
+            """
             return cls(2024, 7, 31, 12, tzinfo=tz)
 
     client = RESTClient(config_na, session)
@@ -1259,7 +1558,17 @@ async def test_get_sleep_records_failure_variants(
     match_msg: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sleep-record fetches raise `ParsingError` for malformed payloads."""
+    """Sleep-record fetches raise `ParsingError` for malformed payloads.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the data fetch.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        mock_response (object): Malformed GraphQL response payload selected for
+            the case.
+        match_msg (object): Error-message pattern expected from the malformed
+            response.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for the GraphQL query.
+    """
     client = RESTClient(config_na, session)
     client._auth.access_token = "access"
     client._graphql.country_code = "US"
@@ -1274,7 +1583,13 @@ async def test_get_sleep_records_raises_parsing_error_for_non_mapping_items(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sleep-record list items must be mappings before model parsing."""
+    """Sleep-record list items must be mappings before model parsing.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the data fetch.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for the GraphQL query.
+    """
     client = RESTClient(config_na, session)
     mock_response = {"data": {"getPatientWrapper": {"sleepRecords": {"items": [123]}}}}
     monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
@@ -1316,7 +1631,17 @@ async def test_get_user_device_data_failure_variants(
     match_msg: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Device-data fetches raise `ParsingError` for malformed payloads."""
+    """Device-data fetches raise `ParsingError` for malformed payloads.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the data fetch.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        mock_response (object): Malformed GraphQL response payload selected for
+            the case.
+        match_msg (object): Error-message pattern expected from the malformed
+            response.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for the GraphQL query.
+    """
     client = RESTClient(config_na, session)
     client._auth.access_token = "access"
     client._graphql.country_code = "US"
@@ -1349,7 +1674,20 @@ async def test_get_user_device_data_masks_variants(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Device-data mask handling preserves valid masks and warns on misses."""
+    """Device-data mask handling preserves valid masks and warns on misses.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the data fetch.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        masks (object): Mask payload selected to exercise valid and missing
+            mask-code handling.
+        expect_warning (object): Whether the selected mask payload should log a
+            warning.
+        expected_mask (object): Mask code expected in the resulting device data.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for the GraphQL query.
+        caplog (pytest.LogCaptureFixture): Captured logs used to inspect mask
+            warnings.
+    """
     client = RESTClient(config_na, session)
     client._auth.access_token = "access"
     client._graphql.country_code = "US"
@@ -1387,7 +1725,17 @@ async def test_get_initial_dt_variants(
     expected_extract_arg: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Initial DT extraction handles present and missing cookie headers."""
+    """Initial DT extraction handles present and missing cookie headers.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the auth flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        cookie_headers (list[str]): Initial response cookie headers selected for
+            the extraction case.
+        expected_extract_arg (object): Cookie headers expected by the extraction
+            helper.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for cookie extraction.
+    """
     client = RESTClient(config_na, session)
     mock_headers = MagicMock()
     mock_headers.getall = MagicMock(return_value=cookie_headers)
@@ -1449,7 +1797,13 @@ async def test_resmed_response_error_check_not_bad_request() -> None:
 async def test_authn_check_uses_region_mfa_defaults_for_malformed_factor_metadata(
     authn_dict: object, session: MagicMock, config_na: MyAirConfig
 ) -> None:
-    """Auth checks fall back to regional MFA metadata when Okta omits factor details."""
+    """Auth checks fall back to regional MFA metadata when Okta omits factor details.
+
+    Args:
+        authn_dict (object): MFA-required payload with malformed factor metadata.
+        session (MagicMock): HTTP session stand-in supplied to the auth session.
+        config_na (MyAirConfig): Base client configuration for regional defaults.
+    """
     # MyAirConfig is a NamedTuple (immutable) so use _replace to change device_token
     config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
@@ -1483,7 +1837,18 @@ async def test_get_access_token_token_change_and_logging(
     expect_change: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Token rotation logging distinguishes unchanged and updated access tokens."""
+    """Token rotation logging distinguishes unchanged and updated access tokens.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the OAuth flow.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        caplog (pytest.LogCaptureFixture): Captured logs used to inspect token
+            rotation diagnostics.
+        returned_token (object): Access token returned by the token endpoint.
+        expect_log (object): Whether the changed-token case should log an update.
+        expect_change (object): Whether the client token should be replaced.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response checks.
+    """
     # MyAirConfig is a NamedTuple (immutable) so create a modified copy
     config = config_na._replace(device_token=None)
     client = RESTClient(config, session)
@@ -1539,7 +1904,17 @@ async def test_status_helpers_variants(
     expected: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Small auth endpoint helpers return the expected boolean states."""
+    """Small auth endpoint helpers return the expected boolean states.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the endpoint call.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        method_name (object): Auth helper selected by the status case.
+        session_method (object): HTTP verb selected for the helper call.
+        response_json (object): Endpoint response payload containing the status.
+        expected (object): Boolean result expected from the helper.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for response checks.
+    """
     client = RESTClient(config_na, session)
     client._auth.access_token = "token"
     mock_res = make_mock_aiohttp_response(json_value=response_json, headers={})
@@ -1567,7 +1942,13 @@ async def test_status_helpers_variants(
 async def test_resmed_response_error_check_parsing_variants(
     resp_dict: dict[str, object], expected_substring: object
 ) -> None:
-    """Response-error parsing falls back cleanly across malformed payloads."""
+    """Response-error parsing falls back cleanly across malformed payloads.
+
+    Args:
+        resp_dict (dict[str, object]): Error payload shape selected for parsing.
+        expected_substring (object): Message fragment expected in the raised
+            processing error.
+    """
     response = MagicMock(spec=ClientResponse)
     response.status = 400
     response.headers = CIMultiDict()

@@ -60,14 +60,17 @@ async def get_device(
     """Authenticate with myAir and fetch device data when login is complete.
 
     Args:
-        hass: Home Assistant instance used to create the aiohttp session.
-        username: myAir account username.
-        password: myAir account password.
-        region: myAir region code selected by the user.
-        device_token: Optional remembered-device token from a previous setup.
+        hass (HomeAssistant): Home Assistant instance used to create the aiohttp
+            session.
+        username (str): myAir account username.
+        password (str): myAir account password.
+        region (str): myAir region code selected by the user.
+        device_token (str | None): Optional remembered-device token from a
+            previous setup.
 
     Returns:
-        Auth status, optional device data, and the client carrying auth state.
+        tuple[str, MyAirDevice | None, RESTClient]: Auth status, optional device
+            data, and the client carrying auth state.
     """
     _LOGGER.debug("[get_device] Starting")
     config = MyAirConfig(
@@ -88,11 +91,12 @@ async def get_mfa_device(client: RESTClient, verification_code: str) -> tuple[st
     """Complete MFA and fetch device data with the authenticated client.
 
     Args:
-        client: REST client already holding an active MFA challenge.
-        verification_code: Email MFA code entered by the user.
+        client (RESTClient): REST client already holding an active MFA challenge.
+        verification_code (str): Email MFA code entered by the user.
 
     Returns:
-        Auth success status and the account's assigned device.
+        tuple[str, MyAirDevice]: Auth success status and the account's assigned
+            device.
     """
     _LOGGER.debug("[get_mfa_device] Starting")
     status: str = await client.verify_mfa_and_get_access_token(verification_code)
@@ -119,10 +123,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Attempt login using collected form data.
 
         Args:
-            device_token: Optional remembered-device token to reuse during reauth.
+            device_token (str | None): Optional remembered-device token to reuse
+                during reauth.
 
         Returns:
-            Auth status and device data when auth completed without MFA.
+            tuple[str, MyAirDevice | None]: Auth status and device data when auth
+                completed without MFA.
         """
         status, device, self._client = await get_device(
             self.hass,
@@ -137,7 +143,8 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Verify the submitted MFA code using the active REST client.
 
         Returns:
-            Auth status and device data after MFA succeeds.
+            tuple[str, MyAirDevice]: Auth status and device data after MFA
+                succeeds.
 
         Raises:
             AuthenticationError: When the flow reaches MFA without an initialized client.
@@ -160,11 +167,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Build the shared credential form schema.
 
         Args:
-            defaults: Existing values to prefill in the form.
-            include_region: Whether the caller can change the myAir region.
+            defaults (Mapping[str, Any] | None): Existing values to prefill in the
+                form.
+            include_region (bool): Whether the caller can change the myAir
+                region.
 
         Returns:
-            Voluptuous schema for Home Assistant's config-flow form.
+            vol.Schema: Voluptuous schema for Home Assistant's config-flow form.
         """
         defaults = defaults or {}
         schema: dict[vol.Marker, object] = {
@@ -194,7 +203,7 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Build the shared MFA verification code schema.
 
         Returns:
-            Voluptuous schema for Home Assistant's MFA form.
+            vol.Schema: Voluptuous schema for Home Assistant's MFA form.
         """
         return vol.Schema(
             {
@@ -208,11 +217,14 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Show an MFA verification form with the shared account placeholder.
 
         Args:
-            step_id: Config-flow step that should receive the submitted MFA code.
-            errors: Form errors accumulated while handling the step.
+            step_id (str): Config-flow step that should receive the submitted MFA
+                code.
+            errors (Mapping[str, str]): Form errors accumulated while handling the
+                step.
 
         Returns:
-            Home Assistant form result for the requested MFA step.
+            ConfigFlowResult: Home Assistant form result for the requested MFA
+                step.
         """
         return self.async_show_form(
             step_id=step_id,
@@ -227,10 +239,10 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Build a stable Home Assistant entry title from device metadata.
 
         Args:
-            device: Typed myAir device returned by the API.
+            device (MyAirDevice): Typed myAir device returned by the API.
 
         Returns:
-            Manufacturer and localized name joined for display.
+            str: Manufacturer and localized name joined for display.
         """
         manufacturer = device.manufacturer or "ResMed"
         name = device.name or "myAir"
@@ -240,11 +252,11 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Abort reauth when credentials belong to a different configured device.
 
         Args:
-            device: Typed myAir device returned by the API.
+            device (MyAirDevice): Typed myAir device returned by the API.
 
         Returns:
-            Abort result when the serial number conflicts with the entry being
-            repaired, otherwise `None`.
+            ConfigFlowResult | None: Abort result when the serial number conflicts
+                with the entry being repaired, otherwise `None`.
 
         Raises:
             ParsingError: When device data does not include a serial number.
@@ -272,12 +284,13 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Validate reconfigure device identity and identify unique ID updates.
 
         Args:
-            entry: Config entry being reconfigured.
-            device: Typed myAir device returned by the API.
+            entry (ConfigEntry): Config entry being reconfigured.
+            device (MyAirDevice): Typed myAir device returned by the API.
 
         Returns:
-            Abort result when reconfigure should stop, plus the device serial
-            number when a legacy entry needs unique ID backfill.
+            tuple[ConfigFlowResult | None, str | None]: Abort result when
+                reconfigure should stop, plus the device serial number when a
+                legacy entry needs unique ID backfill.
 
         Raises:
             ParsingError: When device data does not include a serial number.
@@ -316,12 +329,15 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Update a config entry, schedule reload, and finish the flow.
 
         Args:
-            entry: Config entry being updated.
-            data_updates: Config-entry data values to merge into existing data.
-            unique_id: Optional unique ID to backfill on legacy entries.
+            entry (ConfigEntry): Config entry being updated.
+            data_updates (Mapping[str, Any]): Config-entry data values to merge
+                into existing data.
+            unique_id (str | None): Optional unique ID to backfill on legacy
+                entries.
 
         Returns:
-            Home Assistant config-flow abort result with source-specific reason.
+            ConfigFlowResult: Home Assistant config-flow abort result with a
+                source-specific reason.
         """
         kwargs: dict[str, Any] = {"data_updates": data_updates}
         if unique_id is not None:
@@ -339,13 +355,16 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Persist auth updates, reload the entry, and finish an update flow.
 
         Args:
-            entry: Config entry being updated.
-            unique_id: Optional unique ID to backfill on legacy entries.
-            debug_message: Message used to log the redacted update payload.
-            remove_mfa_code: Whether to discard the submitted MFA code first.
+            entry (ConfigEntry): Config entry being updated.
+            unique_id (str | None): Optional unique ID to backfill on legacy
+                entries.
+            debug_message (str): Message used to log the redacted update payload.
+            remove_mfa_code (bool): Whether to discard the submitted MFA code
+                first.
 
         Returns:
-            Home Assistant config-flow abort result with source-specific reason.
+            ConfigFlowResult: Home Assistant config-flow abort result with a
+                source-specific reason.
         """
         if remove_mfa_code:
             self._data.pop(CONF_VERIFICATION_CODE, None)
@@ -363,11 +382,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Abort setup with the most specific incomplete-account reason available.
 
         Args:
-            step: Flow step where myAir reported incomplete account setup.
-            error: Original incomplete-account exception from the client.
+            step (str): Flow step where myAir reported incomplete account setup.
+            error (IncompleteAccountError): Original incomplete-account exception
+                from the client.
 
         Returns:
-            Config-flow abort result for Home Assistant.
+            ConfigFlowResult: Config-flow abort result for Home Assistant.
         """
         if self._client:
             try:
@@ -400,10 +420,16 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Collect credentials, validate the account, and branch to MFA if needed.
 
         Args:
-            user_input: Submitted username, password, and region values.
+            user_input (MutableMapping[str, Any] | None): Submitted username,
+                password, and region values.
 
         Returns:
-            Form, MFA step, abort, or created-entry result for Home Assistant.
+            ConfigFlowResult: Form, MFA step, abort, or created-entry result for
+                Home Assistant.
+
+        Raises:
+            ParsingError: Raised internally for missing serial data and handled
+                as an `authentication_error` form response.
         """
         errors: dict[str, str] = {}
         user_input = user_input or {}
@@ -447,10 +473,16 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Verify MFA during initial setup and create the config entry.
 
         Args:
-            user_input: Submitted verification code from the MFA form.
+            user_input (MutableMapping[str, Any] | None): Submitted verification
+                code from the MFA form.
 
         Returns:
-            MFA form, abort, or created-entry result for Home Assistant.
+            ConfigFlowResult: MFA form, abort, or created-entry result for Home
+                Assistant.
+
+        Raises:
+            ParsingError: Raised internally for missing serial data and handled
+                as an `mfa_error` form response.
         """
         errors: dict[str, str] = {}
         user_input = user_input or {}
@@ -488,10 +520,11 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Load the existing config entry before prompting for new credentials.
 
         Args:
-            entry_data: Current config-entry data supplied by Home Assistant.
+            entry_data (MutableMapping[str, Any]): Current config-entry data
+                supplied by Home Assistant.
 
         Returns:
-            Next reauth flow step.
+            ConfigFlowResult: Next reauth flow step.
 
         Raises:
             UnknownEntry: When Home Assistant no longer has the reauth entry.
@@ -513,10 +546,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Collect replacement credentials and update the entry after validation.
 
         Args:
-            user_input: Submitted username and password values.
+            user_input (MutableMapping[str, Any] | None): Submitted username and
+                password values.
 
         Returns:
-            Reauth form, MFA step, abort, or successful-reauth abort result.
+            ConfigFlowResult: Reauth form, MFA step, abort, or successful-reauth
+                abort result.
         """
         errors: dict[str, str] = {}
 
@@ -559,10 +594,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Complete MFA during reauth and reload the repaired config entry.
 
         Args:
-            user_input: Submitted verification code from the reauth MFA form.
+            user_input (MutableMapping[str, Any] | None): Submitted verification
+                code from the reauth MFA form.
 
         Returns:
-            Reauth MFA form, abort, or successful-reauth abort result.
+            ConfigFlowResult: Reauth MFA form, abort, or successful-reauth abort
+                result.
         """
         errors: dict[str, str] = {}
         user_input = user_input or {}
@@ -599,10 +636,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Collect updated setup data and validate it against the same device.
 
         Args:
-            user_input: Submitted username, password, and region values.
+            user_input (MutableMapping[str, Any] | None): Submitted username,
+                password, and region values.
 
         Returns:
-            Reconfigure form, MFA step, abort, or successful update result.
+            ConfigFlowResult: Reconfigure form, MFA step, abort, or successful
+                update result.
         """
         errors: dict[str, str] = {}
         entry = self._get_reconfigure_entry()
@@ -647,10 +686,12 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """Complete MFA during reconfigure and reload the updated config entry.
 
         Args:
-            user_input: Submitted verification code from the reconfigure MFA form.
+            user_input (MutableMapping[str, Any] | None): Submitted verification
+                code from the reconfigure MFA form.
 
         Returns:
-            Reconfigure MFA form, abort, or successful update result.
+            ConfigFlowResult: Reconfigure MFA form, abort, or successful update
+                result.
         """
         errors: dict[str, str] = {}
         user_input = user_input or {}

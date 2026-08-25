@@ -1,4 +1,4 @@
-name: Linters
+name: Validate uv lock
 
 on:
   pull_request:
@@ -11,24 +11,19 @@ permissions:
   contents: read
 
 jobs:
-  linters:
-    name: Run Linters
+  uv-lock-check:
+    name: Validate uv lock consistency
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Setup uv (with caching)
+      - name: Setup uv
         uses: astral-sh/setup-uv@v10.0.0
         with:
           python-version: "3.14"
-          enable-cache: true
-          ignore-nothing-to-cache: true
-          cache-dependency-glob: uv.lock
 
-      - name: Run prek
-        uses: j178/prek-action@v2
-        env:
-          UV_LOCKED: "1"
+      - name: Check uv lock consistency
+        run: uv lock --check

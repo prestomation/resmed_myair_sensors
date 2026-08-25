@@ -1,6 +1,6 @@
 [project]
 name = "resmed_myair"
-requires-python = ">=3.14"
+requires-python = ">=3.14.2"
 dynamic = ["version"]
 
 [build-system]
@@ -22,7 +22,7 @@ version = { attr = "custom_components.resmed_myair.const.VERSION" }
 
 [dependency-groups]
 ha = [
-    "homeassistant",
+    "homeassistant>=2026.3",
     "PyJWT",
 ]
 lint = [
@@ -30,13 +30,14 @@ lint = [
     "mypy",
     "prek",
     "ruff",
+    "uv",
 ]
 pytest = [
     { include-group = "ha" },
-    "pytest",
+    "pytest>=9",
     "pytest-asyncio",
     "pytest-cov",
-    "pytest-homeassistant-custom-component",
+    "pytest-homeassistant-custom-component>=0.13.317",
     "pytest-timeout",
     "pytest-xdist",
 ]
@@ -44,6 +45,9 @@ dev = [
     { include-group = "lint" },
     { include-group = "pytest" },
 ]
+
+[tool.uv]
+required-version = ">=0.11.0"
 
 [tool.mypy]
 python_version = "3.14"
@@ -79,57 +83,58 @@ docstring-code-line-length = "dynamic"
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "ANN002",   # missing-type-args
-    "ANN003",   # missing-type-kwargs
-    "ANN401",   # any-type
-    "ARG",      # flake8-unused-arguments
-    "EM",       # flake8-errmsg
-    "ERA",      # eradicate
-    "FBT",      # flake8-boolean-trap
-    "PLC1901",  # {existing} can be simplified to {replacement} as an empty string is falsey; too many false positives
-    "PLR0904",  # Too many public methods
-    "PLR0911",  # Too many return statements ({returns} > {max_returns})
-    "PLR0912",  # Too many branches ({branches} > {max_branches})
-    "PLR0913",  # Too many arguments to function call ({c_args} > {max_args})
-    "PLR0914",  # Too many local variables
-    "PLR0915",  # Too many statements ({statements} > {max_statements})
-    "PLR0916",  # Too many Boolean expressions
-    "PLR0917",  # Too many positional arguments
-    "PLR1702",  # Too many nested blocks
-    "PLR2004",  # Magic value used in comparison, consider replacing {value} with a constant variable
-    "PLW2901",  # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
-    "PT011",    # pytest.raises({exception}) is too broad, set the `match` parameter or use a more specific exception
-    "PT018",    # Assertion should be broken down into multiple parts
-    "RUF001",   # String contains ambiguous unicode character.
-    "RUF002",   # Docstring contains ambiguous unicode character.
-    "RUF003",   # Comment contains ambiguous unicode character.
-    "RUF015",   # Prefer next(...) over single element slice
-    "S311",     # suspicious-non-cryptographic-random-usage
-    "SIM103",   # Return the condition {condition} directly
-    "SIM108",   # Use ternary operator {contents} instead of if-else-block
-    "SIM115",   # Use context handler for opening files
-    "TC001",    # Move application import {} into a type-checking block
-    "TC002",    # Move third-party import {} into a type-checking block
-    "TC003",    # Move standard library import {} into a type-checking block
-    "TD003",    # missing-todo-link
-    "TRY003",   # Avoid specifying long messages outside the exception class
-    "TRY301",   # raise-within-try
-    "TRY400",   # Use `logging.exception` instead of `logging.error`
+    "ANN002",  # missing-type-args
+    "ANN003",  # missing-type-kwargs
+    "ANN401",  # any-type
+    "ARG",     # flake8-unused-arguments
+    "CPY",     # flake8-copyright
+    "EM",      # flake8-errmsg
+    "ERA",     # eradicate
+    "FBT",     # flake8-boolean-trap
+    "PLC1901", # {existing} can be simplified to {replacement} as an empty string is falsey; too many false positives
+    "PLR0904", # Too many public methods
+    "PLR0911", # Too many return statements ({returns} > {max_returns})
+    "PLR0912", # Too many branches ({branches} > {max_branches})
+    "PLR0913", # Too many arguments to function call ({c_args} > {max_args})
+    "PLR0914", # Too many local variables
+    "PLR0915", # Too many statements ({statements} > {max_statements})
+    "PLR0916", # Too many Boolean expressions
+    "PLR0917", # Too many positional arguments
+    "PLR1702", # Too many nested blocks
+    "PLR2004", # Magic value used in comparison, consider replacing {value} with a constant variable
+    "PLW2901", # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
+    "PT011",   # pytest.raises({exception}) is too broad, set the `match` parameter or use a more specific exception
+    "PT018",   # Assertion should be broken down into multiple parts
+    "RUF001",  # String contains ambiguous unicode character.
+    "RUF002",  # Docstring contains ambiguous unicode character.
+    "RUF003",  # Comment contains ambiguous unicode character.
+    "RUF015",  # Prefer next(...) over single element slice
+    "S311",    # suspicious-non-cryptographic-random-usage
+    "SIM103",  # Return the condition {condition} directly
+    "SIM108",  # Use ternary operator {contents} instead of if-else-block
+    "SIM115",  # Use context handler for opening files
+    "TC001",   # Move application import {} into a type-checking block
+    "TC002",   # Move third-party import {} into a type-checking block
+    "TC003",   # Move standard library import {} into a type-checking block
+    "TD003",   # missing-todo-link
+    "TRY003",  # Avoid specifying long messages outside the exception class
+    "TRY301",  # raise-within-try
+    "TRY400",  # Use `logging.exception` instead of `logging.error`
 
     # May conflict with the formatter, https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
-    "COM812",   # missing-trailing-comma
-    "COM819",   # prohibited-trailing-comma
-    "D206",     # docstring-tab-indentation
-    "D300",     # triple-single-quotes
-    "E111",     # indentation-with-invalid-multiple
-    "E114",     # indentation-with-invalid-multiple-comment
-    "E117",     # over-indented
-    "Q000",     # bad-quotes-inline-string
-    "Q001",     # bad-quotes-multiline-string
-    "Q002",     # bad-quotes-docstring
-    "Q003",     # avoidable-escaped-quote
-    "Q004",     # unnecessary-escaped-quote
-    "W191",     # tab-indentation
+    "COM812", # missing-trailing-comma
+    "COM819", # prohibited-trailing-comma
+    "D206",   # docstring-tab-indentation
+    "D300",   # triple-single-quotes
+    "E111",   # indentation-with-invalid-multiple
+    "E114",   # indentation-with-invalid-multiple-comment
+    "E117",   # over-indented
+    "Q000",   # bad-quotes-inline-string
+    "Q001",   # bad-quotes-multiline-string
+    "Q002",   # bad-quotes-docstring
+    "Q003",   # avoidable-escaped-quote
+    "Q004",   # unnecessary-escaped-quote
+    "W191",   # tab-indentation
 ]
 fixable = ["ALL"]
 
@@ -157,6 +162,7 @@ convention = "google"
     "S105",    # Possible hardcoded password
     "S106",    # Possible hardcoded password
     "S108",    # hardcoded-temp-file
+    "S603",    # subprocess-without-shell-equals-true
     "SLF001",  # Private member accessed
 ]
 
@@ -186,3 +192,17 @@ parallel = false
 
 [tool.coverage.report]
 show_missing = true
+
+[tool.pydoclint]
+style = "google"
+should-document-private-class-attributes = true
+skip-checking-short-docstrings = false
+arg-type-hints-in-docstring = true
+check-return-types = true
+require-return-section-when-returning-nothing = false
+allow-init-docstring = true
+skip-checking-raises = false
+check-class-attributes = false
+check-style-mismatch = true
+should-document-star-arguments = true
+omit-stars-when-documenting-varargs = true

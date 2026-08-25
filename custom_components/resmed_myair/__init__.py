@@ -35,11 +35,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     """Create the myAir client, coordinator, and platform entities for an entry.
 
     Args:
-        hass: Home Assistant instance loading the integration.
-        config_entry: Stored myAir account configuration.
+        hass (HomeAssistant): Home Assistant instance loading the integration.
+        config_entry (ConfigEntry): Stored myAir account configuration.
 
     Returns:
-        ``True`` after the first coordinator refresh and platform setup succeed.
+        bool: ``True`` after the first coordinator refresh and platform setup
+            succeed.
     """
     _LOGGER.info("Starting ResMed myAir Integration Version: %s", VERSION)
     _LOGGER.debug("[init async_setup_entry] config_entry.data: %s", redact_dict(config_entry.data))
@@ -73,11 +74,12 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     """Upgrade stored config-entry data between integration schema versions.
 
     Args:
-        hass: Home Assistant instance that owns the config entry registry.
-        config_entry: Existing myAir entry being loaded.
+        hass (HomeAssistant): Home Assistant instance that owns the config entry
+            registry.
+        config_entry (ConfigEntry): Existing myAir entry being loaded.
 
     Returns:
-        ``True`` after applying any needed migration.
+        bool: ``True`` after applying any needed migration.
     """
     _LOGGER.debug("Migrating from version %s", config_entry.version)
 
@@ -97,11 +99,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload myAir platforms for a removed or reloaded config entry.
 
     Args:
-        hass: Home Assistant instance unloading the integration.
-        entry: myAir config entry being unloaded.
+        hass (HomeAssistant): Home Assistant instance unloading the integration.
+        entry (ConfigEntry): myAir config entry being unloaded.
 
     Returns:
-        Whether Home Assistant unloaded all forwarded platforms successfully.
+        bool: Whether Home Assistant unloaded all forwarded platforms
+            successfully.
     """
     _LOGGER.info("Unloading: %s", redact_dict(entry.data))
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
