@@ -12,7 +12,7 @@ from custom_components.resmed_myair.redaction import redact_dict
 
 from .auth import MyAirAuthSession
 from .graphql import MyAirGraphQLClient
-from .myair_client import MyAirClient, MyAirConfig, ParsingError
+from .myair_client import MyAirClient, MyAirConfig, ParsingError, StaleSessionError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -35,19 +35,43 @@ def _required_mapping(value: Any, message: str) -> Mapping[str, Any]:
     return value
 
 
-def _required_list(value: Any, message: str) -> list[Any]:
-    """Validate that a decoded GraphQL payload member is a JSON array.
+def _required_session_mapping(value: Any, message: str) -> Mapping[str, Any]:
+    """Validate a required mapping and mark an absent member as a stale session.
 
     Args:
-        value (Any): Payload member to validate.
-        message (str): Parsing error message to raise when validation fails.
+        value (Any): Required response member to validate.
+        message (str): Parsing error message raised for an invalid member.
 
     Returns:
-        list[Any]: The validated payload member.
+        Mapping[str, Any]: The validated response member.
 
     Raises:
-        ParsingError: When the payload member is not a list.
+        StaleSessionError: When the required response member is absent.
+        ParsingError: When the response member is present but malformed.
     """
+    if value is None:
+        raise StaleSessionError(message)
+    if not isinstance(value, Mapping):
+        raise ParsingError(message)
+    return value
+
+
+def _required_session_list(value: Any, message: str) -> list[Any]:
+    """Validate a required list and mark an absent member as a stale session.
+
+    Args:
+        value (Any): Required response member to validate.
+        message (str): Parsing error message raised for an invalid member.
+
+    Returns:
+        list[Any]: The validated response member.
+
+    Raises:
+        StaleSessionError: When the required response member is absent.
+        ParsingError: When the response member is present but malformed.
+    """
+    if value is None:
+        raise StaleSessionError(message)
     if not isinstance(value, list):
         raise ParsingError(message)
     return value
@@ -212,14 +236,16 @@ class RESTClient(MyAirClient):
             "GetPatientSleepRecords", query, initial
         )
         _LOGGER.debug("[get_sleep_records] records_dict: %s", redact_dict(records_dict))
-        data = _required_mapping(records_dict.get("data"), "Error getting Patient Sleep Records")
-        patient_wrapper = _required_mapping(
+        data = _required_session_mapping(
+            records_dict.get("data"), "Error getting Patient Sleep Records"
+        )
+        patient_wrapper = _required_session_mapping(
             data.get("getPatientWrapper"), "Error getting Patient Sleep Records"
         )
-        sleep_records = _required_mapping(
+        sleep_records = _required_session_mapping(
             patient_wrapper.get("sleepRecords"), "Error getting Patient Sleep Records"
         )
-        records = _required_list(
+        records = _required_session_list(
             sleep_records.get("items"),
             "Error getting Patient Sleep Records. Returned records is not a list",
         )
@@ -272,11 +298,13 @@ class RESTClient(MyAirClient):
             "getPatientWrapper", query, initial
         )
         _LOGGER.debug("[get_user_device_data] records_dict: %s", redact_dict(records_dict))
-        data = _required_mapping(records_dict.get("data"), "Error getting User Device Data")
-        patient_wrapper = _required_mapping(
+        data = _required_session_mapping(records_dict.get("data"), "Error getting User Device Data")
+        patient_wrapper = _required_session_mapping(
             data.get("getPatientWrapper"), "Error getting User Device Data"
         )
-        devices = _required_list(patient_wrapper.get("fgDevices"), "Error getting User Device Data")
+        devices = _required_session_list(
+            patient_wrapper.get("fgDevices"), "Error getting User Device Data"
+        )
         if not devices:
             raise ParsingError("Error getting User Device Data")
         device = dict(

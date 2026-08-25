@@ -6,7 +6,11 @@ from unittest.mock import MagicMock, call
 from homeassistant.exceptions import ConfigEntryAuthFailed
 import pytest
 
-from custom_components.resmed_myair.client.myair_client import AuthenticationError, ParsingError
+from custom_components.resmed_myair.client.myair_client import (
+    AuthenticationError,
+    ParsingError,
+    StaleSessionError,
+)
 from custom_components.resmed_myair.coordinator import MyAirDataUpdateCoordinator
 from custom_components.resmed_myair.models import (
     MyAirCoordinatorData,
@@ -80,7 +84,7 @@ async def test_async_update_data_reauthenticates_after_missing_device(
     )
     expected_records = [MyAirSleepRecord.from_api({"totalUsage": 60, "startDate": "2024-07-01"})]
     myair_client.get_user_device_data.side_effect = [
-        ParsingError("device payload missing"),
+        StaleSessionError("device payload missing"),
         expected_device,
     ]
     myair_client.get_sleep_records.return_value = expected_records
@@ -93,6 +97,89 @@ async def test_async_update_data_reauthenticates_after_missing_device(
     assert myair_client.connect.await_args_list == [call(), call(force=True)]
     assert myair_client.get_user_device_data.await_count == 2
     myair_client.get_sleep_records.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_reauthenticates_after_stale_sleep_response(
+    hass: MagicMock, myair_client: MagicMock
+) -> None:
+    """A stale sleep response uses the one forced login allowed per refresh.
+
+    Args:
+        hass (MagicMock): Home Assistant instance supplied to the coordinator.
+        myair_client (MagicMock): Client double simulating a stale sleep query.
+    """
+    expected_device = MyAirDevice.from_api(
+        {"serialNumber": "1234", "fgDeviceManufacturerName": "ResMed"}
+    )
+    expected_records = [MyAirSleepRecord.from_api({"totalUsage": 60})]
+    myair_client.get_user_device_data.return_value = expected_device
+    myair_client.get_sleep_records.side_effect = [
+        StaleSessionError("sleep payload missing"),
+        expected_records,
+    ]
+
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    data = await coordinator._async_update_data()
+
+    assert data.device is expected_device
+    assert data.sleep_records == tuple(expected_records)
+    assert myair_client.connect.await_args_list == [call(), call(force=True)]
+    myair_client.get_user_device_data.assert_awaited_once()
+    assert myair_client.get_sleep_records.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_limits_stale_recovery_to_one_login(
+    hass: MagicMock, myair_client: MagicMock
+) -> None:
+    """One refresh never performs more than one forced authentication.
+
+    Args:
+        hass (MagicMock): Home Assistant instance supplied to the coordinator.
+        myair_client (MagicMock): Client double returning repeated stale responses.
+    """
+    myair_client.get_user_device_data.side_effect = [
+        StaleSessionError("device payload missing"),
+        ParsingError("device still unavailable"),
+    ]
+    myair_client.get_sleep_records.side_effect = StaleSessionError("sleep payload missing")
+
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    data = await coordinator._async_update_data()
+
+    assert data.device is None
+    assert data.sleep_records == ()
+    assert myair_client.connect.await_args_list == [call(), call(force=True)]
+    assert myair_client.get_user_device_data.await_count == 2
+    myair_client.get_sleep_records.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_degrades_when_stale_sleep_retry_fails(
+    hass: MagicMock, myair_client: MagicMock
+) -> None:
+    """A malformed sleep retry degrades without another authentication attempt.
+
+    Args:
+        hass (MagicMock): Home Assistant instance supplied to the coordinator.
+        myair_client (MagicMock): Client double whose retried sleep query fails.
+    """
+    expected_device = MyAirDevice.from_api({"serialNumber": "1234"})
+    myair_client.get_user_device_data.return_value = expected_device
+    myair_client.get_sleep_records.side_effect = [
+        StaleSessionError("sleep payload missing"),
+        ParsingError("sleep still unavailable"),
+    ]
+
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    data = await coordinator._async_update_data()
+
+    assert data.device is expected_device
+    assert data.sleep_records == ()
+    assert myair_client.connect.await_args_list == [call(), call(force=True)]
+    myair_client.get_user_device_data.assert_awaited_once()
+    assert myair_client.get_sleep_records.await_count == 2
 
 
 @pytest.mark.parametrize("failing_fetch", ["device", "sleep_records"])
@@ -134,8 +221,8 @@ async def test_async_update_data_parsing_error_variants(
             "Device data unavailable in myAir update. ParsingError: device parse fail"
             in caplog.text
         )
-        assert myair_client.connect.await_args_list == [call(), call(force=True)]
-        assert myair_client.get_user_device_data.await_count == 2
+        myair_client.connect.assert_awaited_once()
+        myair_client.get_user_device_data.assert_awaited_once()
     else:
         assert data.device is expected_device
         assert data.sleep_records == ()

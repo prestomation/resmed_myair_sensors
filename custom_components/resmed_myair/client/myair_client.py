@@ -18,6 +18,10 @@ class ParsingError(Exception):
     """Remote payload shape does not match the fields this integration requires."""
 
 
+class StaleSessionError(ParsingError):
+    """Remote response indicates the data API no longer accepts the session."""
+
+
 class MyAirConfig(NamedTuple):
     """Credentials and regional context needed to authenticate with myAir."""
 

@@ -19,7 +19,13 @@ from multidict import CIMultiDict
 from custom_components.resmed_myair.const import AUTH_NEEDS_MFA, AUTHN_SUCCESS
 from custom_components.resmed_myair.redaction import redact_dict
 
-from .myair_client import AuthenticationError, IncompleteAccountError, MyAirConfig, ParsingError
+from .myair_client import (
+    AuthenticationError,
+    IncompleteAccountError,
+    MyAirConfig,
+    ParsingError,
+    StaleSessionError,
+)
 from .regions import RegionConfig, get_region_config
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -491,7 +497,7 @@ class MyAirAuthSession:
         Raises:
             AuthenticationError: When credentials or auth state are rejected.
             IncompleteAccountError: When myAir reports account setup is incomplete.
-            ParsingError: When a non-initial GraphQL request becomes unauthorized.
+            StaleSessionError: When a non-initial GraphQL request becomes unauthorized.
             HttpProcessingError: When a structured error exists but has no typed mapping.
         """
         if "errors" in resp_dict:
@@ -503,7 +509,7 @@ class MyAirAuthSession:
                     )
                     if resp_dict["errors"][0]["errorInfo"]["errorType"] == "unauthorized":
                         if step == "gql_query" and not initial:
-                            raise ParsingError(
+                            raise StaleSessionError(
                                 f"Getting unauthorized error on {step} step. {error_message}"
                             )
                         raise AuthenticationError(

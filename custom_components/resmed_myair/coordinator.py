@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .client.myair_client import AuthenticationError, MyAirClient, ParsingError
+from .client.myair_client import AuthenticationError, MyAirClient, ParsingError, StaleSessionError
 from .const import DEFAULT_UPDATE_RATE_MIN
 from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
 
@@ -58,19 +58,19 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
 
         device: MyAirDevice | None = None
         sleep_records: tuple[MyAirSleepRecord, ...] = ()
+        fresh_auth_used = False
 
         try:
             device = await self.myair_client.get_user_device_data()
-        except ParsingError as err:
-            _LOGGER.debug(
-                "Device data unavailable in myAir update. %s: %s",
+        except StaleSessionError as err:
+            _LOGGER.info(
+                "Device payload missing after token validation. %s: %s",
                 type(err).__name__,
                 err,
             )
-            _LOGGER.info(
-                "Device payload missing after token validation; retrying with fresh authentication"
-            )
+            _LOGGER.info("Retrying device data with fresh authentication")
             await self._async_connect(force=True)
+            fresh_auth_used = True
             try:
                 device = await self.myair_client.get_user_device_data()
             except ParsingError as retry_err:
@@ -79,9 +79,32 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                     type(retry_err).__name__,
                     retry_err,
                 )
+        except ParsingError as err:
+            _LOGGER.debug(
+                "Device data unavailable in myAir update. %s: %s",
+                type(err).__name__,
+                err,
+            )
 
         try:
             sleep_records = tuple(await self.myair_client.get_sleep_records())
+        except StaleSessionError as err:
+            _LOGGER.info(
+                "Sleep record payload missing after token validation. %s: %s",
+                type(err).__name__,
+                err,
+            )
+            if not fresh_auth_used:
+                _LOGGER.info("Retrying sleep record data with fresh authentication")
+                await self._async_connect(force=True)
+                try:
+                    sleep_records = tuple(await self.myair_client.get_sleep_records())
+                except ParsingError as retry_err:
+                    _LOGGER.debug(
+                        "Sleep record data unavailable after fresh authentication. %s: %s",
+                        type(retry_err).__name__,
+                        retry_err,
+                    )
         except ParsingError as err:
             _LOGGER.debug(
                 "Sleep record data unavailable in myAir update. %s: %s",
