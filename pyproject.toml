@@ -191,3 +191,17 @@ parallel = false
 
 [tool.coverage.report]
 show_missing = true
+
+[tool.pydoclint]
+style = "google"
+should-document-private-class-attributes = true
+skip-checking-short-docstrings = false
+arg-type-hints-in-docstring = true
+check-return-types = true
+require-return-section-when-returning-nothing = false
+allow-init-docstring = true
+skip-checking-raises = false
+check-class-attributes = false
+check-style-mismatch = true
+should-document-star-arguments = true
+omit-stars-when-documenting-varargs = true
