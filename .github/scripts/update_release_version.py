@@ -3,14 +3,71 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 import json
 from pathlib import Path
 import re
+import sys
 
 DEFAULT_MANIFEST_PATH = Path("custom_components/resmed_myair/manifest.json")
 DEFAULT_CONST_PATH = Path("custom_components/resmed_myair/const.py")
 VERSION_PATTERN = re.compile(r'^VERSION = ".*"$', flags=re.MULTILINE)
+TAG_PATTERN = re.compile(
+    r"^v[0-9]+(?:\.[0-9]+){1,3}(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:[A-Za-z]+[0-9]+)?$"
+)
+STABLE_TAG_PATTERN = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+
+
+def validate_release_tag(tag_name: str) -> None:
+    """Validate a release tag against the repository's supported formats.
+
+    Args:
+        tag_name: Candidate release tag.
+
+    Raises:
+        ValueError: If the tag does not use a supported version format.
+
+    """
+    if TAG_PATTERN.fullmatch(tag_name) is None:
+        raise ValueError(f"Invalid release tag: {tag_name}")
+
+
+def next_stable_release_tag(tags: Iterable[str], bump_type: str) -> str:
+    """Return the next stable tag after the highest released stable version.
+
+    Args:
+        tags: Candidate tag names from the release repository.
+        bump_type: Requested stable version increment.
+
+    Returns:
+        The next stable release tag.
+
+    Raises:
+        ValueError: If the bump type is unsupported or no stable tag is found.
+
+    """
+    if bump_type not in {"patch", "minor", "major"}:
+        raise ValueError(f"Unsupported bump type: {bump_type}")
+
+    versions = [
+        tuple(int(component) for component in match.groups())
+        for tag in tags
+        if (match := STABLE_TAG_PATTERN.fullmatch(tag)) is not None
+    ]
+    if not versions:
+        raise ValueError("No stable released tag found.")
+
+    major, minor, patch = max(versions)
+    if bump_type == "patch":
+        patch += 1
+    elif bump_type == "minor":
+        minor += 1
+        patch = 0
+    else:
+        major += 1
+        minor = 0
+        patch = 0
+    return f"v{major}.{minor}.{patch}"
 
 
 def update_release_version_files(
@@ -27,9 +84,11 @@ def update_release_version_files(
         const_path: Path to the integration constants file.
 
     Raises:
-        ValueError: Raised when ``const_path`` lacks a VERSION assignment.
+        ValueError: Raised when the tag is invalid or ``const_path`` lacks a
+            VERSION assignment.
 
     """
+    validate_release_tag(tag_name)
     _update_manifest_version(manifest_path=manifest_path, tag_name=tag_name)
     _update_const_version(const_path=const_path, tag_name=tag_name)
 
@@ -77,7 +136,18 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tag-name", required=True, help="Release tag name to write.")
+    version_group = parser.add_mutually_exclusive_group(required=True)
+    version_group.add_argument("--tag-name", help="Release tag name to validate or write.")
+    version_group.add_argument(
+        "--next-tag",
+        choices=("patch", "minor", "major"),
+        help="Print the next stable release tag using tags read from standard input.",
+    )
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Validate --tag-name without updating version files.",
+    )
     parser.add_argument(
         "--manifest-path",
         type=Path,
@@ -104,11 +174,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     """
     args = _parse_args(argv)
-    update_release_version_files(
-        tag_name=args.tag_name,
-        manifest_path=args.manifest_path,
-        const_path=args.const_path,
-    )
+    if args.next_tag is not None:
+        if args.check_only:
+            raise ValueError("--check-only cannot be used with --next-tag")
+        sys.stdout.write(
+            f"{next_stable_release_tag(sys.stdin.read().splitlines(), args.next_tag)}\n"
+        )
+    elif args.check_only:
+        validate_release_tag(args.tag_name)
+    else:
+        update_release_version_files(
+            tag_name=args.tag_name,
+            manifest_path=args.manifest_path,
+            const_path=args.const_path,
+        )
     return 0
 
 
