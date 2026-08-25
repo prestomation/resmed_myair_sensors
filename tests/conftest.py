@@ -24,7 +24,7 @@ from custom_components.resmed_myair.models import (
     MyAirSleepRecord,
 )
 
-type JSONValue = str | int | float | bool | None | dict[str, JSONValue] | list[JSONValue]
+type JSONValue = str | int | float | bool | dict[str, JSONValue] | list[JSONValue] | None
 type HeadersValue = Mapping[str, str] | CIMultiDict[str] | None
 
 
