@@ -1,7 +1,7 @@
 """Coordinator tests that protect refresh, auth, and parse fallbacks."""
 
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from homeassistant.exceptions import ConfigEntryAuthFailed
 import pytest
@@ -65,6 +65,36 @@ async def test_async_update_data_auth_error(hass: MagicMock, myair_client: Magic
     myair_client.connect.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_async_update_data_reauthenticates_after_missing_device(
+    hass: MagicMock, myair_client: MagicMock
+) -> None:
+    """A missing device payload forces fresh authentication and one retry.
+
+    Args:
+        hass (MagicMock): Home Assistant instance supplied to the coordinator.
+        myair_client (MagicMock): Client double simulating a stale data-API token.
+    """
+    expected_device = MyAirDevice.from_api(
+        {"serialNumber": "1234", "fgDeviceManufacturerName": "ResMed"}
+    )
+    expected_records = [MyAirSleepRecord.from_api({"totalUsage": 60, "startDate": "2024-07-01"})]
+    myair_client.get_user_device_data.side_effect = [
+        ParsingError("device payload missing"),
+        expected_device,
+    ]
+    myair_client.get_sleep_records.return_value = expected_records
+
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    data = await coordinator._async_update_data()
+
+    assert data.device is expected_device
+    assert data.sleep_records == tuple(expected_records)
+    assert myair_client.connect.await_args_list == [call(), call(force=True)]
+    assert myair_client.get_user_device_data.await_count == 2
+    myair_client.get_sleep_records.assert_awaited_once()
+
+
 @pytest.mark.parametrize("failing_fetch", ["device", "sleep_records"])
 @pytest.mark.asyncio
 async def test_async_update_data_parsing_error_variants(
@@ -104,6 +134,8 @@ async def test_async_update_data_parsing_error_variants(
             "Device data unavailable in myAir update. ParsingError: device parse fail"
             in caplog.text
         )
+        assert myair_client.connect.await_args_list == [call(), call(force=True)]
+        assert myair_client.get_user_device_data.await_count == 2
     else:
         assert data.device is expected_device
         assert data.sleep_records == ()
@@ -111,7 +143,7 @@ async def test_async_update_data_parsing_error_variants(
             "Sleep record data unavailable in myAir update. ParsingError: sleep parse fail"
             in caplog.text
         )
+        myair_client.connect.assert_awaited_once()
+        myair_client.get_user_device_data.assert_awaited_once()
 
-    myair_client.connect.assert_awaited_once()
-    myair_client.get_user_device_data.assert_awaited_once()
     myair_client.get_sleep_records.assert_awaited_once()

@@ -31,8 +31,13 @@ class MyAirClient(ABC):
     """Abstract async contract consumed by the Home Assistant coordinator."""
 
     @abstractmethod
-    async def connect(self) -> str:
+    async def connect(self, initial: bool | None = False, *, force: bool = False) -> str:
         """Authenticate or validate cached credentials before data fetches.
+
+        Args:
+            initial (bool | None): Whether authentication is part of initial setup.
+            force (bool): Whether to bypass cached-token validation and authenticate
+                again.
 
         Returns:
             str: Provider-specific auth status string.

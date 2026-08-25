@@ -115,17 +115,19 @@ class RESTClient(MyAirClient):
         """Expose the remembered-device token that should be saved in config entries."""
         return self._auth.device_token
 
-    async def connect(self, initial: bool | None = False) -> str:
+    async def connect(self, initial: bool | None = False, *, force: bool = False) -> str:
         """Authenticate with myAir or reuse an active OAuth token.
 
         Args:
             initial (bool | None): Whether the call is part of config setup, where MFA can be
                 triggered and surfaced to the user.
+            force (bool): Whether to bypass cached-token validation and authenticate
+                again.
 
         Returns:
             str: Okta authentication status.
         """
-        return await self._auth.connect(initial=initial)
+        return await self._auth.connect(initial=initial, force=force)
 
     async def verify_mfa_and_get_access_token(self, verification_code: str) -> str:
         """Complete an MFA challenge and cache OAuth tokens.

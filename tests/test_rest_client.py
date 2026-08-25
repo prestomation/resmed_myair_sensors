@@ -552,6 +552,35 @@ async def test_connect_authn_success(
 
 
 @pytest.mark.asyncio
+async def test_connect_force_bypasses_active_token(
+    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forced connections authenticate without trusting token introspection.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the connection.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for the auth flow.
+    """
+    client = RESTClient(config_na, session)
+    client._auth.device_token = "dt"
+    client._auth.access_token = "token"
+    is_active_mock = AsyncMock(return_value=True)
+    authn_mock = AsyncMock(return_value="SUCCESS")
+    get_access_token_mock = AsyncMock()
+    monkeypatch.setattr(client._auth, "_is_access_token_active", is_active_mock)
+    monkeypatch.setattr(client._auth, "_authn_check", authn_mock)
+    monkeypatch.setattr(client._auth, "_get_access_token", get_access_token_mock)
+
+    result = await client.connect(force=True)
+
+    assert result == "SUCCESS"
+    is_active_mock.assert_not_awaited()
+    authn_mock.assert_awaited_once()
+    get_access_token_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("initial", "expect_trigger", "expect_result", "expect_raises"),
     [

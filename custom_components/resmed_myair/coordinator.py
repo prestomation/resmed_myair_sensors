@@ -51,19 +51,10 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         Returns:
             MyAirCoordinatorData: Typed coordinator payload containing any data
                 available from myAir.
-
-        Raises:
-            ConfigEntryAuthFailed: When myAir authentication must be repaired by reauth.
         """
         _LOGGER.info("Updating from myAir")
 
-        try:
-            await self.myair_client.connect()
-        except AuthenticationError as e:
-            _LOGGER.error("Authentication Error while updating. %s: %s", type(e).__name__, e)
-            raise ConfigEntryAuthFailed(
-                f"Authentication Error while updating. {type(e).__name__}: {e}"
-            ) from e
+        await self._async_connect()
 
         device: MyAirDevice | None = None
         sleep_records: tuple[MyAirSleepRecord, ...] = ()
@@ -76,6 +67,18 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                 type(err).__name__,
                 err,
             )
+            _LOGGER.info(
+                "Device payload missing after token validation; retrying with fresh authentication"
+            )
+            await self._async_connect(force=True)
+            try:
+                device = await self.myair_client.get_user_device_data()
+            except ParsingError as retry_err:
+                _LOGGER.debug(
+                    "Device data unavailable after fresh authentication. %s: %s",
+                    type(retry_err).__name__,
+                    retry_err,
+                )
 
         try:
             sleep_records = tuple(await self.myair_client.get_sleep_records())
@@ -87,3 +90,28 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
             )
 
         return MyAirCoordinatorData(device=device, sleep_records=sleep_records)
+
+    async def _async_connect(self, *, force: bool = False) -> None:
+        """Authenticate for a coordinator refresh and map auth failures.
+
+        Args:
+            force (bool): Whether to bypass cached-token validation and authenticate
+                again.
+
+        Raises:
+            ConfigEntryAuthFailed: When myAir authentication requires user repair.
+        """
+        try:
+            if force:
+                await self.myair_client.connect(force=True)
+            else:
+                await self.myair_client.connect()
+        except AuthenticationError as err:
+            _LOGGER.error(
+                "Authentication Error while updating. %s: %s",
+                type(err).__name__,
+                err,
+            )
+            raise ConfigEntryAuthFailed(
+                f"Authentication Error while updating. {type(err).__name__}: {err}"
+            ) from err

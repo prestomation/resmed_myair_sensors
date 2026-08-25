@@ -301,12 +301,13 @@ class MyAirAuthSession:
         """
         self._json_headers = dict(value)
 
-    async def connect(self, initial: bool | None = False) -> str:
+    async def connect(self, initial: bool | None = False, *, force: bool = False) -> str:
         """Authenticate or reuse existing credentials for a myAir session.
 
         Args:
             initial (bool | None): Whether this is the first config-flow attempt, when MFA may be
                 triggered instead of reported as a reauth failure.
+            force (bool): Whether to bypass token introspection and authenticate again.
 
         Returns:
             str: Okta auth status, such as ``SUCCESS`` or ``MFA_REQUIRED``.
@@ -318,8 +319,10 @@ class MyAirAuthSession:
             await self._get_initial_dt()
         if self._cookie_dt is None and self._uses_mfa:
             _LOGGER.warning("Device Token isn't set. This will require frequent reauthentication.")
-        if self._access_token and await self._is_access_token_active():
+        if self._access_token and not force and await self._is_access_token_active():
             return AUTHN_SUCCESS
+        if force:
+            _LOGGER.info("Forcing fresh authentication")
         _LOGGER.info("Starting Authentication")
         status: str = await self._authn_check()
         if status == AUTH_NEEDS_MFA:
