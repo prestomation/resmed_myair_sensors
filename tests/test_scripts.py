@@ -49,7 +49,7 @@ def test_test_script_runs_setup_when_venv_is_missing(tmp_path: Path) -> None:
     """
     repo = _copy_script_harness(tmp_path, "test")
 
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [str(repo / "scripts" / "test"), "tests/test_example.py"],
         check=False,
         capture_output=True,
@@ -72,7 +72,7 @@ def test_lint_script_runs_setup_when_tools_are_missing(tmp_path: Path) -> None:
     """
     repo = _copy_script_harness(tmp_path, "lint")
 
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [str(repo / "scripts" / "lint")],
         check=False,
         capture_output=True,
@@ -99,7 +99,7 @@ def test_live_smoke_test_script_runs_setup_when_venv_is_missing(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [str(repo / "scripts" / "live_smoke_test"), "--help"],
         check=False,
         capture_output=True,

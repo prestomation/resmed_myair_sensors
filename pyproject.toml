@@ -162,6 +162,7 @@ convention = "google"
     "S105",    # Possible hardcoded password
     "S106",    # Possible hardcoded password
     "S108",    # hardcoded-temp-file
+    "S603",    # subprocess-without-shell-equals-true
     "SLF001",  # Private member accessed
 ]
 
