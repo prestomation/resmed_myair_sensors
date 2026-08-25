@@ -428,7 +428,8 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 Home Assistant.
 
         Raises:
-            ParsingError: When authenticated device data has no serial number.
+            ParsingError: Raised internally for missing serial data and handled
+                as an `authentication_error` form response.
         """
         errors: dict[str, str] = {}
         user_input = user_input or {}
@@ -480,7 +481,8 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
                 Assistant.
 
         Raises:
-            ParsingError: When authenticated device data has no serial number.
+            ParsingError: Raised internally for missing serial data and handled
+                as an `mfa_error` form response.
         """
         errors: dict[str, str] = {}
         user_input = user_input or {}

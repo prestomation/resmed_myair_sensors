@@ -663,7 +663,7 @@ async def test_async_step_reauth_verify_mfa_error(
     ],
 )
 async def test_get_device_variants(
-    connect_return: str | None,
+    connect_return: str | Exception | None,
     get_user_device_data_return: dict[str, object] | None,
     expected_status: str | None,
     expected_device: dict[str, object] | None,
@@ -676,7 +676,8 @@ async def test_get_device_variants(
     """Verify `get_device` handles connection outcomes and device payload variants.
 
     Args:
-        connect_return (str | None): Connection status returned by the client case.
+        connect_return (str | Exception | None): Connection status, exception,
+            or `None` returned by the client case.
         get_user_device_data_return (dict[str, object] | None): Device payload returned after
             successful authentication, or `None` for no device.
         expected_status (str | None): Status expected from `get_device` for the case.

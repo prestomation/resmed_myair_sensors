@@ -88,7 +88,7 @@ async def test_async_setup_entry_multiple_calls(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Setup remains idempotent across repeated calls for the same entry.
+    """Setup supports repeated calls by forwarding and refreshing each time.
 
     Args:
         hass (MagicMock): Home Assistant instance receiving both setup calls.

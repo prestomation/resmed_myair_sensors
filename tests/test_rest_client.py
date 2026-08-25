@@ -846,7 +846,7 @@ async def test_json_headers_assignment_forwards_to_auth_trigger_mfa(
     session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Setting RESTClient._json_headers updates delegated auth request headers.
+    """Assign auth JSON headers and verify the delegated request uses them.
 
     Args:
         config_na (MyAirConfig): Client configuration used by the auth flow.
@@ -1336,10 +1336,9 @@ async def test_gql_query_failure_variants(
                     Never: This helper always raises instead of returning.
 
                 Raises:
-                    jwt_behavior: The specific side effect supplied by the test
-                        case.
+                    ValueError: The decode error supplied by the test case.
                 """
-                raise jwt_behavior["side_effect"]
+                raise ValueError(str(jwt_behavior["side_effect"]))
 
             monkeypatch.setattr(
                 "custom_components.resmed_myair.client.graphql.jwt.decode",

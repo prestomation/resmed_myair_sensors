@@ -72,6 +72,17 @@ jobs:
               echo "An explicit tag requires bump=none." >&2
               exit 1
             fi
+            python3 .github/scripts/update_release_version.py \
+              --tag-name "$EXPLICIT_TAG" --check-only
+            if [[ "$EXPLICIT_TAG" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]]; then
+              tag_is_prerelease=false
+            else
+              tag_is_prerelease=true
+            fi
+            if [[ "$tag_is_prerelease" != "$IS_PRERELEASE" ]]; then
+              echo "Explicit tag prerelease status must match prerelease input." >&2
+              exit 1
+            fi
             echo "release-tag=$EXPLICIT_TAG" >> "$GITHUB_OUTPUT"
             exit 0
           fi

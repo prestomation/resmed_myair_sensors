@@ -112,6 +112,18 @@ def test_release_workflow_runs_checked_in_version_update_script() -> None:
     assert "python - <<'PY'" not in workflow
 
 
+def test_explicit_release_tag_prerelease_status_must_match_input() -> None:
+    """Explicit tags are validated and classified before release output is written."""
+    workflow = _workflow_text()
+    step_block = _step_block(workflow, "Resolve release tag")
+
+    validation = '--tag-name "$EXPLICIT_TAG" --check-only'
+    status_check = '[[ "$tag_is_prerelease" != "$IS_PRERELEASE" ]]'
+    output = 'echo "release-tag=$EXPLICIT_TAG" >> "$GITHUB_OUTPUT"'
+    assert step_block.index(validation) < step_block.index(status_check) < step_block.index(output)
+    assert '[[ "$EXPLICIT_TAG" =~ ^v[0-9]+(\\.[0-9]+){1,3}$ ]]' in step_block
+
+
 @pytest.mark.parametrize(
     "tag_name",
     ["v0.2.8", "v0.3.0-beta.1", "v0.2.7.1", "v0.3.0b1"],

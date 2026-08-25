@@ -319,7 +319,7 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
         monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for sensor setup dependencies.
         coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
         hass (MagicMock): Home Assistant instance receiving platform setup.
-        config_entry (MockConfigEntry): Integration entry whose sensors are created.
+        config_entry (MockConfigEntry): Fixture preparing shared config-entry helpers.
         service_registry_shim (ServiceRegistryShimLike): Registry shim capturing the force-poll service.
     """
     async_add_entities = MagicMock()
