@@ -13,9 +13,11 @@
 
 ## Features
 
-This integration creates sensors from your myAir CPAP data like AHI Events/hr, Usage Minutes, Mask On/Off count, and Mask Leak in L/min. There is also a Last Sleep Data Recorded sensor to tell you the last date that myAir has recorded. This can be used to, say, notify you of your scores when they are updated in myAir in the morning.
+This integration creates sensors from your myAir CPAP data like AHI Events/hr, Usage Minutes, Usage Hours, 7-day and 30-day Usage Hours averages, Mask On/Off count, and Mask Leak in L/min. There is also a Last Sleep Data Recorded sensor to tell you the last date that myAir has recorded. This can be used to, say, notify you of your scores when they are updated in myAir in the morning.
 
 By the nature of CPAP data, sensors will only update once per day (assuming your CPAP is used every day). For this reason, the integration only polls every 30 minutes. A service exists for each config that will force update if you want to automate the sync after you wake up.
+
+For nightly metrics, the integration also imports dated myAir records into Home Assistant recorder statistics. This lets you graph nightly usage hours, AHI, mask on/off count, mask leak, and sleep score with the standard `statistics-graph` card instead of relying on a sensor that appears to increase and reset. The live usage-hours sensor exposes imported daily data in its `daily_usage_hours` attribute for custom dashboard cards. Nightly usage hours are imported as cumulative `sum` statistics so Home Assistant can render daily bars using the `change` statistic type.
 
 ## Installation via HACS
 
@@ -35,6 +37,9 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
 
 1. CPAP AHI Events Per Hour
 1. CPAP Usage Minutes
+1. CPAP Usage Hours
+1. CPAP Usage Hours 7 Day Average
+1. CPAP Usage Hours 30 Day Average
 1. CPAP Mask On/Off Count
 1. CPAP Current Data Date
     * This is the last date currently being displayed by the other sensors
