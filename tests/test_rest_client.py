@@ -17,6 +17,7 @@ from custom_components.resmed_myair.client.myair_client import (
     AuthenticationError,
     IncompleteAccountError,
     MyAirConfig,
+    StaleSessionError,
 )
 from custom_components.resmed_myair.client.regions import (
     EU_CONFIG,
@@ -552,6 +553,35 @@ async def test_connect_authn_success(
 
 
 @pytest.mark.asyncio
+async def test_connect_force_bypasses_active_token(
+    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forced connections authenticate without trusting token introspection.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the connection.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for the auth flow.
+    """
+    client = RESTClient(config_na, session)
+    client._auth.device_token = "dt"
+    client._auth.access_token = "token"
+    is_active_mock = AsyncMock(return_value=True)
+    authn_mock = AsyncMock(return_value="SUCCESS")
+    get_access_token_mock = AsyncMock()
+    monkeypatch.setattr(client._auth, "_is_access_token_active", is_active_mock)
+    monkeypatch.setattr(client._auth, "_authn_check", authn_mock)
+    monkeypatch.setattr(client._auth, "_get_access_token", get_access_token_mock)
+
+    result = await client.connect(force=True)
+
+    assert result == "SUCCESS"
+    is_active_mock.assert_not_awaited()
+    authn_mock.assert_awaited_once()
+    get_access_token_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("initial", "expect_trigger", "expect_result", "expect_raises"),
     [
@@ -701,8 +731,8 @@ async def test_connect_status_needs_mfa_parametrized(
 
 
 @pytest.mark.asyncio
-async def test_resmed_response_error_check_gql_query_not_initial_raises_parsing_error() -> None:
-    """Unauthorized GraphQL errors during refresh raise `ParsingError`."""
+async def test_resmed_response_error_check_gql_query_not_initial_raises_stale_session() -> None:
+    """Unauthorized GraphQL errors during refresh mark the session as stale."""
     # Prepare a fake response and error dict
     response = MagicMock(spec=ClientResponse)
     response.status = 401
@@ -710,7 +740,7 @@ async def test_resmed_response_error_check_gql_query_not_initial_raises_parsing_
 
     resp_dict = {"errors": [{"errorInfo": {"errorType": "unauthorized", "errorCode": "401"}}]}
 
-    with pytest.raises(ParsingError) as exc:
+    with pytest.raises(StaleSessionError) as exc:
         await MyAirAuthSession.resmed_response_error_check(
             step="gql_query", response=response, resp_dict=resp_dict, initial=False
         )
@@ -1378,7 +1408,7 @@ async def test_gql_query_graphql_error(config_na: MyAirConfig, session: MagicMoc
     )
 
     session.post.return_value = make_mock_aiohttp_context_manager(mock_res)
-    with pytest.raises(ParsingError, match="unauthorized: 401"):
+    with pytest.raises(StaleSessionError, match="unauthorized: 401"):
         await client._gql_query("op", "query")
 
 
@@ -1602,6 +1632,7 @@ async def test_get_sleep_records_raises_parsing_error_for_non_mapping_items(
 @pytest.mark.parametrize(
     ("mock_response", "match_msg"),
     [
+        ({"data": "not-a-mapping"}, "Error getting User Device Data"),
         ({"data": {"getPatientWrapper": {}}}, "Error getting User Device Data"),
         (
             {"data": {"getPatientWrapper": {"fgDevices": []}}},
@@ -1648,6 +1679,27 @@ async def test_get_user_device_data_failure_variants(
     monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=mock_response))
     with pytest.raises(ParsingError, match=match_msg):
         await client.get_user_device_data()
+
+
+@pytest.mark.asyncio
+async def test_get_user_device_data_empty_list_is_not_stale_session(
+    config_na: MyAirConfig, session: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A present but empty device list remains a non-auth parsing failure.
+
+    Args:
+        config_na (MyAirConfig): Client configuration used by the data fetch.
+        session (MagicMock): HTTP session stand-in supplied to the client.
+        monkeypatch (pytest.MonkeyPatch): Patching fixture for the GraphQL query.
+    """
+    client = RESTClient(config_na, session)
+    response = {"data": {"getPatientWrapper": {"fgDevices": []}}}
+    monkeypatch.setattr(client, "_gql_query", AsyncMock(return_value=response))
+
+    with pytest.raises(ParsingError) as exc:
+        await client.get_user_device_data()
+
+    assert type(exc.value) is ParsingError
 
 
 @pytest.mark.asyncio

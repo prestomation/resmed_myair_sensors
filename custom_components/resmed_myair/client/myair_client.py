@@ -18,6 +18,10 @@ class ParsingError(Exception):
     """Remote payload shape does not match the fields this integration requires."""
 
 
+class StaleSessionError(ParsingError):
+    """Remote response indicates the data API no longer accepts the session."""
+
+
 class MyAirConfig(NamedTuple):
     """Credentials and regional context needed to authenticate with myAir."""
 
@@ -31,8 +35,13 @@ class MyAirClient(ABC):
     """Abstract async contract consumed by the Home Assistant coordinator."""
 
     @abstractmethod
-    async def connect(self) -> str:
+    async def connect(self, initial: bool | None = False, *, force: bool = False) -> str:
         """Authenticate or validate cached credentials before data fetches.
+
+        Args:
+            initial (bool | None): Whether authentication is part of initial setup.
+            force (bool): Whether to bypass cached-token validation and authenticate
+                again.
 
         Returns:
             str: Provider-specific auth status string.
