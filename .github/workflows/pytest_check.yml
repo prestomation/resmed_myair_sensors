@@ -1,4 +1,4 @@
-name: pytest and coverage
+name: pytest check and post coverage
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   tests:
-    name: pytest and coverage report
+    name: pytest check and post coverage
     if: ${{ !(github.event_name == 'pull_request' && ( contains(github.event.pull_request.labels.*.name, 'dependencies') || github.event.pull_request.user.type == 'Bot' )) }}
     runs-on: ubuntu-latest
     permissions:
@@ -52,15 +52,19 @@ jobs:
         run: pytest
 
       - name: "Generate coverage Comment (and possibly Post to PR)"
+        if: github.event_name != 'workflow_dispatch'
         id: coverage_comment
         uses: py-cov-action/python-coverage-comment-action@v4.3
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTIVITY: ${{ github.event_name == 'push' && 'save_coverage_data_files' || 'process_pr' }}
           MINIMUM_GREEN: 90
           MINIMUM_ORANGE: 70
 
       - name: Store PR Comment to be Posted
-        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+        if: >-
+          github.event_name != 'workflow_dispatch' &&
+          steps.coverage_comment.outputs.comment_file_written == 'true'
         uses: actions/upload-artifact@v7
         with:
           # If you use a different name, update COMMENT_ARTIFACT_NAME accordingly
