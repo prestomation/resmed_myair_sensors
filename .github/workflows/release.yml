@@ -316,7 +316,7 @@ jobs:
           git fetch --force --no-tags origin \
             "refs/heads/$RELEASE_TARGET:refs/remotes/origin/$RELEASE_TARGET" \
             "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          [[ "$(git rev-parse "refs/remotes/origin/$RELEASE_TARGET")" == "$SOURCE_SHA" ]]
+          git merge-base --is-ancestor "$SOURCE_SHA" "refs/remotes/origin/$RELEASE_TARGET"
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
           git archive --format=zip --output="$RUNNER_TEMP/rebuilt-resmed_myair.zip" \

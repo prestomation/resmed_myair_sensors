@@ -137,6 +137,11 @@ def test_prereleases_do_not_create_candidate_or_mutate_refs() -> None:
     assert "git push" not in prerelease_upload
     assert "refs/heads/$RELEASE_TARGET:refs/remotes/origin/$RELEASE_TARGET" in prerelease_upload
     assert "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG" in prerelease_upload
+    assert (
+        'git merge-base --is-ancestor "$SOURCE_SHA" "refs/remotes/origin/$RELEASE_TARGET"'
+        in prerelease_upload
+    )
+    assert '"refs/tags/$RELEASE_TAG")" == "$TAG_OID"' in prerelease_upload
     assert '"refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA"' in prerelease_upload
     assert 'cmp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/rebuilt-resmed_myair.zip"' in prerelease_upload
 
