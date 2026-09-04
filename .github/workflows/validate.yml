@@ -3,6 +3,10 @@ name: HA and HACS Validate
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        required: true
+        type: string
   push:
     branches:
       - main
@@ -15,20 +19,36 @@ jobs:
     name: Hassfest Validation
     runs-on: ubuntu-latest
     steps:
+      - name: Require the dispatched candidate SHA
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_SHA" ]]
       - name: Checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.expected_sha || github.sha }}
       - name: Hassfest validation
         uses: home-assistant/actions/hassfest@master
   hacs_validation:
     name: HACS Validation
     runs-on: ubuntu-latest
     steps:
+      - name: Require the dispatched candidate SHA
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_SHA" ]]
       - name: Checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.expected_sha || github.sha }}
       - name: HACS validation
         uses: hacs/action@main
         with:

@@ -1,30 +1,10 @@
 name: Release
 
-run-name: Release ${{ inputs.tag || inputs.bump }}
+run-name: Release ${{ github.event.release.tag_name }}
 
 on:
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: Stable version bump when tag is blank
-        required: true
-        default: none
-        type: choice
-        options:
-          - none
-          - patch
-          - minor
-          - major
-      tag:
-        description: Release tag (for example, v0.2.8 or v0.3.0-beta.1)
-        required: false
-        default: ""
-        type: string
-      prerelease:
-        description: Publish as a prerelease
-        required: true
-        default: false
-        type: boolean
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -34,174 +14,321 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  prepare:
     permissions:
-      contents: write
+      contents: read
     runs-on: ubuntu-latest
+    outputs:
+      archive-digest: ${{ steps.package.outputs.archive-digest }}
+      candidate-sha: ${{ steps.candidate.outputs.sha }}
+      resume: ${{ steps.base.outputs.resume }}
+      source-sha: ${{ steps.base.outputs.source-sha }}
+      tag-oid: ${{ steps.base.outputs.tag-oid }}
+      target: ${{ steps.release.outputs.target }}
     steps:
-      - name: Validate dispatch ref
+      - name: Require the default-branch release target
+        id: release
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          RELEASE_REF: ${{ github.ref_name }}
+          RELEASE_TARGET: ${{ github.event.release.target_commitish }}
         run: |
           set -euo pipefail
+          [[ "$RELEASE_TARGET" == "$DEFAULT_BRANCH" ]] || {
+            echo "Release target must be the default branch." >&2; exit 1; }
+          echo "target=$RELEASE_TARGET" >> "$GITHUB_OUTPUT"
 
-          if [[ "$RELEASE_REF" != "$DEFAULT_BRANCH" ]]; then
-            echo "Release workflow must be dispatched from $DEFAULT_BRANCH," >&2
-            echo "not $RELEASE_REF." >&2
-            exit 1
-          fi
-
-      - name: Checkout selected revision
+      - name: Checkout trusted default-branch workflow revision
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Resolve release tag
-        id: release_tag
+      - name: Validate event source and immutable starting refs
+        id: base
         env:
-          BUMP_TYPE: ${{ inputs.bump }}
-          EXPLICIT_TAG: ${{ inputs.tag }}
-          GH_TOKEN: ${{ github.token }}
-          IS_PRERELEASE: ${{ inputs.prerelease }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TARGET: ${{ steps.release.outputs.target }}
         run: |
           set -euo pipefail
+          trusted_sha="$(git rev-parse HEAD)"
+          git fetch --force --no-tags origin \
+            "refs/heads/$RELEASE_TARGET:refs/remotes/origin/$RELEASE_TARGET" \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          source_sha="$(git rev-parse "refs/remotes/origin/$RELEASE_TARGET")"
+          [[ "$source_sha" == "$trusted_sha" ]] || {
+            echo "Default branch moved before trusted helper execution." >&2; exit 1; }
+          python3 .github/scripts/update_release_version.py --tag-name "$RELEASE_TAG" \
+            --check-only --expected-prerelease "$IS_PRERELEASE"
+          tag_sha="$(git rev-parse "refs/tags/$RELEASE_TAG^{}")"
+          tag_oid="$(git rev-parse "refs/tags/$RELEASE_TAG")"
+          [[ "$source_sha" == "$tag_sha" ]] || {
+            echo "Release tag and event default-branch source must agree." >&2; exit 1; }
+          resume=false
+          if [[ "$IS_PRERELEASE" == false && \
+            "$(git log -1 --format=%s "$source_sha")" == "Release $RELEASE_TAG" ]]; then
+            if [[ "$(git rev-list --parents -n 1 "$source_sha" | wc -w)" -ne 2 ]] || \
+              [[ "$(git diff --name-only "$source_sha^" "$source_sha")" != $'custom_components/resmed_myair/const.py\ncustom_components/resmed_myair/manifest.json' ]] || \
+              [[ "$(jq -r .version custom_components/resmed_myair/manifest.json)" != "$RELEASE_TAG" ]] || \
+              ! grep -Fx "VERSION = \"$RELEASE_TAG\"" custom_components/resmed_myair/const.py >/dev/null; then
+              echo "Matching branch/tag release commit has invalid release contents." >&2
+              exit 1
+            fi
+            resume_dir="$(mktemp -d)"
+            git show "$source_sha^:custom_components/resmed_myair/manifest.json" > "$resume_dir/manifest.json"
+            git show "$source_sha^:custom_components/resmed_myair/const.py" > "$resume_dir/const.py"
+            python3 .github/scripts/update_release_version.py --tag-name "$RELEASE_TAG" \
+              --manifest-path "$resume_dir/manifest.json" --const-path "$resume_dir/const.py"
+            cmp "$resume_dir/manifest.json" custom_components/resmed_myair/manifest.json
+            cmp "$resume_dir/const.py" custom_components/resmed_myair/const.py
+            resume=true
+          fi
+          {
+            echo "resume=$resume"
+            echo "source-sha=$source_sha"
+            echo "tag-oid=$tag_oid"
+          } >> "$GITHUB_OUTPUT"
+          git checkout --detach "$source_sha"
 
-          if [[ -n "$EXPLICIT_TAG" ]]; then
-            if [[ "$BUMP_TYPE" != "none" ]]; then
-              echo "An explicit tag requires bump=none." >&2
-              exit 1
-            fi
-            python3 .github/scripts/update_release_version.py \
-              --tag-name "$EXPLICIT_TAG" --check-only
-            if [[ "$EXPLICIT_TAG" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]]; then
-              tag_is_prerelease=false
-            else
-              tag_is_prerelease=true
-            fi
-            if [[ "$tag_is_prerelease" != "$IS_PRERELEASE" ]]; then
-              echo "Explicit tag prerelease status must match prerelease input." >&2
-              exit 1
-            fi
-            echo "release-tag=$EXPLICIT_TAG" >> "$GITHUB_OUTPUT"
+      - name: Set up locked candidate test environment
+        if: github.event.release.prerelease == false
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.14"
+
+      - name: Create deterministic stable release commit B
+        if: github.event.release.prerelease == false
+        id: candidate
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RESUME: ${{ steps.base.outputs.resume }}
+          SOURCE_SHA: ${{ steps.base.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$RESUME" == true ]]; then
+            echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          if [[ "$IS_PRERELEASE" == "true" ]]; then
-            echo "Prereleases require an explicit tag." >&2
-            exit 1
-          fi
-          if [[ "$BUMP_TYPE" == "none" ]]; then
-            echo "Provide an explicit tag or select a stable version bump." >&2
-            exit 1
-          fi
-
-          release_tags="$(gh release list --exclude-drafts \
-            --exclude-pre-releases --limit 1000 --json tagName \
-            --jq '.[].tagName')"
-          release_tag="$(printf '%s\n' "$release_tags" | \
-            python3 .github/scripts/update_release_version.py \
-              --next-tag "$BUMP_TYPE")"
-          echo "release-tag=$release_tag" >> "$GITHUB_OUTPUT"
-
-      - name: Validate release request
-        env:
-          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
-        run: |
-          set -euo pipefail
-
-          python3 .github/scripts/update_release_version.py \
-            --tag-name "$RELEASE_TAG" --check-only
-
-      - name: Require unused tag and release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
-        run: |
-          set -euo pipefail
-
-          set +e
-          tag_output="$(git ls-remote --exit-code --tags origin \
-            "refs/tags/$RELEASE_TAG" 2>&1)"
-          tag_status=$?
-          set -e
-          case "$tag_status" in
-            0)
-              echo "Remote tag already exists: $RELEASE_TAG" >&2
-              exit 1
-              ;;
-            2) ;;
-            *)
-              echo "Unable to verify whether remote tag exists:" >&2
-              echo "$RELEASE_TAG" >&2
-              printf '%s\n' "$tag_output" >&2
-              exit 1
-              ;;
-          esac
-
-          set +e
-          release_output="$(gh api --include \
-            "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>&1)"
-          release_status=$?
-          set -e
-          if [[ "$release_status" -eq 0 ]]; then
-            echo "GitHub release already exists: $RELEASE_TAG" >&2
-            exit 1
-          fi
-          if ! printf '%s\n' "$release_output" | \
-            grep -Eq '^HTTP/[0-9.]+ 404 '; then
-            echo "Unable to verify whether GitHub release exists:" >&2
-            echo "$RELEASE_TAG" >&2
-            printf '%s\n' "$release_output" >&2
-            exit 1
-          fi
-
-      - name: Create versioned release commit and annotated tag
-        env:
-          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
-        run: |
-          set -euo pipefail
-
-          python3 .github/scripts/update_release_version.py \
-            --tag-name "$RELEASE_TAG"
-          git diff --check
+          python3 .github/scripts/update_release_version.py --tag-name "$RELEASE_TAG"
+          git add custom_components/resmed_myair/manifest.json custom_components/resmed_myair/const.py
+          git diff --cached --check
+          [[ "$(git diff --cached --name-only)" == $'custom_components/resmed_myair/const.py\ncustom_components/resmed_myair/manifest.json' ]] || {
+            echo "Release transform changed an unexpected path." >&2; exit 1; }
           git config user.name "github-actions[bot]"
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
-          git add custom_components/resmed_myair/manifest.json \
-            custom_components/resmed_myair/const.py
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Release $RELEASE_TAG"
-          git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and test HACS archive from release tag
+      - name: Run locked tests for candidate B
+        if: github.event.release.prerelease == false
+        run: uv run --locked pytest
+
+      - name: Build and verify release archive
         env:
           RELEASE_ARCHIVE: ${{ runner.temp }}/resmed_myair.zip
-          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-
           git archive --format=zip --output="$RELEASE_ARCHIVE" \
-            "$RELEASE_TAG:custom_components/resmed_myair"
-          unzip -t "$RELEASE_ARCHIVE"
+            "HEAD:custom_components/resmed_myair"
+          python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
 
-      - name: Push release tag
+      - name: Package candidate source and verified archive
+        id: package
         env:
-          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
-        run: git push origin "refs/tags/$RELEASE_TAG"
+          RELEASE_ARCHIVE: ${{ runner.temp }}/resmed_myair.zip
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/release-candidate"
+          git bundle create "$RUNNER_TEMP/release-candidate/candidate.bundle" HEAD
+          cp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/release-candidate/resmed_myair.zip"
+          sha256sum "$RUNNER_TEMP/release-candidate/resmed_myair.zip" | cut -d ' ' -f1 \
+            | { read -r digest; echo "archive-digest=$digest" >> "$GITHUB_OUTPUT"; }
 
-      - name: Create GitHub release with HACS archive
+      - name: Upload verified release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate
+          path: ${{ runner.temp }}/release-candidate
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: prepare
+    permissions:
+      actions: write
+      checks: read
+      contents: write
+      statuses: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted default-branch workflow revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.source-sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download candidate prepared by read-only job
+        uses: actions/download-artifact@v5
+        with:
+          name: release-candidate
+          path: ${{ runner.temp }}/release-candidate
+
+      - name: Require a bounded regular-file candidate handoff
+        run: |
+          set -euo pipefail
+          handoff="$RUNNER_TEMP/release-candidate"
+          [[ "$(find "$handoff" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)" \
+            == $'candidate.bundle\nresmed_myair.zip' ]]
+          for handoff_file in candidate.bundle resmed_myair.zip; do
+            path="$handoff/$handoff_file"
+            [[ -f "$path" && ! -L "$path" ]]
+            size="$(stat -c %s "$path")"
+            [[ "$size" -gt 0 && "$size" -le 104857600 ]]
+          done
+
+      - name: Re-prove candidate source and archive identity
+        if: github.event.release.prerelease == false
+        env:
+          ARCHIVE_DIGEST: ${{ needs.prepare.outputs.archive-digest }}
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate-sha }}
+          RELEASE_ARCHIVE: ${{ runner.temp }}/release-candidate/resmed_myair.zip
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          candidate_bundle="$RUNNER_TEMP/release-candidate/candidate.bundle"
+          git bundle verify "$candidate_bundle"
+          git bundle unbundle "$candidate_bundle" >/dev/null
+          git checkout --detach "$CANDIDATE_SHA"
+          [[ "$(git rev-parse HEAD)" == "$CANDIDATE_SHA" ]]
+          if [[ "$CANDIDATE_SHA" != "$SOURCE_SHA" ]]; then
+            [[ "$(git rev-parse "$CANDIDATE_SHA^")" == "$SOURCE_SHA" ]]
+            [[ "$(git log -1 --format=%s "$CANDIDATE_SHA")" == "Release $RELEASE_TAG" ]]
+            [[ "$(git diff --name-only "$SOURCE_SHA" "$CANDIDATE_SHA")" == $'custom_components/resmed_myair/const.py\ncustom_components/resmed_myair/manifest.json' ]]
+          fi
+          [[ "$(jq -r .version custom_components/resmed_myair/manifest.json)" == "$RELEASE_TAG" ]]
+          grep -Fx "VERSION = \"$RELEASE_TAG\"" custom_components/resmed_myair/const.py >/dev/null
+          [[ "$(sha256sum "$RELEASE_ARCHIVE" | cut -d ' ' -f1)" == "$ARCHIVE_DIGEST" ]]
+          python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
+          git archive --format=zip --output="$RUNNER_TEMP/rebuilt-resmed_myair.zip" \
+            "HEAD:custom_components/resmed_myair"
+          cmp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/rebuilt-resmed_myair.zip"
+
+      - name: Verify prerelease archive identity
+        if: github.event.release.prerelease
+        env:
+          ARCHIVE_DIGEST: ${{ needs.prepare.outputs.archive-digest }}
+          RELEASE_ARCHIVE: ${{ runner.temp }}/release-candidate/resmed_myair.zip
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          [[ "$(sha256sum "$RELEASE_ARCHIVE" | cut -d ' ' -f1)" == "$ARCHIVE_DIGEST" ]]
+          python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
+
+      - name: Publish B to an isolated validation branch
+        if: github.event.release.prerelease == false
+        id: validation_ref
         env:
           GH_TOKEN: ${{ github.token }}
-          IS_PRERELEASE: ${{ inputs.prerelease }}
-          RELEASE_ARCHIVE: ${{ runner.temp }}/resmed_myair.zip
-          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
+          temp_ref="release-validation/${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git check-ref-format --branch "$temp_ref"
+          gh auth setup-git --hostname github.com
+          git push origin "HEAD:refs/heads/$temp_ref"
+          echo "name=$temp_ref" >> "$GITHUB_OUTPUT"
 
-          release_asset="$RELEASE_ARCHIVE#resmed_myair.zip"
-          arguments=(release create "$RELEASE_TAG" "$release_asset")
-          arguments+=(--generate-notes --title "$RELEASE_TAG" --verify-tag)
-          if [[ "$IS_PRERELEASE" == "true" ]]; then
-            arguments+=(--prerelease)
-          fi
-          gh "${arguments[@]}"
+      - name: Dispatch and verify immutable release gates
+        if: github.event.release.prerelease == false
+        env:
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate-sha }}
+          GH_TOKEN: ${{ github.token }}
+          TEMP_REF: ${{ steps.validation_ref.outputs.name }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/verify_release_checks.py \
+            --repository "$GITHUB_REPOSITORY" --ref "$TEMP_REF" --sha "$CANDIDATE_SHA" \
+            --required-check 'linters.yml::Run Linters' \
+            --required-check 'uv-lock-check.yml::Validate uv lock consistency' \
+            --required-check 'validate.yml::Hassfest Validation' \
+            --required-check 'validate.yml::HACS Validation'
+
+      - name: Atomically advance target and guarded release tag
+        if: github.event.release.prerelease == false && needs.prepare.outputs.resume != 'true'
+        id: promotion
+        env:
+          ORIGINAL_TAG_OID: ${{ needs.prepare.outputs.tag-oid }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TARGET: ${{ needs.prepare.outputs.target }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source-sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --force --no-tags origin \
+            "refs/heads/$RELEASE_TARGET:refs/remotes/origin/$RELEASE_TARGET" \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          [[ "$(git rev-parse "refs/remotes/origin/$RELEASE_TARGET")" == "$SOURCE_SHA" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$ORIGINAL_TAG_OID" ]]
+          [[ "$(git rev-parse HEAD^)" == "$SOURCE_SHA" ]]
+          git tag -fa "$RELEASE_TAG" -m "Release $RELEASE_TAG" HEAD
+          echo "tag-oid=$(git rev-parse "refs/tags/$RELEASE_TAG")" >> "$GITHUB_OUTPUT"
+          gh auth setup-git --hostname github.com
+          git push --atomic \
+            --force-with-lease="refs/heads/$RELEASE_TARGET:$SOURCE_SHA" \
+            --force-with-lease="refs/tags/$RELEASE_TAG:$ORIGINAL_TAG_OID" \
+            origin "HEAD:refs/heads/$RELEASE_TARGET" \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+
+      - name: Verify release identity and upload verified archive
+        if: github.event.release.prerelease == false
+        env:
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate-sha }}
+          RELEASE_ARCHIVE: ${{ runner.temp }}/release-candidate/resmed_myair.zip
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TARGET: ${{ needs.prepare.outputs.target }}
+          PROMOTED_TAG_OID: ${{ steps.promotion.outputs.tag-oid || needs.prepare.outputs.tag-oid }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --force --no-tags origin \
+            "refs/heads/$RELEASE_TARGET:refs/remotes/origin/$RELEASE_TARGET" \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          [[ "$(git rev-parse "refs/remotes/origin/$RELEASE_TARGET")" == "$CANDIDATE_SHA" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$PROMOTED_TAG_OID" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$CANDIDATE_SHA" ]]
+          gh release upload "$RELEASE_TAG" "$RELEASE_ARCHIVE#resmed_myair.zip" --clobber
+
+      - name: Upload verified prerelease archive
+        if: github.event.release.prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ARCHIVE: ${{ runner.temp }}/release-candidate/resmed_myair.zip
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TARGET: ${{ needs.prepare.outputs.target }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source-sha }}
+          TAG_OID: ${{ needs.prepare.outputs.tag-oid }}
+        run: |
+          set -euo pipefail
+          git fetch --force --no-tags origin \
+            "refs/heads/$RELEASE_TARGET:refs/remotes/origin/$RELEASE_TARGET" \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          [[ "$(git rev-parse "refs/remotes/origin/$RELEASE_TARGET")" == "$SOURCE_SHA" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
+          git archive --format=zip --output="$RUNNER_TEMP/rebuilt-resmed_myair.zip" \
+            "HEAD:custom_components/resmed_myair"
+          cmp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/rebuilt-resmed_myair.zip"
+          gh release upload "$RELEASE_TAG" "$RELEASE_ARCHIVE#resmed_myair.zip" --clobber
+
+      - name: Delete validated temporary branch
+        if: github.event.release.prerelease == false && success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEMP_REF: ${{ steps.validation_ref.outputs.name }}
+        run: |
+          gh auth setup-git --hostname github.com
+          git push origin --delete "$TEMP_REF"

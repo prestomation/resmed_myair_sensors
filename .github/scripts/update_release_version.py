@@ -32,6 +32,12 @@ def validate_release_tag(tag_name: str) -> None:
         raise ValueError(f"Invalid release tag: {tag_name}")
 
 
+def is_prerelease_tag(tag_name: str) -> bool:
+    """Return whether a valid tag is outside the stable three-part format."""
+    validate_release_tag(tag_name)
+    return STABLE_TAG_PATTERN.fullmatch(tag_name) is None
+
+
 def next_stable_release_tag(tags: Iterable[str], bump_type: str) -> str:
     """Return the next stable tag after the highest released stable version.
 
@@ -149,6 +155,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         help="Validate --tag-name without updating version files.",
     )
     parser.add_argument(
+        "--expected-prerelease",
+        choices=("true", "false"),
+        help="Require --tag-name to agree with the release prerelease flag.",
+    )
+    parser.add_argument(
         "--manifest-path",
         type=Path,
         default=DEFAULT_MANIFEST_PATH,
@@ -174,6 +185,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     """
     args = _parse_args(argv)
+    if args.expected_prerelease is not None and not args.check_only:
+        raise ValueError("--expected-prerelease requires --check-only")
     if args.next_tag is not None:
         if args.check_only:
             raise ValueError("--check-only cannot be used with --next-tag")
@@ -182,6 +195,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif args.check_only:
         validate_release_tag(args.tag_name)
+        if args.expected_prerelease is not None and is_prerelease_tag(args.tag_name) != (
+            args.expected_prerelease == "true"
+        ):
+            raise ValueError("Release prerelease flag does not match the release tag")
     else:
         update_release_version_files(
             tag_name=args.tag_name,
