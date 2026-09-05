@@ -30,6 +30,7 @@ rev = "v1.7.12"
 
 [[repos.hooks]]
 id = "actionlint"
+require_serial = true
 additional_dependencies = [
   "github.com/wasilibs/go-shellcheck/cmd/shellcheck@v0.11.1",
 ]
