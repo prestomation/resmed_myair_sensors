@@ -131,5 +131,6 @@ def test_check_suite_requires_github_actions_and_candidate_sha(
         "github_api",
         lambda _arguments: {"head_sha": SHA, "app": {"slug": "foreign"}},
     )
-    with pytest.raises(verify.GitHubCommandError, match="check suite"):
+    message = f"Workflow run is not a GitHub Actions check suite for candidate SHA {SHA}."
+    with pytest.raises(verify.GitHubCommandError, match=re.escape(message)):
         verify.verify_check_suite(REPOSITORY, {"check_suite_id": 10}, SHA)

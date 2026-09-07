@@ -130,7 +130,8 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          git archive --format=zip --output="$RELEASE_ARCHIVE" \
+          git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" \
+            --output="$RELEASE_ARCHIVE" \
             "HEAD:custom_components/resmed_myair"
           python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
 
@@ -213,7 +214,8 @@ jobs:
           grep -Fx "VERSION = \"$RELEASE_TAG\"" custom_components/resmed_myair/const.py >/dev/null
           [[ "$(sha256sum "$RELEASE_ARCHIVE" | cut -d ' ' -f1)" == "$ARCHIVE_DIGEST" ]]
           python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
-          git archive --format=zip --output="$RUNNER_TEMP/rebuilt-resmed_myair.zip" \
+          git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" \
+            --output="$RUNNER_TEMP/rebuilt-resmed_myair.zip" \
             "HEAD:custom_components/resmed_myair"
           cmp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/rebuilt-resmed_myair.zip"
 
@@ -319,7 +321,8 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_SHA" "refs/remotes/origin/$RELEASE_TARGET"
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
-          git archive --format=zip --output="$RUNNER_TEMP/rebuilt-resmed_myair.zip" \
+          git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" \
+            --output="$RUNNER_TEMP/rebuilt-resmed_myair.zip" \
             "HEAD:custom_components/resmed_myair"
           cmp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/rebuilt-resmed_myair.zip"
           gh release upload "$RELEASE_TAG" "$RELEASE_ARCHIVE#resmed_myair.zip" --clobber

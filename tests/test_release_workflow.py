@@ -144,6 +144,7 @@ def test_prereleases_do_not_create_candidate_or_mutate_refs() -> None:
     assert '"refs/tags/$RELEASE_TAG")" == "$TAG_OID"' in prerelease_upload
     assert '"refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA"' in prerelease_upload
     assert 'cmp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/rebuilt-resmed_myair.zip"' in prerelease_upload
+    assert '--mtime="@$(git log -1 --format=%ct HEAD)"' in prerelease_upload
 
 
 def test_resume_requires_exact_deterministic_release_delta_and_successful_cleanup() -> None:
@@ -166,12 +167,17 @@ def test_resume_requires_exact_deterministic_release_delta_and_successful_cleanu
 def test_release_artifact_is_rebuilt_from_proven_candidate_tree() -> None:
     """Prevent a prepared archive from substituting for the candidate tree."""
     document = _workflow()
+    archive_mtime = '--mtime="@$(git log -1 --format=%ct HEAD)"'
+    build = _steps(document, "prepare")["Build and verify release archive"]["run"]
+    assert isinstance(build, str)
+    assert archive_mtime in build
     proof = _steps(document, "release")["Re-prove candidate source and archive identity"]["run"]
     assert isinstance(proof, str)
     assert "git bundle verify" in proof
     assert "git bundle unbundle" in proof
     assert 'git diff --name-only "$SOURCE_SHA" "$CANDIDATE_SHA"' in proof
     assert "verify_hacs_archive.py" in proof
+    assert archive_mtime in proof
     assert 'cmp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/rebuilt-resmed_myair.zip"' in proof
     handoff = _steps(document, "release")["Require a bounded regular-file candidate handoff"]["run"]
     assert isinstance(handoff, str)
