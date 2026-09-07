@@ -1,59 +1,66 @@
 # Releasing resmed_myair
 
-## Normal release
+<!-- cspell:ignore Hassfest -->
 
-1. Merge the release-ready changes into the default branch.
-2. From that branch, run the **Release** workflow with one of these inputs:
+## Prerequisites
 
-   - To release an explicit tag (including every prerelease), provide an unused,
-     valid `v`-prefixed tag and leave **bump** set to `none`.
-   - To make a stable automatic bump, leave **tag** blank, set **prerelease** to
-     false, and choose `patch`, `minor`, or `major`. The workflow derives the
-     next tag from the published stable releases.
+Publishing a GitHub Release is the only release trigger (`release: published`).
+Create it with a new `v`-prefixed tag targeting the repository default branch.
+At the start of the run, that tag and the default branch must name the same
+commit. Stable tags are numeric two-, three-, or four-component `v` versions; the prerelease
+setting must agree with the tag format. A prerelease archive must already
+contain its tag in both `custom_components/resmed_myair/manifest.json` and
+`const.py`.
 
-3. Wait for the workflow to validate the tag, create a local version-only
-   commit and annotated tag, build and test `resmed_myair.zip` from that tag, push
-   only the tag, and create the GitHub release with generated notes.
+## Stable releases
 
-No personal access token is needed. The workflow never pushes `main`.
+The workflow rechecks the default branch before running its trusted helpers,
+then creates a deterministic candidate commit that changes only those two
+version files. It builds and verifies `resmed_myair.zip` from that commit before
+pushing the candidate to a unique `release-validation/...` branch.
 
-## Rare recovery after a tag push
+It dispatches and verifies these exact candidate-SHA gates:
 
-If the tag push succeeds but GitHub release creation fails, do not rerun the
-workflow: it correctly rejects existing tags. This is especially important for
-automatic bumps: they intentionally have no persisted retry state. Do not
-force-move the tag.
+- `pytest_check.yml::pytest check and post coverage`
+- `uv-lock-check.yml::Validate uv lock consistency`
+- `validate.yml::Hassfest Validation`
+- `validate.yml::HACS Validation`
+- `linters.yml::review`
 
-1. Inspect the existing tag and its version files:
+After every gate succeeds, the workflow atomically advances the default branch
+and replaces the tag with an annotated tag, using leases for both original
+refs. It fetches them again, requires both to resolve to the candidate, verifies
+the archive again, and uploads the archive. The validation branch is deleted
+only after success.
 
-   ```sh
-   git fetch --tags origin
-   git show --no-patch --decorate <tag>
-   git show <tag>:custom_components/resmed_myair/manifest.json
-   git show <tag>:custom_components/resmed_myair/const.py
-   ```
+## Prereleases
 
-2. If the tag and both version files are correct, build and test the archive
-   directly from the tag:
+A prerelease builds `resmed_myair.zip` directly from the published source. It
+does not create a candidate commit, dispatch release gates, create a validation
+branch, or move the branch or tag. Before upload, the workflow rechecks the
+original branch, tag object, and tag target, then verifies the archive.
 
-   ```sh
-   git archive --format=zip --output=resmed_myair.zip <tag>:custom_components/resmed_myair
-   unzip -t resmed_myair.zip
-   ```
+## Failures and recovery
 
-3. Inspect the GitHub release. If none exists, create it with the archive; if
-   a matching draft exists, finish that draft and attach the archive. Do not
-   create a second release for the tag.
+The workflow stops if the target is not the default branch, the default branch
+moves, the tag identity changes, the tag kind is inconsistent, archive
+validation fails, a gate does not complete successfully for the dispatched
+SHA, or a guarded ref check fails. Do not promote a validation branch directly
+or force-move its tag.
 
-   ```sh
-   gh release view <tag>
-   gh release create <tag> resmed_myair.zip --generate-notes --title <tag> --verify-tag
-   # Or, for an existing matching draft:
-   gh release upload <tag> resmed_myair.zip --clobber
-   gh release edit <tag> --draft=false
-   ```
+If a stable run has created a validation branch, it remains after failure.
+Confirm its candidate SHA before removing it:
 
-   Add `--prerelease` when the tag is a prerelease.
+```sh
+git fetch origin "refs/heads/<temporary-ref>:refs/remotes/origin/<temporary-ref>"
+git rev-parse "refs/remotes/origin/<temporary-ref>"
+git push --force-with-lease="refs/heads/<temporary-ref>:<candidate-sha>" origin --delete "<temporary-ref>"
+```
 
-If the tag points to the wrong commit or contains wrong version files, leave it
-unchanged and release a new, correct version instead.
+If promotion reports an error, inspect both remote refs before retrying. Do
+not assume an atomic push left them unchanged; treat a branch/tag split as an
+incident. If upload fails after promotion, rerun only when the branch and tag
+still name the same one-parent `Release <tag>` commit, it changed only the two
+version files, and recreating those files from its parent is identical.
+Otherwise, publish a new release from current default-branch state without
+moving the original tag.
