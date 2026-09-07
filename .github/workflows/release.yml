@@ -14,17 +14,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  prepare:
+  release:
     permissions:
-      contents: read
+      actions: write
+      checks: read
+      contents: write
+      statuses: read
     runs-on: ubuntu-latest
-    outputs:
-      archive-digest: ${{ steps.package.outputs.archive-digest }}
-      candidate-sha: ${{ steps.candidate.outputs.sha }}
-      resume: ${{ steps.base.outputs.resume }}
-      source-sha: ${{ steps.base.outputs.source-sha }}
-      tag-oid: ${{ steps.base.outputs.tag-oid }}
-      target: ${{ steps.release.outputs.target }}
     steps:
       - name: Require the default-branch release target
         id: release
@@ -83,6 +79,7 @@ jobs:
             cmp "$resume_dir/manifest.json" custom_components/resmed_myair/manifest.json
             cmp "$resume_dir/const.py" custom_components/resmed_myair/const.py
             resume=true
+            echo "candidate-sha=$source_sha" >> "$GITHUB_OUTPUT"
           fi
           {
             echo "resume=$resume"
@@ -91,11 +88,16 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           git checkout --detach "$source_sha"
 
-      - name: Set up locked candidate test environment
-        if: github.event.release.prerelease == false
-        uses: astral-sh/setup-uv@v10.0.1
-        with:
-          python-version: "3.14"
+      - name: Build prerelease archive without mutating refs
+        if: github.event.release.prerelease
+        env:
+          RELEASE_ARCHIVE: ${{ runner.temp }}/resmed_myair.zip
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" \
+            --output="$RELEASE_ARCHIVE" "HEAD:custom_components/resmed_myair"
+          python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
 
       - name: Create deterministic stable release commit B
         if: github.event.release.prerelease == false
@@ -103,11 +105,11 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RESUME: ${{ steps.base.outputs.resume }}
-          SOURCE_SHA: ${{ steps.base.outputs.source-sha }}
+          RESUME_SHA: ${{ steps.base.outputs.candidate-sha }}
         run: |
           set -euo pipefail
           if [[ "$RESUME" == true ]]; then
-            echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+            echo "sha=$RESUME_SHA" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           python3 .github/scripts/update_release_version.py --tag-name "$RELEASE_TAG"
@@ -120,114 +122,15 @@ jobs:
           git commit -m "Release $RELEASE_TAG"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Run locked tests for candidate B
-        if: github.event.release.prerelease == false
-        run: uv run --locked pytest
-
       - name: Build and verify release archive
-        env:
-          RELEASE_ARCHIVE: ${{ runner.temp }}/resmed_myair.zip
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          set -euo pipefail
-          git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" \
-            --output="$RELEASE_ARCHIVE" \
-            "HEAD:custom_components/resmed_myair"
-          python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
-
-      - name: Package candidate source and verified archive
-        id: package
-        env:
-          RELEASE_ARCHIVE: ${{ runner.temp }}/resmed_myair.zip
-        run: |
-          set -euo pipefail
-          mkdir "$RUNNER_TEMP/release-candidate"
-          git bundle create "$RUNNER_TEMP/release-candidate/candidate.bundle" HEAD
-          cp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/release-candidate/resmed_myair.zip"
-          sha256sum "$RUNNER_TEMP/release-candidate/resmed_myair.zip" | cut -d ' ' -f1 \
-            | { read -r digest; echo "archive-digest=$digest" >> "$GITHUB_OUTPUT"; }
-
-      - name: Upload verified release candidate
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-candidate
-          path: ${{ runner.temp }}/release-candidate
-          if-no-files-found: error
-          retention-days: 1
-
-  release:
-    needs: prepare
-    permissions:
-      actions: write
-      checks: read
-      contents: write
-      statuses: read
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout trusted default-branch workflow revision
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.source-sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Download candidate prepared by read-only job
-        uses: actions/download-artifact@v5
-        with:
-          name: release-candidate
-          path: ${{ runner.temp }}/release-candidate
-
-      - name: Require a bounded regular-file candidate handoff
-        run: |
-          set -euo pipefail
-          handoff="$RUNNER_TEMP/release-candidate"
-          [[ "$(find "$handoff" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)" \
-            == $'candidate.bundle\nresmed_myair.zip' ]]
-          for handoff_file in candidate.bundle resmed_myair.zip; do
-            path="$handoff/$handoff_file"
-            [[ -f "$path" && ! -L "$path" ]]
-            size="$(stat -c %s "$path")"
-            [[ "$size" -gt 0 && "$size" -le 104857600 ]]
-          done
-
-      - name: Re-prove candidate source and archive identity
         if: github.event.release.prerelease == false
         env:
-          ARCHIVE_DIGEST: ${{ needs.prepare.outputs.archive-digest }}
-          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate-sha }}
-          RELEASE_ARCHIVE: ${{ runner.temp }}/release-candidate/resmed_myair.zip
+          RELEASE_ARCHIVE: ${{ runner.temp }}/resmed_myair.zip
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-          SOURCE_SHA: ${{ needs.prepare.outputs.source-sha }}
         run: |
           set -euo pipefail
-          candidate_bundle="$RUNNER_TEMP/release-candidate/candidate.bundle"
-          git bundle verify "$candidate_bundle"
-          git bundle unbundle "$candidate_bundle" >/dev/null
-          git checkout --detach "$CANDIDATE_SHA"
-          [[ "$(git rev-parse HEAD)" == "$CANDIDATE_SHA" ]]
-          if [[ "$CANDIDATE_SHA" != "$SOURCE_SHA" ]]; then
-            [[ "$(git rev-parse "$CANDIDATE_SHA^")" == "$SOURCE_SHA" ]]
-            [[ "$(git log -1 --format=%s "$CANDIDATE_SHA")" == "Release $RELEASE_TAG" ]]
-            [[ "$(git diff --name-only "$SOURCE_SHA" "$CANDIDATE_SHA")" == $'custom_components/resmed_myair/const.py\ncustom_components/resmed_myair/manifest.json' ]]
-          fi
-          [[ "$(jq -r .version custom_components/resmed_myair/manifest.json)" == "$RELEASE_TAG" ]]
-          grep -Fx "VERSION = \"$RELEASE_TAG\"" custom_components/resmed_myair/const.py >/dev/null
-          [[ "$(sha256sum "$RELEASE_ARCHIVE" | cut -d ' ' -f1)" == "$ARCHIVE_DIGEST" ]]
-          python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
           git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" \
-            --output="$RUNNER_TEMP/rebuilt-resmed_myair.zip" \
-            "HEAD:custom_components/resmed_myair"
-          cmp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/rebuilt-resmed_myair.zip"
-
-      - name: Verify prerelease archive identity
-        if: github.event.release.prerelease
-        env:
-          ARCHIVE_DIGEST: ${{ needs.prepare.outputs.archive-digest }}
-          RELEASE_ARCHIVE: ${{ runner.temp }}/release-candidate/resmed_myair.zip
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          set -euo pipefail
-          [[ "$(sha256sum "$RELEASE_ARCHIVE" | cut -d ' ' -f1)" == "$ARCHIVE_DIGEST" ]]
+            --output="$RELEASE_ARCHIVE" "HEAD:custom_components/resmed_myair"
           python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
 
       - name: Publish B to an isolated validation branch
@@ -247,7 +150,7 @@ jobs:
       - name: Dispatch and verify immutable release gates
         if: github.event.release.prerelease == false
         env:
-          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate-sha }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
           TEMP_REF: ${{ steps.validation_ref.outputs.name }}
         run: |
@@ -255,19 +158,20 @@ jobs:
           python3 .github/scripts/verify_release_checks.py \
             --repository "$GITHUB_REPOSITORY" --ref "$TEMP_REF" --sha "$CANDIDATE_SHA" \
             --required-check 'linters.yml::Run Linters' \
+            --required-check 'pytest_check.yml::pytest release check' \
             --required-check 'uv-lock-check.yml::Validate uv lock consistency' \
             --required-check 'validate.yml::Hassfest Validation' \
             --required-check 'validate.yml::HACS Validation'
 
       - name: Atomically advance target and guarded release tag
-        if: github.event.release.prerelease == false && needs.prepare.outputs.resume != 'true'
+        if: github.event.release.prerelease == false && steps.base.outputs.resume != 'true'
         id: promotion
         env:
-          ORIGINAL_TAG_OID: ${{ needs.prepare.outputs.tag-oid }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_TARGET: ${{ needs.prepare.outputs.target }}
-          SOURCE_SHA: ${{ needs.prepare.outputs.source-sha }}
           GH_TOKEN: ${{ github.token }}
+          ORIGINAL_TAG_OID: ${{ steps.base.outputs.tag-oid }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TARGET: ${{ steps.release.outputs.target }}
+          SOURCE_SHA: ${{ steps.base.outputs.source-sha }}
         run: |
           set -euo pipefail
           git fetch --force --no-tags origin \
@@ -288,12 +192,12 @@ jobs:
       - name: Verify release identity and upload verified archive
         if: github.event.release.prerelease == false
         env:
-          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate-sha }}
-          RELEASE_ARCHIVE: ${{ runner.temp }}/release-candidate/resmed_myair.zip
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_TARGET: ${{ needs.prepare.outputs.target }}
-          PROMOTED_TAG_OID: ${{ steps.promotion.outputs.tag-oid || needs.prepare.outputs.tag-oid }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
+          PROMOTED_TAG_OID: ${{ steps.promotion.outputs.tag-oid || steps.base.outputs.tag-oid }}
+          RELEASE_ARCHIVE: ${{ runner.temp }}/resmed_myair.zip
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TARGET: ${{ steps.release.outputs.target }}
         run: |
           set -euo pipefail
           git fetch --force --no-tags origin \
@@ -302,36 +206,36 @@ jobs:
           [[ "$(git rev-parse "refs/remotes/origin/$RELEASE_TARGET")" == "$CANDIDATE_SHA" ]]
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$PROMOTED_TAG_OID" ]]
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$CANDIDATE_SHA" ]]
+          python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
           gh release upload "$RELEASE_TAG" "$RELEASE_ARCHIVE#resmed_myair.zip" --clobber
 
-      - name: Upload verified prerelease archive
+      - name: Verify prerelease identity and upload archive
         if: github.event.release.prerelease
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_ARCHIVE: ${{ runner.temp }}/release-candidate/resmed_myair.zip
+          RELEASE_ARCHIVE: ${{ runner.temp }}/resmed_myair.zip
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_TARGET: ${{ needs.prepare.outputs.target }}
-          SOURCE_SHA: ${{ needs.prepare.outputs.source-sha }}
-          TAG_OID: ${{ needs.prepare.outputs.tag-oid }}
+          RELEASE_TARGET: ${{ steps.release.outputs.target }}
+          SOURCE_SHA: ${{ steps.base.outputs.source-sha }}
+          TAG_OID: ${{ steps.base.outputs.tag-oid }}
         run: |
           set -euo pipefail
           git fetch --force --no-tags origin \
             "refs/heads/$RELEASE_TARGET:refs/remotes/origin/$RELEASE_TARGET" \
             "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          git merge-base --is-ancestor "$SOURCE_SHA" "refs/remotes/origin/$RELEASE_TARGET"
+          [[ "$(git rev-parse "refs/remotes/origin/$RELEASE_TARGET")" == "$SOURCE_SHA" ]]
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
-          git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" \
-            --output="$RUNNER_TEMP/rebuilt-resmed_myair.zip" \
-            "HEAD:custom_components/resmed_myair"
-          cmp "$RELEASE_ARCHIVE" "$RUNNER_TEMP/rebuilt-resmed_myair.zip"
+          python3 .github/scripts/verify_hacs_archive.py "$RELEASE_ARCHIVE" "$RELEASE_TAG"
           gh release upload "$RELEASE_TAG" "$RELEASE_ARCHIVE#resmed_myair.zip" --clobber
 
       - name: Delete validated temporary branch
         if: github.event.release.prerelease == false && success()
         env:
           GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
           TEMP_REF: ${{ steps.validation_ref.outputs.name }}
         run: |
           gh auth setup-git --hostname github.com
-          git push origin --delete "$TEMP_REF"
+          git push --force-with-lease="refs/heads/$TEMP_REF:$CANDIDATE_SHA" \
+            origin --delete "$TEMP_REF"

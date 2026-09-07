@@ -1,59 +1,40 @@
 # Releasing resmed_myair
 
-## Normal release
+## Stable releases
 
-1. Merge the release-ready changes into the default branch.
-2. From that branch, run the **Release** workflow with one of these inputs:
+1. Merge release-ready changes into the default branch. Create and publish a
+   GitHub Release with an unused valid `v`-prefixed stable tag targeting that
+   branch. The new tag and default branch must initially name the same commit.
+2. Publishing the release starts the **Release** workflow. It validates the
+   event metadata and source, creates one deterministic commit that changes
+   only `manifest.json` and `const.py`, and builds `resmed_myair.zip` from it.
+3. The candidate is published to a unique temporary branch. The workflow
+   dispatches its immutable SHA to HACS, Hassfest, locked pytest, uv-lock, and
+   linter checks. The pytest dispatch is read-only and never publishes coverage.
+4. Once those checks pass, the workflow atomically advances the default branch
+   and replaces the release tag with an annotated tag for the validated commit.
+   It rechecks both refs and uploads the verified archive. The temporary branch
+   is deleted only after success.
 
-   - To release an explicit tag (including every prerelease), provide an unused,
-     valid `v`-prefixed tag and leave **bump** set to `none`.
-   - To make a stable automatic bump, leave **tag** blank, set **prerelease** to
-     false, and choose `patch`, `minor`, or `major`. The workflow derives the
-     next tag from the published stable releases.
+No personal access token is required. The workflow uses `GITHUB_TOKEN`; branch
+protection remains active for the stable promotion.
 
-3. Wait for the workflow to validate the tag, create a local version-only
-   commit and annotated tag, build and test `resmed_myair.zip` from that tag, push
-   only the tag, and create the GitHub release with generated notes.
+## Prereleases
 
-No personal access token is needed. The workflow never pushes `main`.
+Publish a GitHub Release with an explicit unused prerelease tag that already
+matches the version in `manifest.json` and `const.py`. The workflow only builds
+and uploads the archive; it does not create a commit or mutate a ref. Before
+upload, the default branch and tag must still resolve to the exact selected
+source.
 
-## Rare recovery after a tag push
+## Failures and retries
 
-If the tag push succeeds but GitHub release creation fails, do not rerun the
-workflow: it correctly rejects existing tags. This is especially important for
-automatic bumps: they intentionally have no persisted retry state. Do not
-force-move the tag.
+A failed stable validation retains its temporary `release-validation/...`
+branch. Verify its exact SHA before deleting it with ordinary repository access.
+Do not promote that commit directly or force-move the tag.
 
-1. Inspect the existing tag and its version files:
-
-   ```sh
-   git fetch --tags origin
-   git show --no-patch --decorate <tag>
-   git show <tag>:custom_components/resmed_myair/manifest.json
-   git show <tag>:custom_components/resmed_myair/const.py
-   ```
-
-2. If the tag and both version files are correct, build and test the archive
-   directly from the tag:
-
-   ```sh
-   git archive --format=zip --output=resmed_myair.zip <tag>:custom_components/resmed_myair
-   unzip -t resmed_myair.zip
-   ```
-
-3. Inspect the GitHub release. If none exists, create it with the archive; if
-   a matching draft exists, finish that draft and attach the archive. Do not
-   create a second release for the tag.
-
-   ```sh
-   gh release view <tag>
-   gh release create <tag> resmed_myair.zip --generate-notes --title <tag> --verify-tag
-   # Or, for an existing matching draft:
-   gh release upload <tag> resmed_myair.zip --clobber
-   gh release edit <tag> --draft=false
-   ```
-
-   Add `--prerelease` when the tag is a prerelease.
-
-If the tag points to the wrong commit or contains wrong version files, leave it
-unchanged and release a new, correct version instead.
+If the final upload fails after promotion, rerun the workflow only when the
+default branch and annotated tag still name the same one-parent `Release <tag>`
+commit and its only changed paths are the two version files. The workflow
+reproduces the version transform from the parent before resuming. Otherwise,
+create a new release from current default-branch state.
