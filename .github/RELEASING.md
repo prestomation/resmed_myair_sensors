@@ -1,40 +1,66 @@
 # Releasing resmed_myair
 
+<!-- cspell:ignore Hassfest -->
+
+## Prerequisites
+
+Publishing a GitHub Release is the only release trigger (`release: published`).
+Create it with a new `v`-prefixed tag targeting the repository default branch.
+At the start of the run, that tag and the default branch must name the same
+commit. Stable tags are numeric three-component `v` versions; the prerelease
+setting must agree with the tag format. A prerelease archive must already
+contain its tag in both `custom_components/resmed_myair/manifest.json` and
+`const.py`.
+
 ## Stable releases
 
-1. Merge release-ready changes into the default branch. Create and publish a
-   GitHub Release with an unused valid `v`-prefixed stable tag targeting that
-   branch. The new tag and default branch must initially name the same commit.
-2. Publishing the release starts the **Release** workflow. It validates the
-   event metadata and source, creates one deterministic commit that changes
-   only `manifest.json` and `const.py`, and builds `resmed_myair.zip` from it.
-3. The candidate is published to a unique temporary branch. The workflow
-   dispatches its immutable SHA to HACS, Hassfest, locked pytest, uv-lock, and
-   linter checks. The pytest dispatch is read-only and never publishes coverage.
-4. Once those checks pass, the workflow atomically advances the default branch
-   and replaces the release tag with an annotated tag for the validated commit.
-   It rechecks both refs and uploads the verified archive. The temporary branch
-   is deleted only after success.
+The workflow rechecks the default branch before running its trusted helpers,
+then creates a deterministic candidate commit that changes only those two
+version files. It builds and verifies `resmed_myair.zip` from that commit before
+pushing the candidate to a unique `release-validation/...` branch.
 
-No personal access token is required. The workflow uses `GITHUB_TOKEN`; branch
-protection remains active for the stable promotion.
+It dispatches and verifies these exact candidate-SHA gates:
+
+- `linters.yml::Run Linters`
+- `pytest_check.yml::pytest release check`
+- `uv-lock-check.yml::Validate uv lock consistency`
+- `validate.yml::Hassfest Validation`
+- `validate.yml::HACS Validation`
+
+After every gate succeeds, the workflow atomically advances the default branch
+and replaces the tag with an annotated tag, using leases for both original
+refs. It fetches them again, requires both to resolve to the candidate, verifies
+the archive again, and uploads the archive. The validation branch is deleted
+only after success.
 
 ## Prereleases
 
-Publish a GitHub Release with an explicit unused prerelease tag that already
-matches the version in `manifest.json` and `const.py`. The workflow only builds
-and uploads the archive; it does not create a commit or mutate a ref. Before
-upload, the default branch and tag must still resolve to the exact selected
-source.
+A prerelease builds `resmed_myair.zip` directly from the published source. It
+does not create a candidate commit, dispatch release gates, create a validation
+branch, or move the branch or tag. Before upload, the workflow rechecks the
+original branch, tag object, and tag target, then verifies the archive.
 
-## Failures and retries
+## Failures and recovery
 
-A failed stable validation retains its temporary `release-validation/...`
-branch. Verify its exact SHA before deleting it with ordinary repository access.
-Do not promote that commit directly or force-move the tag.
+The workflow stops if the target is not the default branch, the default branch
+moves, the tag identity changes, the tag kind is inconsistent, archive
+validation fails, a gate does not complete successfully for the dispatched
+SHA, or a guarded ref check fails. Do not promote a validation branch directly
+or force-move its tag.
 
-If the final upload fails after promotion, rerun the workflow only when the
-default branch and annotated tag still name the same one-parent `Release <tag>`
-commit and its only changed paths are the two version files. The workflow
-reproduces the version transform from the parent before resuming. Otherwise,
-create a new release from current default-branch state.
+If a stable run has created a validation branch, it remains after failure.
+Confirm its candidate SHA before removing it:
+
+```sh
+git fetch origin "refs/heads/<temporary-ref>:refs/remotes/origin/<temporary-ref>"
+git rev-parse "refs/remotes/origin/<temporary-ref>"
+git push --force-with-lease="refs/heads/<temporary-ref>:<candidate-sha>" origin --delete "<temporary-ref>"
+```
+
+If promotion reports an error, inspect both remote refs before retrying. Do
+not assume an atomic push left them unchanged; treat a branch/tag split as an
+incident. If upload fails after promotion, rerun only when the branch and tag
+still name the same one-parent `Release <tag>` commit, it changed only the two
+version files, and recreating those files from its parent is identical.
+Otherwise, publish a new release from current default-branch state without
+moving the original tag.

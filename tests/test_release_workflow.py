@@ -66,27 +66,23 @@ def test_release_is_one_guarded_job_with_published_trigger() -> None:
 def test_stable_release_has_exact_candidate_and_immutable_gates() -> None:
     """Require exact version-only candidates before guarded promotion."""
     steps = _steps(_workflow("release.yml"), "release")
-    base = steps["Validate event source and immutable starting refs"]["run"]
+    base = steps["Validate trusted release metadata and immutable starting refs"]["run"]
     candidate = steps["Create deterministic stable release commit B"]["run"]
     dispatch = steps["Dispatch and verify immutable release gates"]["run"]
     promotion = steps["Atomically advance target and guarded release tag"]["run"]
 
-    assert 'git diff --name-only "$source_sha^" "$source_sha"' in base
-    assert '--manifest-path "$resume_dir/manifest.json"' in base
-    assert 'cmp "$resume_dir/const.py" custom_components/resmed_myair/const.py' in base
-    assert (
-        "git add custom_components/resmed_myair/manifest.json custom_components/resmed_myair/const.py"
-        in candidate
-    )
+    assert 'git diff --name-only "$target_sha^" "$target_sha"' in base
+    assert '"$resume_dir/$COMPONENT_PATH/manifest.json"' in base
+    assert 'git add "$COMPONENT_PATH/manifest.json" "$COMPONENT_PATH/const.py"' in candidate
     assert "git diff --cached --name-only" in candidate
-    for check in (
+    assert _workflow("release.yml")["jobs"]["release"]["env"]["REQUIRED_CHECKS"].splitlines() == [
         "linters.yml::Run Linters",
         "pytest_check.yml::pytest release check",
         "uv-lock-check.yml::Validate uv lock consistency",
         "validate.yml::Hassfest Validation",
         "validate.yml::HACS Validation",
-    ):
-        assert check in dispatch
+    ]
+    assert '"${required_check_args[@]}"' in dispatch
     assert "git push --atomic" in promotion
     assert '--force-with-lease="refs/heads/$RELEASE_TARGET:$SOURCE_SHA"' in promotion
     assert '--force-with-lease="refs/tags/$RELEASE_TAG:$ORIGINAL_TAG_OID"' in promotion
