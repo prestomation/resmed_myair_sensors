@@ -7,7 +7,7 @@
 Publishing a GitHub Release is the only release trigger (`release: published`).
 Create it with a new `v`-prefixed tag targeting the repository default branch.
 At the start of the run, that tag and the default branch must name the same
-commit. Stable tags are numeric three-component `v` versions; the prerelease
+commit. Stable tags are numeric two-, three-, or four-component `v` versions; the prerelease
 setting must agree with the tag format. A prerelease archive must already
 contain its tag in both `custom_components/resmed_myair/manifest.json` and
 `const.py`.
