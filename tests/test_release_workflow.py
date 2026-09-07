@@ -93,6 +93,7 @@ def test_archives_are_tied_to_rechecked_source_identity() -> None:
     steps = _steps(_workflow("release.yml"), "release")
     archive_mtime = '--mtime="@$(git log -1 --format=%ct HEAD)"'
     assert archive_mtime in steps["Build and verify release archive"]["run"]
+    assert archive_mtime in steps["Build prerelease archive without mutating refs"]["run"]
     stable_upload = steps["Verify release identity and upload verified archive"]["run"]
     prerelease_upload = steps["Verify prerelease identity and upload archive"]["run"]
     assert "verify_hacs_archive.py" in stable_upload
@@ -108,7 +109,7 @@ def test_dispatched_pytest_gate_is_read_only_and_exact_sha() -> None:
 
     assert document["on"]["workflow_dispatch"]["inputs"]["expected_sha"]["required"] is True
     job = document["jobs"]["release-tests"]
-    assert job["permissions"] == {"contents": "read", "pull-requests": "read"}
+    assert job["permissions"] == {"contents": "read"}
     steps = _steps(document, "release-tests")
     guard = steps["Require the dispatched candidate SHA"]["run"]
     checkout = steps["Checkout Repository"]["with"]

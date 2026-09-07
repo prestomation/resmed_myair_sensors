@@ -130,11 +130,11 @@ def test_verify_archive_rejects_missing_files_expansion_and_compression_ratio(
     with pytest.raises(archive_verifier.ArchiveError, match="required version files"):
         archive_verifier.verify_archive(str(missing), "v1.2.3")
     expanded = tmp_path / "expanded.zip"
-    _archive(expanded, [("payload.bin", b"x" * 32)])
-    monkeypatch.setattr(archive_verifier, "MAX_EXPANDED_BYTES", 32)
-    with pytest.raises(archive_verifier.ArchiveError, match="expanded size"):
-        archive_verifier.verify_archive(str(expanded), "v1.2.3")
-    monkeypatch.setattr(archive_verifier, "MAX_EXPANDED_BYTES", 64 * 1024 * 1024)
+    _archive(expanded, [("payload.bin", b"x" * 72)])
+    with monkeypatch.context() as context:
+        context.setattr(archive_verifier, "MAX_EXPANDED_BYTES", 64)
+        with pytest.raises(archive_verifier.ArchiveError, match="expanded size"):
+            archive_verifier.verify_archive(str(expanded), "v1.2.3")
     monkeypatch.setattr(archive_verifier, "MAX_COMPRESSION_RATIO", 2)
     compressed = tmp_path / "compressed.zip"
     with zipfile.ZipFile(compressed, "w", compression=zipfile.ZIP_DEFLATED) as output:
