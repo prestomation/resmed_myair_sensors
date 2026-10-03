@@ -52,6 +52,7 @@
 ## PR & branch behavior
 
 - Create branches or PRs only when explicitly requested. Do not open PRs autonomously.
+- Use a Conventional Commit prefix for every created PR title (for example, `feat:`, `fix:`, or `chore:`).
 
 ## Network / install consent
 

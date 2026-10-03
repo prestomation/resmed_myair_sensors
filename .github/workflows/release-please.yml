@@ -1,0 +1,61 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Create or update the release pull request
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  release-asset:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the released tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build, verify, and upload the HACS archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          release_version="${RELEASE_TAG#v}"
+          archive="$RUNNER_TEMP/resmed_myair.zip"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" \
+            --output="$archive" HEAD:custom_components/resmed_myair
+          python3 .github/scripts/verify_hacs_archive.py "$archive" "$release_version"
+          gh release upload "$RELEASE_TAG" "$archive#resmed_myair.zip" \
+            --clobber --repo "$GITHUB_REPOSITORY"
