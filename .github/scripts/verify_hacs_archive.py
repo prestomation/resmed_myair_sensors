@@ -49,12 +49,12 @@ def _validate_regular_file(member: zipfile.ZipInfo) -> None:
         raise ArchiveError(f"Archive member is not a regular file: {member.filename!r}")
 
 
-def verify_archive(archive_path: str, release_tag: str) -> None:
+def verify_archive(archive_path: str, expected_version: str) -> None:
     """Verify HACS archive structure, resource bounds, and embedded versions.
 
     Args:
         archive_path (str): Path to the ZIP archive.
-        release_tag (str): Exact tag expected in the integration version files.
+        expected_version (str): Version expected in the integration files.
 
     Raises:
         ArchiveError: If the archive is unreadable, unsafe, or version-mismatched.
@@ -93,11 +93,16 @@ def verify_archive(archive_path: str, release_tag: str) -> None:
             if not names >= REQUIRED_FILES:
                 raise ArchiveError("Archive does not contain required version files.")
             manifest = json.loads(archive.read("manifest.json"))
-            if not isinstance(manifest, dict) or manifest.get("version") != release_tag:
-                raise ArchiveError("Archive manifest version does not match the release tag.")
+            if not isinstance(manifest, dict) or manifest.get("version") != expected_version:
+                raise ArchiveError("Archive manifest version does not match the release version.")
             const = archive.read("const.py").decode("utf-8")
-            if f'VERSION = "{release_tag}"' not in const.splitlines():
-                raise ArchiveError("Archive const.py version does not match the release tag.")
+            version_line = f'VERSION = "{expected_version}"'
+            accepted_version_lines = {
+                version_line,
+                f"{version_line}  # x-release-please-version",
+            }
+            if not accepted_version_lines.intersection(const.splitlines()):
+                raise ArchiveError("Archive const.py version does not match the release version.")
     except (OSError, UnicodeDecodeError, zipfile.BadZipFile) as error:
         raise ArchiveError(f"Unable to validate release archive: {error}") from error
 
@@ -113,9 +118,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archive")
-    parser.add_argument("release_tag")
+    parser.add_argument("expected_version")
     args = parser.parse_args(argv)
-    verify_archive(args.archive, args.release_tag)
+    verify_archive(args.archive, args.expected_version)
     return 0
 
 

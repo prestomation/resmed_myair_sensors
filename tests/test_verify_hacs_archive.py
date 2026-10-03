@@ -88,6 +88,22 @@ def test_verify_archive_accepts_a_real_zip_artifact(tmp_path: Path) -> None:
     assert archive_verifier.main([str(archive), RELEASE_TAG]) == 0
 
 
+def test_verify_archive_accepts_release_please_version_marker(tmp_path: Path) -> None:
+    """Accept an archive using the integration's marked version assignment.
+
+    Args:
+        tmp_path (Path): Temporary test directory.
+    """
+    archive = tmp_path / "marked-version.zip"
+    _archive(
+        archive,
+        manifest=json.dumps({"version": "1.2.3"}),
+        const='VERSION = "1.2.3"  # x-release-please-version\n',
+    )
+
+    assert archive_verifier.main([str(archive), "1.2.3"]) == 0
+
+
 def test_verify_archive_allows_safe_directory_entries(tmp_path: Path) -> None:
     """Allow directories emitted by git archive while validating their contents.
 
