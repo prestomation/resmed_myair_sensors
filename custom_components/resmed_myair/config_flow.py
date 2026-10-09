@@ -228,7 +228,9 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         """
         return self.async_show_form(
             step_id=step_id,
-            data_schema=self._mfa_schema(),
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=self._mfa_schema(),  # type: ignore[arg-type, unused-ignore]
             description_placeholders={
                 "username": self._data.get(CONF_USER_NAME, "your email address"),
             },
@@ -463,7 +465,9 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         _LOGGER.info("Setting up ResMed myAir Integration Version: %s", VERSION)
         return self.async_show_form(
             step_id="user",
-            data_schema=self._credentials_schema(include_region=True),
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=self._credentials_schema(include_region=True),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
         )
 
@@ -584,7 +588,9 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         _LOGGER.info("Showing Reauth Confirm Form")
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=self._credentials_schema(self._data, include_region=False),
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=self._credentials_schema(self._data, include_region=False),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
         )
 
@@ -676,7 +682,9 @@ class MyAirConfigFlow(ConfigFlow, domain=DOMAIN):
         _LOGGER.info("Showing Reconfigure Form")
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=self._credentials_schema(self._data, include_region=True),
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=self._credentials_schema(self._data, include_region=True),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
         )
 
