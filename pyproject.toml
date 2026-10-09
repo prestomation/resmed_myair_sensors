@@ -195,7 +195,9 @@ show_missing = true
 
 [tool.pydoclint]
 style = "google"
-should-document-private-class-attributes = true
+ignore-private-class-attributes = false
+ignore-underscore-only-class-attributes = false
+ignore-special-dunder-class-attributes = false
 skip-checking-short-docstrings = false
 arg-type-hints-in-docstring = true
 check-return-types = true
