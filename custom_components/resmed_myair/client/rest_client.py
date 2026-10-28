@@ -1,7 +1,7 @@
 """REST Client for ResMed myAir Client."""
 
 from collections.abc import Mapping, MutableMapping
-import datetime
+import datetime as dt
 import logging
 from typing import Any
 
@@ -199,9 +199,9 @@ class RESTClient(MyAirClient):
         Raises:
             ParsingError: When the GraphQL response omits or malforms sleep record data.
         """
-        today_date: datetime.date = datetime.datetime.now(datetime.UTC).astimezone().date()
+        today_date: dt.date = dt.datetime.now(dt.UTC).astimezone().date()
         today: str = today_date.isoformat()
-        one_month_ago: str = (today_date - datetime.timedelta(days=30)).isoformat()
+        one_month_ago: str = (today_date - dt.timedelta(days=30)).isoformat()
 
         query: str = """query GetPatientSleepRecords {
             getPatientWrapper {
