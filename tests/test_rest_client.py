@@ -1,6 +1,6 @@
 """REST client tests that protect auth, GraphQL, and parsing behavior."""
 
-import datetime
+import datetime as dt
 import logging
 from typing import Never
 from unittest.mock import AsyncMock, MagicMock
@@ -1539,25 +1539,25 @@ async def test_get_sleep_records_uses_local_date_range(
             and GraphQL responses.
     """
 
-    class FixedDateTime(datetime.datetime):
+    class FixedDateTime(dt.datetime):
         """DateTime class with deterministic now() for query-window assertions."""
 
         @classmethod
-        def now(cls, tz: datetime.tzinfo | None = None) -> datetime.datetime:
+        def now(cls, tz: dt.tzinfo | None = None) -> dt.datetime:
             """Return a fixed timezone-aware timestamp for the date window.
 
             Args:
-                tz (datetime.tzinfo | None): Time zone applied to the fixed
+                tz (dt.tzinfo | None): Time zone applied to the fixed
                     timestamp.
 
             Returns:
-                datetime.datetime: Fixed timestamp used by the query-window
+                dt.datetime: Fixed timestamp used by the query-window
                     assertion.
             """
             return cls(2024, 7, 31, 12, tzinfo=tz)
 
     client = RESTClient(config_na, session)
-    monkeypatch.setattr(rest_client_module.datetime, "datetime", FixedDateTime)
+    monkeypatch.setattr(rest_client_module.dt, "datetime", FixedDateTime)
     gql_query = AsyncMock(
         return_value={"data": {"getPatientWrapper": {"sleepRecords": {"items": []}}}}
     )

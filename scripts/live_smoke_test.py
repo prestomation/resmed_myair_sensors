@@ -26,11 +26,7 @@ from custom_components.resmed_myair.client.myair_client import (  # noqa: E402
     ParsingError,
 )
 from custom_components.resmed_myair.client.rest_client import RESTClient  # noqa: E402
-from custom_components.resmed_myair.const import (  # noqa: E402
-    AUTH_NEEDS_MFA,
-    AUTHN_SUCCESS,
-    REGION_NA,
-)
+from custom_components.resmed_myair.const import AUTH_NEEDS_MFA, AUTHN_SUCCESS, REGION_NA  # noqa: E402
 from custom_components.resmed_myair.models import MyAirCoordinatorData  # noqa: E402
 
 DEFAULT_ENV_FILE = Path("live_smoke_test.env")
