@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_18d8c3f372f7b28a_config_flow_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.0">coverage.py v7.17.0</a>,
-            created at 2026-10-28 17:38 +0000
+            created at 2026-10-28 17:40 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -85,7 +85,7 @@
     <p class="pln"><span class="n"><a id="t1" href="#t1">1</a></span><span class="t"><span class="str">&quot;&quot;&quot;REST Client for ResMed myAir Client.&quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2" href="#t2">2</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t3" href="#t3">3</a></span><span class="t"><span class="key">from</span> <span class="nam">collections</span><span class="op">.</span><span class="nam">abc</span> <span class="key">import</span> <span class="nam">Mapping</span><span class="op">,</span> <span class="nam">MutableMapping</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t4" href="#t4">4</a></span><span class="t"><span class="key">import</span> <span class="nam">datetime</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4" href="#t4">4</a></span><span class="t"><span class="key">import</span> <span class="nam">datetime</span> <span class="key">as</span> <span class="nam">dt</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t5" href="#t5">5</a></span><span class="t"><span class="key">import</span> <span class="nam">logging</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t6" href="#t6">6</a></span><span class="t"><span class="key">from</span> <span class="nam">typing</span> <span class="key">import</span> <span class="nam">Any</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t7" href="#t7">7</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -283,9 +283,9 @@
     <p class="pln"><span class="n"><a id="t199" href="#t199">199</a></span><span class="t"><span class="str">        Raises:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t200" href="#t200">200</a></span><span class="t"><span class="str">            ParsingError: When the GraphQL response omits or malforms sleep record data.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t201" href="#t201">201</a></span><span class="t"><span class="str">        &quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t202" href="#t202">202</a></span><span class="t">        <span class="nam">today_date</span><span class="op">:</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">date</span> <span class="op">=</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">datetime</span><span class="op">.</span><span class="nam">now</span><span class="op">(</span><span class="nam">datetime</span><span class="op">.</span><span class="nam">UTC</span><span class="op">)</span><span class="op">.</span><span class="nam">astimezone</span><span class="op">(</span><span class="op">)</span><span class="op">.</span><span class="nam">date</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t202" href="#t202">202</a></span><span class="t">        <span class="nam">today_date</span><span class="op">:</span> <span class="nam">dt</span><span class="op">.</span><span class="nam">date</span> <span class="op">=</span> <span class="nam">dt</span><span class="op">.</span><span class="nam">datetime</span><span class="op">.</span><span class="nam">now</span><span class="op">(</span><span class="nam">dt</span><span class="op">.</span><span class="nam">UTC</span><span class="op">)</span><span class="op">.</span><span class="nam">astimezone</span><span class="op">(</span><span class="op">)</span><span class="op">.</span><span class="nam">date</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t203" href="#t203">203</a></span><span class="t">        <span class="nam">today</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="nam">today_date</span><span class="op">.</span><span class="nam">isoformat</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t204" href="#t204">204</a></span><span class="t">        <span class="nam">one_month_ago</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="op">(</span><span class="nam">today_date</span> <span class="op">-</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">timedelta</span><span class="op">(</span><span class="nam">days</span><span class="op">=</span><span class="num">30</span><span class="op">)</span><span class="op">)</span><span class="op">.</span><span class="nam">isoformat</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t204" href="#t204">204</a></span><span class="t">        <span class="nam">one_month_ago</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="op">(</span><span class="nam">today_date</span> <span class="op">-</span> <span class="nam">dt</span><span class="op">.</span><span class="nam">timedelta</span><span class="op">(</span><span class="nam">days</span><span class="op">=</span><span class="num">30</span><span class="op">)</span><span class="op">)</span><span class="op">.</span><span class="nam">isoformat</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t205" href="#t205">205</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t206" href="#t206">206</a></span><span class="t">        <span class="nam">query</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="str">&quot;&quot;&quot;query GetPatientSleepRecords {</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t207" href="#t207">207</a></span><span class="t"><span class="str">            getPatientWrapper {</span>&nbsp;</span><span class="r"></span></p>
@@ -409,7 +409,7 @@
             <a class="nav" href="z_18d8c3f372f7b28a_config_flow_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.17.0">coverage.py v7.17.0</a>,
-            created at 2026-10-28 17:38 +0000
+            created at 2026-10-28 17:40 +0000
         </p>
     </div>
 </footer>
