@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Mapping, MutableMapping
+from datetime import UTC, datetime
 import hashlib
 from http.cookies import SimpleCookie
 import logging
@@ -24,6 +25,7 @@ from .myair_client import (
     IncompleteAccountError,
     MyAirConfig,
     ParsingError,
+    ServiceUnavailableError,
     StaleSessionError,
 )
 from .regions import RegionConfig, get_region_config
@@ -63,6 +65,41 @@ def _safe_auth_log_payload(data: Any) -> Any:
     if isinstance(data, list):
         return [_safe_auth_log_payload(value) for value in data]
     return data
+
+
+def _service_unavailable_details(
+    step: str, error_info: Mapping[str, Any]
+) -> tuple[str, datetime | None]:
+    """Describe a myAir ``serviceUnavailable`` error and read its outage end.
+
+    During scheduled maintenance myAir puts the outage window in
+    ``additionalInfo.serverOutage`` as epoch seconds.
+
+    Args:
+        step (str): Human-readable auth or GraphQL step name for diagnostics.
+        error_info (Mapping[str, Any]): ``errorInfo`` object from the first error.
+
+    Returns:
+        tuple[str, datetime | None]: Error message, and the outage end in UTC when
+        myAir gave one.
+    """
+    additional_info = error_info.get("additionalInfo")
+    outage = additional_info.get("serverOutage") if isinstance(additional_info, Mapping) else None
+    end_time = outage.get("endTime") if isinstance(outage, Mapping) else None
+    outage_end: datetime | None = None
+    if isinstance(end_time, (int, float)) and not isinstance(end_time, bool):
+        try:
+            outage_end = datetime.fromtimestamp(end_time, UTC)
+        except OverflowError, OSError, ValueError:
+            outage_end = None
+    if outage_end is not None:
+        message = (
+            f"{step} step: myAir is offline for scheduled maintenance until "
+            f"{outage_end:%Y-%m-%d %H:%M} UTC"
+        )
+    else:
+        message = f"{step} step: myAir is temporarily unavailable (serviceUnavailable)"
+    return message, outage_end
 
 
 def _mfa_challenge_metadata(
@@ -497,6 +534,8 @@ class MyAirAuthSession:
         Raises:
             AuthenticationError: When credentials or auth state are rejected.
             IncompleteAccountError: When myAir reports account setup is incomplete.
+            ServiceUnavailableError: When myAir reports a temporary outage such as
+                scheduled maintenance.
             StaleSessionError: When a non-initial GraphQL request becomes unauthorized.
             HttpProcessingError: When a structured error exists but has no typed mapping.
         """
@@ -522,6 +561,10 @@ class MyAirAuthSession:
                         "equipmentNotAssigned",
                     }:
                         raise IncompleteAccountError(f"{error_message}")
+                    if resp_dict["errors"][0]["errorInfo"]["errorType"] == "serviceUnavailable":
+                        raise ServiceUnavailableError(
+                            *_service_unavailable_details(step, resp_dict["errors"][0]["errorInfo"])
+                        )
                 elif "message" in resp_dict["errors"][0]:
                     error_message = resp_dict["errors"][0]["message"]
                 else:

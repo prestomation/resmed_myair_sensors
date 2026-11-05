@@ -25,6 +25,7 @@ from custom_components.resmed_myair.config_flow import (
     IncompleteAccountError,
     MyAirConfigFlow,
     ParsingError,
+    ServiceUnavailableError,
     get_device,
     get_mfa_device,
 )
@@ -1466,6 +1467,7 @@ async def test_async_step_device_missing_serial_number_variants(
         (AuthenticationError("auth error"), "authentication_error"),
         (IncompleteAccountError("incomplete"), "authentication_error"),
         (HttpProcessingError(), "authentication_error"),
+        (ServiceUnavailableError("maintenance"), "authentication_error"),
     ],
 )
 async def test_async_step_reauth_confirm_exceptions(
