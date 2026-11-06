@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
 from homeassistant.const import UnitOfVolumeFlowRate
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.const import CONF_USER_NAME, SLEEP_RECORD_SENSOR_DESCRIPTIONS
 from custom_components.resmed_myair.models import MyAirCoordinatorData

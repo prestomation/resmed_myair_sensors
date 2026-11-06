@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 from aiohttp import ClientError
 from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_RECONFIGURE, UnknownEntry
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair import config_flow
 from custom_components.resmed_myair.client.rest_client import RESTClient

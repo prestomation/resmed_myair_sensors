@@ -37,7 +37,7 @@ pytest = [
     "pytest>=9",
     "pytest-asyncio",
     "pytest-cov",
-    "pytest-homeassistant-custom-component>=0.13.317",
+    "pytest-homeassistant>=2026.11.0",
     "pytest-timeout",
     "pytest-xdist",
 ]
@@ -47,6 +47,8 @@ dev = [
 ]
 
 [tool.uv]
+# Home Assistant scans custom_components paths; use real paths for editable installs.
+config-settings = { editable_mode = "compat" }
 required-version = ">=0.11.0"
 
 [tool.mypy]
@@ -64,7 +66,7 @@ module = ["carrier_api.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["pytest_homeassistant_custom_component.*"]
+module = ["pytest_homeassistant.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
@@ -172,7 +174,9 @@ skip = "custom_components/resmed_myair/translations/de.json,custom_components/re
 
 
 [tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
 addopts = """
+  -p no:respx
   --quiet
   --timeout=20
   --durations=10
