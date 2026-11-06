@@ -37,7 +37,7 @@ pytest = [
     "pytest>=9",
     "pytest-asyncio",
     "pytest-cov",
-    "pytest-homeassistant==2026.11.0",
+    "pytest-homeassistant>=2026.11.0",
     "pytest-timeout",
     "pytest-xdist",
 ]
