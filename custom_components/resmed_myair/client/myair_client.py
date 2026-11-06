@@ -1,6 +1,7 @@
 """Client contracts and exceptions shared by myAir transport implementations."""
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import NamedTuple
 
 from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
@@ -20,6 +21,21 @@ class ParsingError(Exception):
 
 class StaleSessionError(ParsingError):
     """Remote response indicates the data API no longer accepts the session."""
+
+
+class ServiceUnavailableError(Exception):
+    """myAir reports a temporary outage, such as scheduled maintenance."""
+
+    def __init__(self, message: str, outage_end: datetime | None = None) -> None:
+        """Store the outage description and the reported end of the outage.
+
+        Args:
+            message (str): Human-readable description of the outage.
+            outage_end (datetime | None): End of the outage window in UTC, when
+                myAir includes one in the error.
+        """
+        super().__init__(message)
+        self.outage_end = outage_end
 
 
 class MyAirConfig(NamedTuple):

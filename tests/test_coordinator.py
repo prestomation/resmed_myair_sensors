@@ -1,16 +1,21 @@
 """Coordinator tests that protect refresh, auth, and parse fallbacks."""
 
+from datetime import timedelta
 import logging
 from unittest.mock import MagicMock, call
 
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.resmed_myair.client.myair_client import (
     AuthenticationError,
     ParsingError,
+    ServiceUnavailableError,
     StaleSessionError,
 )
+from custom_components.resmed_myair.const import OUTAGE_RETRY_MARGIN_SEC
 from custom_components.resmed_myair.coordinator import MyAirDataUpdateCoordinator
 from custom_components.resmed_myair.models import (
     MyAirCoordinatorData,
@@ -234,3 +239,76 @@ async def test_async_update_data_parsing_error_variants(
         myair_client.get_user_device_data.assert_awaited_once()
 
     myair_client.get_sleep_records.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failing_call",
+    ["connect", "device", "sleep_records", "device_retry"],
+)
+async def test_async_update_data_service_unavailable_raises_update_failed(
+    hass: MagicMock, myair_client: MagicMock, failing_call: str
+) -> None:
+    """A myAir outage at any point of the refresh fails the update cleanly.
+
+    Args:
+        hass (MagicMock): Home Assistant instance supplied to the coordinator.
+        myair_client (MagicMock): Client double reporting a myAir outage.
+        failing_call (str): Client call that reports the outage.
+    """
+    outage = ServiceUnavailableError(
+        "gql_query step: myAir is offline for scheduled maintenance until 2026-11-05 19:48 UTC"
+    )
+    if failing_call == "connect":
+        myair_client.connect.side_effect = outage
+    elif failing_call == "device":
+        myair_client.get_user_device_data.side_effect = outage
+    elif failing_call == "sleep_records":
+        myair_client.get_sleep_records.side_effect = outage
+    else:
+        myair_client.get_user_device_data.side_effect = [
+            StaleSessionError("device payload missing"),
+            outage,
+        ]
+
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    with pytest.raises(
+        UpdateFailed, match="scheduled maintenance until 2026-11-05 19:48 UTC"
+    ) as exc_info:
+        await coordinator._async_update_data()
+    assert exc_info.value.retry_after is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("hours_until_end", "expected_retry_after"),
+    [(2, 2 * 3600 + OUTAGE_RETRY_MARGIN_SEC), (-1, None)],
+    ids=["window_ahead", "window_passed"],
+)
+async def test_async_update_data_service_unavailable_retries_after_window(
+    hass: MagicMock,
+    myair_client: MagicMock,
+    hours_until_end: int,
+    expected_retry_after: float | None,
+) -> None:
+    """An outage with a known end schedules the next refresh just after it.
+
+    Args:
+        hass (MagicMock): Home Assistant instance supplied to the coordinator.
+        myair_client (MagicMock): Client double reporting a myAir outage.
+        hours_until_end (int): Hours from now until the reported outage ends.
+        expected_retry_after (float | None): Delay expected on ``UpdateFailed``.
+    """
+    outage_end = dt_util.utcnow() + timedelta(hours=hours_until_end)
+    myair_client.get_user_device_data.side_effect = ServiceUnavailableError(
+        "gql_query step: myAir is offline for scheduled maintenance", outage_end
+    )
+
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    with pytest.raises(UpdateFailed) as exc_info:
+        await coordinator._async_update_data()
+
+    if expected_retry_after is None:
+        assert exc_info.value.retry_after is None
+    else:
+        assert exc_info.value.retry_after == pytest.approx(expected_retry_after, abs=5)

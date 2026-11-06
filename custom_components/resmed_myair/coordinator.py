@@ -6,10 +6,17 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
-from .client.myair_client import AuthenticationError, MyAirClient, ParsingError, StaleSessionError
-from .const import DEFAULT_UPDATE_RATE_MIN
+from .client.myair_client import (
+    AuthenticationError,
+    MyAirClient,
+    ParsingError,
+    ServiceUnavailableError,
+    StaleSessionError,
+)
+from .const import DEFAULT_UPDATE_RATE_MIN, OUTAGE_RETRY_MARGIN_SEC
 from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -46,6 +53,28 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         )
 
     async def _async_update_data(self) -> MyAirCoordinatorData:
+        """Refresh myAir data, reporting myAir outages as a failed update.
+
+        Returns:
+            MyAirCoordinatorData: Typed coordinator payload containing any data
+                available from myAir.
+
+        Raises:
+            UpdateFailed: When myAir reports a temporary outage such as scheduled
+                maintenance. If myAir gives the outage end, the next refresh waits
+                until shortly after it.
+        """
+        try:
+            return await self._async_fetch_data()
+        except ServiceUnavailableError as err:
+            retry_after: float | None = None
+            if err.outage_end is not None:
+                remaining = (err.outage_end - dt_util.utcnow()).total_seconds()
+                if remaining > 0:
+                    retry_after = remaining + OUTAGE_RETRY_MARGIN_SEC
+            raise UpdateFailed(str(err), retry_after=retry_after) from err
+
+    async def _async_fetch_data(self) -> MyAirCoordinatorData:
         """Refresh auth, device metadata, and recent sleep records.
 
         Returns:
