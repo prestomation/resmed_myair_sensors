@@ -18,6 +18,7 @@ from .client.myair_client import (
     IncompleteAccountError,
     MyAirConfig,
     ParsingError,
+    ServiceUnavailableError,
 )
 from .client.rest_client import RESTClient
 from .const import (
@@ -41,6 +42,7 @@ CONNECTION_ERRORS: tuple[type[Exception], ...] = (
     HttpProcessingError,
     ClientResponseError,
     ParsingError,
+    ServiceUnavailableError,
 )
 EMAIL_VERIFICATION_ERRORS: tuple[type[Exception], ...] = (
     *CONNECTION_ERRORS,

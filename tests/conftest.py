@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 from aiohttp import ClientResponse, ClientSession
 from multidict import CIMultiDict
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.myair_client import MyAirConfig
 from custom_components.resmed_myair.client.rest_client import RESTClient

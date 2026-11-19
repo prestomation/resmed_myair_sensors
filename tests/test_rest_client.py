@@ -1,6 +1,6 @@
 """REST client tests that protect auth, GraphQL, and parsing behavior."""
 
-import datetime
+import datetime as dt
 import logging
 from typing import Never
 from unittest.mock import AsyncMock, MagicMock
@@ -17,6 +17,7 @@ from custom_components.resmed_myair.client.myair_client import (
     AuthenticationError,
     IncompleteAccountError,
     MyAirConfig,
+    ServiceUnavailableError,
     StaleSessionError,
 )
 from custom_components.resmed_myair.client.regions import (
@@ -356,6 +357,92 @@ async def test_resmed_response_error_check_variants(
     response.headers = CIMultiDict()
     with pytest.raises(expected_exception):
         await MyAirAuthSession.resmed_response_error_check("authn", response, resp_dict)
+
+
+# Shape of the GraphQL error myAir returned during its 2026-11-05 maintenance window.
+MAINTENANCE_ERROR_INFO: dict[str, object] = {
+    "success": False,
+    "errorType": "serviceUnavailable",
+    "errorCode": "serviceUnavailable",
+    "localizedError": (
+        "myAir is scheduled to be offline for system maintenance between Nov 5, 2026, "
+        "4:48:34\u202fPM UTC and Nov 5, 2026, 7:48:34\u202fPM UTC. You may experience a delay "
+        "in receiving new sleep data during this time."
+    ),
+    "additionalInfo": {
+        "serverOutage": {
+            "localizedErrorTemplate": (
+                "myAir is scheduled to be offline for system maintenance between $startTime "
+                "and $endTime. You may experience a delay in receiving new sleep data during "
+                "this time."
+            ),
+            "startTime": 1793897314,
+            "endTime": 1793908114,
+        }
+    },
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error_info", "expected_end", "expected_message"),
+    [
+        (
+            MAINTENANCE_ERROR_INFO,
+            dt.datetime(2026, 11, 5, 19, 48, 34, tzinfo=dt.UTC),
+            "gql_query step: myAir is offline for scheduled maintenance until 2026-11-05 19:48 UTC",
+        ),
+        (
+            {"errorType": "serviceUnavailable", "errorCode": "serviceUnavailable"},
+            None,
+            "gql_query step: myAir is temporarily unavailable (serviceUnavailable)",
+        ),
+        (
+            {
+                "errorType": "serviceUnavailable",
+                "errorCode": "serviceUnavailable",
+                "additionalInfo": {"serverOutage": {"endTime": "soon"}},
+            },
+            None,
+            "gql_query step: myAir is temporarily unavailable (serviceUnavailable)",
+        ),
+        (
+            {
+                "errorType": "serviceUnavailable",
+                "errorCode": "serviceUnavailable",
+                "additionalInfo": {"serverOutage": {"endTime": 10**20}},
+            },
+            None,
+            "gql_query step: myAir is temporarily unavailable (serviceUnavailable)",
+        ),
+    ],
+    ids=["maintenance_window", "no_window", "unreadable_window", "out_of_range_window"],
+)
+async def test_resmed_response_error_check_service_unavailable(
+    error_info: dict[str, object],
+    expected_end: dt.datetime | None,
+    expected_message: str,
+) -> None:
+    """A myAir outage raises a readable error instead of dumping the payload.
+
+    Args:
+        error_info (dict[str, object]): ``errorInfo`` returned by myAir.
+        expected_end (dt.datetime | None): Outage end expected on the error.
+        expected_message (str): Error message expected for the outage.
+    """
+    response = MagicMock(spec=ClientResponse)
+    response.status = 200
+    response.headers = CIMultiDict()
+    resp_dict = {
+        "data": {"getPatientWrapper": None},
+        "errors": [{"path": ["getPatientWrapper"], "errorInfo": error_info, "message": "Error"}],
+    }
+
+    with pytest.raises(ServiceUnavailableError) as exc_info:
+        await MyAirAuthSession.resmed_response_error_check("gql_query", response, resp_dict)
+
+    assert str(exc_info.value) == expected_message
+    assert exc_info.value.outage_end == expected_end
 
 
 @pytest.mark.asyncio
@@ -1539,25 +1626,25 @@ async def test_get_sleep_records_uses_local_date_range(
             and GraphQL responses.
     """
 
-    class FixedDateTime(datetime.datetime):
+    class FixedDateTime(dt.datetime):
         """DateTime class with deterministic now() for query-window assertions."""
 
         @classmethod
-        def now(cls, tz: datetime.tzinfo | None = None) -> datetime.datetime:
+        def now(cls, tz: dt.tzinfo | None = None) -> dt.datetime:
             """Return a fixed timezone-aware timestamp for the date window.
 
             Args:
-                tz (datetime.tzinfo | None): Time zone applied to the fixed
+                tz (dt.tzinfo | None): Time zone applied to the fixed
                     timestamp.
 
             Returns:
-                datetime.datetime: Fixed timestamp used by the query-window
+                dt.datetime: Fixed timestamp used by the query-window
                     assertion.
             """
             return cls(2024, 7, 31, 12, tzinfo=tz)
 
     client = RESTClient(config_na, session)
-    monkeypatch.setattr(rest_client_module.datetime, "datetime", FixedDateTime)
+    monkeypatch.setattr(rest_client_module.dt, "datetime", FixedDateTime)
     gql_query = AsyncMock(
         return_value={"data": {"getPatientWrapper": {"sleepRecords": {"items": []}}}}
     )

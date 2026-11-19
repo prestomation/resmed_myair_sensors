@@ -14,6 +14,8 @@ VERSION = "0.2.8"  # x-release-please-version
 DOMAIN = "resmed_myair"
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 DEFAULT_UPDATE_RATE_MIN = 30
+# Wait this long past the end of a reported myAir outage before polling again.
+OUTAGE_RETRY_MARGIN_SEC = 60
 HISTORY_STORE_VERSION = 1
 MAX_HISTORY_DAYS = 400
 MAX_DAILY_USAGE_ATTRIBUTE_DAYS = 90

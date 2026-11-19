@@ -46,6 +46,12 @@ People *love* thorough bug reports. I'm not even kidding.
 
 Use [ruff](https://docs.astral.sh/ruff/) to make sure the code follows the style.
 
+## Local setup
+
+Install [uv](https://docs.astral.sh/uv/), then run `scripts/setup` to create the
+Python 3.14 virtualenv, sync development dependencies and editable-install settings
+from `pyproject.toml`, and install the Git hooks. Run `scripts/test` to run the tests.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under its MIT License.
