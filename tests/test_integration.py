@@ -603,6 +603,8 @@ async def test_force_poll_service_triggers_refresh(
     monkeypatch.setattr(sensor_platform, "MyAirSleepRecordSensor", MagicMock())
     monkeypatch.setattr(sensor_platform, "MyAirDeviceSensor", MagicMock())
     monkeypatch.setattr(sensor_platform, "MyAirFriendlyUsageTime", MagicMock())
+    monkeypatch.setattr(sensor_platform, "MyAirUsageHoursSensor", MagicMock())
+    monkeypatch.setattr(sensor_platform, "MyAirUsageHoursAverageSensor", MagicMock())
     monkeypatch.setattr(sensor_platform, "MyAirMostRecentSleepDate", MagicMock())
 
     await async_setup_entry(hass, config_entry)
@@ -681,7 +683,7 @@ async def test_async_setup_entry_registers_all_sensors(
     expected_count = (
         len(DEVICE_SENSOR_DESCRIPTIONS)
         + len(SLEEP_RECORD_SENSOR_DESCRIPTIONS)
-        + 2  # FriendlyUsageTime + MostRecentSleepDate
+        + 5  # FriendlyUsageTime + UsageHours + 7d Avg + 30d Avg + MostRecentSleepDate
     )
     assert len(added_entities) == expected_count
 

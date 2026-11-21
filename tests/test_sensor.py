@@ -16,6 +16,7 @@ from custom_components.resmed_myair.sensor import (
     MyAirFriendlyUsageTime,
     MyAirMostRecentSleepDate,
     MyAirSleepRecordSensor,
+    MyAirUsageHoursAverageSensor,
     _coordinator_data,
     async_setup_entry,
 )
@@ -89,6 +90,35 @@ def test_friendly_usage_time_all_branches(
     # Only check native_value if available
     if expected_available:
         assert sensor.native_value == expected_native
+
+
+def test_usage_hours_average_uses_latest_dated_records(
+    coordinator_factory: CoordinatorFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Usage-hour averages use the latest dates when the API response is unsorted.
+
+    Args:
+        coordinator_factory (CoordinatorFactory): Factory creating a data-backed
+            coordinator.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for state writes.
+    """
+    coordinator = coordinator_factory(
+        data={
+            "sleep_records": [
+                {"startDate": "2026-03-03", "totalUsage": 60},
+                {"startDate": "2026-03-01", "totalUsage": 600},
+                {"startDate": "2026-03-02", "totalUsage": 120},
+            ]
+        }
+    )
+    sensor = MyAirUsageHoursAverageSensor(coordinator, days=2)
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock(return_value=None))
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == 1.5
 
 
 @pytest.mark.parametrize(
@@ -352,10 +382,10 @@ async def test_async_setup_entry_adds_entities_and_registers_service(
     await async_setup_entry(hass, entry, async_add_entities)
 
     # Check that async_add_entities was called with the correct number of sensors
-    # 1 sleep record + 1 device + 2 synthesized = 4
+    # 1 sleep record + 1 device + 5 synthesized = 7
     args, kwargs = async_add_entities.call_args
     sensors = args[0]
-    assert len(sensors) == 4
+    assert len(sensors) == 7
     # Ensure update_before_add is False; default to False when key is absent.
     assert kwargs.get("update_before_add", False) is False
 
