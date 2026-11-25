@@ -16,7 +16,7 @@
 ## Agent permissions and venv policy
 
 - Agents may create and use a repository-local venv at `./.venv` and should reference `./.venv/bin/python` when running commands.
-- Installing packages from repo manifests (e.g., `requirements-dev.txt`, `pyproject.toml`) into `./.venv` is allowed for running tests or local tooling; avoid unrelated network operations without explicit consent.
+- Installing packages from repo manifests (e.g., `requirements-dev.txt`, `pyproject.toml`) into `./.venv` is allowed for running tests or local tooling.
 
 ## Project structure expectations
 
@@ -54,10 +54,10 @@
 - Create branches or PRs only when explicitly requested. Do not open PRs autonomously.
 - Use a Conventional Commit prefix for every created PR title (for example, `feat:`, `fix:`, or `chore:`).
 
-## Network / install consent
+## Network access
 
-- Obtain explicit consent before any network operations outside the repository not strictly needed to run local tests.
-- Package installs required for running tests are allowed when user approves.
+- Run read-only lookups that inform the task without asking: GitHub, Home Assistant docs and core source, and PyPI.
+- Ask first for package installs beyond the repo manifests and for any write to an external service that this file does not already authorize.
 
 ## CI/CD
 
