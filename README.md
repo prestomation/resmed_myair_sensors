@@ -55,10 +55,6 @@ This integration was reversed engineered from the myAir website. There are no gu
 
 This integration currently only connects to accounts from North America, Europe, and Australia. If you are in Asia and have access to the ResMed myAir website in your country (<https://myair.resmed.com>), please open an issue and offer yourself as a test subject.
 
-### Obsolete issue for entries created with email MFA
-
-In v0.2.0 through v0.2.6, setup with email MFA could create a Home Assistant entry without saving the CPAP device serial number as its unique ID. If that entry later reauthenticated with a serial already assigned to another entry, both entries could claim the same device. Setup has saved the serial on both sign-in paths since v0.2.7, so this issue no longer applies to newly created entries.
-
 ## Manual live smoke test
 
 Developers can run a local smoke test against the live myAir API without Home Assistant:
