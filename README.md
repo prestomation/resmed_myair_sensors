@@ -37,13 +37,13 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
 1. CPAP Usage Minutes
 1. CPAP Mask On/Off Count
 1. CPAP Current Data Date
-    * This is the last date currently being displayed by the other sensors
+    * The date assigned by myAir to the latest sleep record, including a record with zero usage.
 1. CPAP Mask Leak
 1. CPAP Total myAir Score
 1. CPAP Sleep Data Last Collected
-    * This is the datetime the CPAP uploaded the most recent data
+    * The CPAP device’s last sleep data report time, as shown in myAir.
 1. Most Recent Sleep Date
-    * This is the most recent date for which data is available. This will match Current Data Date if you use your CPAP every day. An automation that triggers when these two sensors are different will signal that you have missed a night
+    * The latest sleep record date with positive CPAP usage. It can precede Current Data Date when a newer record has zero or unavailable usage.
 
 ## Services
 
