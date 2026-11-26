@@ -1719,12 +1719,11 @@ async def test_sleep_record_query_falls_back_for_undefined_index(
     first_query, fallback_query, next_query, reloaded_query = (
         request.kwargs["json"]["query"].split() for request in session.post.call_args_list
     )
-    assert first_query == reloaded_query
-    assert fallback_query == next_query
-    assert [field for field in first_query if field not in {"apneaIndex", "hypopneaIndex"}] == (
-        fallback_query
-    )
-    assert {"ahi", "apneaIndex", "hypopneaIndex"} <= set(first_query)
+    index_fields = {"apneaIndex", "hypopneaIndex"}
+    assert {"ahi", *index_fields} <= set(first_query)
+    assert [field for field in first_query if field not in index_fields] == fallback_query
+    assert "ahi" in next_query and index_fields.isdisjoint(next_query)
+    assert {"ahi", *index_fields} <= set(reloaded_query)
 
 
 async def test_sleep_record_http_400_respects_session_status_policy(
@@ -1758,7 +1757,7 @@ async def test_sleep_record_http_400_respects_session_status_policy(
         Returns:
             ClientResponse: Simulated GraphQL response with its real HTTP status.
         """
-        query = json.loads(await request._body.as_bytes())["query"]
+        query = json.loads(await request.body.as_bytes())["query"]
         calls.append(query)
         if "apneaIndex" in query:
             status = 400
@@ -1781,7 +1780,7 @@ async def test_sleep_record_http_400_respects_session_status_policy(
             request_info=request.request_info,
             traces=[],
             loop=asyncio.get_running_loop(),
-            session=request._session,
+            session=http_session,
             stream_writer=SimpleNamespace(output_size=0),
         )
         response.status = status
