@@ -3,8 +3,9 @@
 from asyncio import Event, timeout
 from collections.abc import Iterator
 from datetime import date
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
+from aiohttp import ClientError
 from homeassistant.auth.const import GROUP_ID_ADMIN, GROUP_ID_USER
 from homeassistant.const import ATTR_CONFIG_ENTRY_ID, STATE_UNKNOWN
 from homeassistant.core import Context, HomeAssistant, ServiceResponse
@@ -14,7 +15,11 @@ import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.graphql import MyAirGraphQLClient
-from custom_components.resmed_myair.client.myair_client import ParsingError, ServiceUnavailableError
+from custom_components.resmed_myair.client.myair_client import (
+    ParsingError,
+    ServiceUnavailableError,
+    StaleSessionError,
+)
 from custom_components.resmed_myair.client.rest_client import RESTClient
 from custom_components.resmed_myair.const import (
     CONF_PASSWORD,
@@ -238,20 +243,107 @@ async def test_action_distinguishes_empty_missing_and_failed_timelines(
         [],
         [{"date": "2026-01-07"}],
         [{"date": _DATE, "respiratoryEvents": None}],
+        [
+            {
+                "date": _DATE,
+                "respiratoryEvents": [None],
+                "therapyStatusEvents": [],
+            }
+        ],
+        [
+            {
+                "date": _DATE,
+                "respiratoryEvents": [{"eventType": "apnea", "startDate": "not-a-date"}],
+                "therapyStatusEvents": [],
+            }
+        ],
+        [
+            {
+                "date": _DATE,
+                "respiratoryEvents": [],
+                "therapyStatusEvents": [None],
+            }
+        ],
+        [
+            {
+                "date": _DATE,
+                "respiratoryEvents": [],
+                "therapyStatusEvents": [{"eventType": "maskOn", "date": "not-a-date"}],
+            }
+        ],
     ):
         timeline_query.return_value = _payload(missing)
         with pytest.raises(HomeAssistantError) as err:
             await _get_timeline(hass, config_entry)
         assert err.value.translation_key == "timeline_unavailable"
 
-    timeline_query.side_effect = ServiceUnavailableError("Timeline outage")
-    with pytest.raises(HomeAssistantError) as err:
-        await _get_timeline(hass, config_entry)
-    assert err.value.translation_key == "timeline_request_failed"
+    for error in (
+        ServiceUnavailableError("Timeline outage"),
+        ClientError("Temporary network failure"),
+    ):
+        timeline_query.side_effect = error
+        with pytest.raises(HomeAssistantError) as err:
+            await _get_timeline(hass, config_entry)
+        assert err.value.translation_key == "timeline_request_failed"
 
     assert await hass.config_entries.async_unload(config_entry.entry_id)
     with pytest.raises(ServiceValidationError):
         await _get_timeline(hass, config_entry)
+
+
+async def test_action_validates_account_and_date_before_request(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    timeline_query: AsyncMock,
+) -> None:
+    """Reject malformed request fields without contacting myAir.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Entry used to register the action.
+        timeline_query (AsyncMock): myAir timeline query double.
+    """
+    await _load(hass, config_entry)
+    with pytest.raises(ServiceValidationError) as missing_account:
+        await hass.services.async_call(
+            DOMAIN, _ACTION, {"date": _DATE}, blocking=True, return_response=True
+        )
+    assert missing_account.value.translation_key == "timeline_missing_account"
+    for invalid_date in ("not-a-date", "", None):
+        with pytest.raises(ServiceValidationError) as invalid:
+            await hass.services.async_call(
+                DOMAIN,
+                _ACTION,
+                {ATTR_CONFIG_ENTRY_ID: config_entry.entry_id, "date": invalid_date},
+                blocking=True,
+                return_response=True,
+            )
+        assert invalid.value.translation_key == "timeline_invalid_date"
+    timeline_query.assert_not_awaited()
+
+
+async def test_timeline_action_reauthenticates_stale_session_and_retries(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    timeline_query: AsyncMock,
+) -> None:
+    """Reconnect once after stale-session response and return the retry result.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Entry targeted by the action.
+        timeline_query (AsyncMock): myAir timeline query double.
+    """
+    await _load(hass, config_entry)
+    timeline_query.side_effect = [
+        StaleSessionError("expired"),
+        _payload([{"date": _DATE, "respiratoryEvents": [], "therapyStatusEvents": []}]),
+    ]
+    with patch.object(RESTClient, "connect", new_callable=AsyncMock) as connect:
+        response = await _get_timeline(hass, config_entry)
+    assert response is not None and response["date"] == _DATE
+    assert connect.await_args_list == [call(), call(force=True)]
+    assert timeline_query.await_count == 2
 
 
 async def test_time_in_apnea_stays_aligned_with_daily_sensors(
@@ -466,6 +558,18 @@ async def test_legacy_sensor_keeps_opt_in_across_initial_device_failure(
     legacy = MockConfigEntry(domain=DOMAIN, data=config_entry.data, version=2)
     legacy.add_to_hass(hass)
     registry = er.async_get(hass)
+    registry.async_get_or_create(
+        "sensor",
+        "unrelated_platform",
+        f"{DOMAIN}_SN999_{TIME_IN_APNEA_KEY}",
+        config_entry=legacy,
+    )
+    registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        f"{DOMAIN}_SN888_{TIME_IN_APNEA_KEY}",
+        config_entry=legacy,
+    )
     timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 12}])
     with patch.object(
         RESTClient, "get_user_device_data", side_effect=ParsingError("Device unavailable")
@@ -475,7 +579,9 @@ async def test_legacy_sensor_keeps_opt_in_across_initial_device_failure(
         provisional = next(
             entry
             for entry in er.async_entries_for_config_entry(registry, legacy.entry_id)
-            if entry.unique_id.endswith(f"_{TIME_IN_APNEA_KEY}")
+            if entry.domain == "sensor"
+            and entry.platform == DOMAIN
+            and entry.unique_id.endswith(f"_{TIME_IN_APNEA_KEY}")
         )
         registry.async_update_entity(provisional.entity_id, disabled_by=None)
         assert await hass.config_entries.async_reload(legacy.entry_id)
@@ -485,6 +591,9 @@ async def test_legacy_sensor_keeps_opt_in_across_initial_device_failure(
     await legacy.runtime_data.async_refresh()
     state = hass.states.get(provisional.entity_id)
     assert state is not None and float(state.state) == 12
+    assert registry.async_get(provisional.entity_id).unique_id == (
+        f"{DOMAIN}_{_SERIAL}_{TIME_IN_APNEA_KEY}"
+    )
     assert await hass.config_entries.async_reload(legacy.entry_id)
     await hass.async_block_till_done()
     state = hass.states.get(provisional.entity_id)
@@ -492,7 +601,9 @@ async def test_legacy_sensor_keeps_opt_in_across_initial_device_failure(
     assert [
         entry.entity_id
         for entry in er.async_entries_for_config_entry(registry, legacy.entry_id)
-        if entry.unique_id.endswith(f"_{TIME_IN_APNEA_KEY}")
+        if entry.domain == "sensor"
+        and entry.platform == DOMAIN
+        and entry.unique_id.endswith(f"_{TIME_IN_APNEA_KEY}")
     ] == [provisional.entity_id]
 
 

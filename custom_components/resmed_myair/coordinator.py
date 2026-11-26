@@ -41,6 +41,7 @@ TIMELINE_REQUEST_ERRORS = (
 class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
     """Fetch and cache the typed myAir payload consumed by sensor entities."""
 
+    config_entry: ConfigEntry
     myair_client: MyAirClient
 
     def __init__(
@@ -137,7 +138,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
             )
 
         # Keep the observed identity even if the subsequent sleep-record request fails.
-        self._update_time_in_apnea_identity(device)
+        timeline_unique_id = self._update_time_in_apnea_identity(device)
 
         try:
             sleep_records = tuple(await self.myair_client.get_sleep_records())
@@ -167,7 +168,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
 
         data = MyAirCoordinatorData(device=device, sleep_records=sleep_records)
         latest = data.latest_sleep_record
-        if latest and latest.start_date and self._time_in_apnea_enabled():
+        if latest and latest.start_date and self._time_in_apnea_enabled(timeline_unique_id):
             try:
                 async with timeout(_TIMELINE_TIMEOUT_SECONDS):
                     timeline = await self.myair_client.get_nightly_therapy_timeline(
@@ -180,15 +181,16 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                     return replace(data, time_in_apnea=timeline.total_seconds_in_apnea)
         return data
 
-    def _update_time_in_apnea_identity(self, device: MyAirDevice | None) -> None:
+    def _update_time_in_apnea_identity(self, device: MyAirDevice | None) -> str:
         """Bind the sensor to a verified serial without losing a legacy registry entry.
 
         Args:
             device (MyAirDevice | None): Device returned before fetching sleep records.
+
+        Returns:
+            str: The serial-based or provisional sensor unique ID.
         """
         config_entry = self.config_entry
-        if config_entry is None:
-            return
         prefix = f"{DOMAIN}_"
         suffix = f"_{TIME_IN_APNEA_KEY}"
         provisional = f"{prefix}entry-{config_entry.entry_id}{suffix}"
@@ -213,7 +215,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         serial = self._time_in_apnea_serial
         unique_id = f"{prefix}{serial}{suffix}" if serial else provisional
         if unique_id == self.time_in_apnea_unique_id:
-            return
+            return unique_id
         self.time_in_apnea_unique_id = unique_id
         # Promote a provisional registry entry without changing its entity ID or opt-in.
         if registry.async_get_entity_id("sensor", DOMAIN, unique_id) is None:
@@ -223,6 +225,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                 if registered is not None and registered.config_entry_id == config_entry.entry_id:
                     registry.async_update_entity(registered.entity_id, new_unique_id=unique_id)
                     break
+        return unique_id
 
     @property
     def time_in_apnea_serial(self) -> str | None:
@@ -233,20 +236,19 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         """
         return self._time_in_apnea_serial
 
-    def _time_in_apnea_enabled(self) -> bool:
+    def _time_in_apnea_enabled(self, unique_id: str) -> bool:
         """Check the registered sensor before making an optional timeline request.
+
+        Args:
+            unique_id (str): Sensor's registry key from the current refresh.
 
         Returns:
             bool: True when this entry's Time in Apnea sensor is enabled.
         """
-        if self.config_entry is None:
-            return False
         if not self._time_in_apnea_identity_matches:
             return False
-        if self.time_in_apnea_unique_id is None:
-            return False
         registry = er.async_get(self.hass)
-        entity_id = registry.async_get_entity_id("sensor", DOMAIN, self.time_in_apnea_unique_id)
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
         entry = registry.async_get(entity_id) if entity_id else None
         return (
             entry is not None
@@ -294,11 +296,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
             ServiceValidationError: The entry is no longer using this coordinator.
         """
         entry = self.config_entry
-        if (
-            entry is None
-            or entry.state is not ConfigEntryState.LOADED
-            or entry.runtime_data is not self
-        ):
+        if entry.state is not ConfigEntryState.LOADED or entry.runtime_data is not self:
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="timeline_entry_unloaded"
             )
