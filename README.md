@@ -17,9 +17,9 @@
 | custom\_components/resmed\_myair/models.py               |      146 |        0 |       40 |        0 |    100% |           |
 | custom\_components/resmed\_myair/recorder.py             |       21 |        0 |        4 |        0 |    100% |           |
 | custom\_components/resmed\_myair/redaction.py            |       17 |        0 |       10 |        0 |    100% |           |
-| custom\_components/resmed\_myair/sensor.py               |      128 |        0 |       20 |        1 |     99% |192-\>exit |
+| custom\_components/resmed\_myair/sensor.py               |      127 |        0 |       20 |        1 |     99% |198-\>exit |
 | custom\_components/resmed\_myair/services.py             |       31 |        0 |        8 |        0 |    100% |           |
-| **TOTAL**                                                | **1474** |    **0** |  **368** |    **3** | **99%** |           |
+| **TOTAL**                                                | **1473** |    **0** |  **368** |    **3** | **99%** |           |
 
 
 ## Setup coverage badge
