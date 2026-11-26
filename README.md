@@ -47,7 +47,7 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
 
 ## Services
 
-Each config entry for this integration will create a service called `resmed_myair.force_poll_{username}` that will force an update from myAir.
+While a ResMed myAir config entry is loaded, `resmed_myair.force_poll_{username}` requests an immediate update from myAir. The action takes no parameters. Home Assistant removes the action when the entry unloads. If the myAir Account username changes, reload makes the action available under the name derived from the new username.
 
 ## Known Issues
 

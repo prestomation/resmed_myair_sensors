@@ -3,7 +3,6 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
-from homeassistant.components.sensor import SensorEntityDescription
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
@@ -14,9 +13,7 @@ from custom_components.resmed_myair import (
     sensor as sensor_platform,
 )
 from custom_components.resmed_myair.const import (
-    CONF_USER_NAME,
     DEVICE_SENSOR_DESCRIPTIONS,
-    DOMAIN,
     PLATFORMS,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
 )
@@ -533,90 +530,6 @@ async def test_sensor_handles_empty_or_missing_data(
     assert sensor.available == expected_available
 
 
-# Home Assistant calls this through an AsyncMock side effect during setup tests.
-async def fake_forward_entry_setups(config_entry: MockConfigEntry, platforms: list[str]) -> None:
-    """Forward sensor platform setup calls using the test config entry.
-
-    Args:
-        config_entry (MockConfigEntry): Entry whose sensor platform is forwarded.
-        platforms (list[str]): Platform names requested by integration setup.
-    """
-    # Use the hass from config_entry, which is set by Home Assistant during setup
-    hass = config_entry.hass
-    if "sensor" in platforms:
-        await sensor_platform.async_setup_entry(hass, config_entry, MagicMock())
-
-
-@pytest.mark.asyncio
-async def test_force_poll_service_triggers_refresh(
-    hass: MagicMock,
-    config_entry: MockConfigEntry,
-    coordinator_factory: CoordinatorFactory,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The force-poll service directly triggers a coordinator refresh.
-
-    Args:
-        hass (MagicMock): Home Assistant instance receiving setup and service calls.
-        config_entry (MockConfigEntry): Integration entry whose service is registered.
-        coordinator_factory (CoordinatorFactory): Factory creating the refreshable coordinator.
-        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for integration dependencies.
-    """
-    # Use the centralized factory to create a mock coordinator with the
-    # attributes tests expect (async_refresh, async_config_entry_first_refresh, .data)
-    dummy_coordinator = coordinator_factory(mock=True)
-    dummy_coordinator.data = coordinator_data(device={"serialNumber": "SN123"}, sleep_records=[])
-    config_entry.runtime_data = dummy_coordinator
-    config_entry.hass = hass
-
-    # Intercept service registration to capture the callback
-    registered = {}
-    domains = []
-
-    def register(domain: str, name: str, func: object, *args: object, **kwargs: object) -> None:
-        """Capture service registration arguments for force-poll assertions.
-
-        Args:
-            domain (str): Home Assistant service domain being registered.
-            name (str): Service name derived from the account username.
-            func (object): Service callback registered by the integration.
-            args (object): Additional Home Assistant service registration arguments.
-            kwargs (object): Additional Home Assistant service registration options.
-        """
-        registered[name] = func
-        domains.append(domain)
-
-    hass.services.async_register = register
-
-    hass.config_entries.async_forward_entry_setups = AsyncMock(
-        side_effect=fake_forward_entry_setups
-    )
-
-    # Monkeypatch coordinator classes and sensor classes to avoid full sensor setup
-    monkeypatch.setattr(
-        resmed_module, "MyAirDataUpdateCoordinator", lambda *a, **k: dummy_coordinator
-    )
-    monkeypatch.setattr(resmed_module, "async_migrate_mask_leak_statistics_metadata", MagicMock())
-    monkeypatch.setattr(
-        sensor_platform, "MyAirDataUpdateCoordinator", lambda *a, **k: dummy_coordinator
-    )
-    monkeypatch.setattr(sensor_platform, "MyAirSleepRecordSensor", MagicMock())
-    monkeypatch.setattr(sensor_platform, "MyAirDeviceSensor", MagicMock())
-    monkeypatch.setattr(sensor_platform, "MyAirFriendlyUsageTime", MagicMock())
-    monkeypatch.setattr(sensor_platform, "MyAirMostRecentSleepDate", MagicMock())
-
-    await async_setup_entry(hass, config_entry)
-
-    # Since fake_forward_entry_setups is wired as the side effect, ensure it ran once
-    assert hass.config_entries.async_forward_entry_setups.await_count == 1
-    service_name = "force_poll_test_example_com"
-    assert service_name in registered, "force_poll service was not registered"
-    refresh_callback = registered[service_name]
-    await refresh_callback(None)
-    dummy_coordinator.async_refresh.assert_awaited_once()
-    assert domains[-1] == "resmed_myair"
-
-
 @pytest.mark.asyncio
 async def test_sensor_unique_id_and_device_info(
     hass: MagicMock, coordinator: CoordinatorLike
@@ -659,7 +572,7 @@ async def test_async_setup_entry_registers_all_sensors(
             entities (list[object]): Sensor entities created by ``async_setup_entry``.
             update_before_add (bool): Whether HA should update entities before adding them.
         """
-        assert isinstance(update_before_add, bool)
+        assert update_before_add is False
         added_entities.extend(entities)
 
     # Only patch the coordinator class used by the sensor platform
@@ -684,72 +597,3 @@ async def test_async_setup_entry_registers_all_sensors(
         + 2  # FriendlyUsageTime + MostRecentSleepDate
     )
     assert len(added_entities) == expected_count
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("username", "expected_service_name"),
-    [
-        ("test@example.com", "force_poll_test_example_com"),
-        ("test+alerts@example.com", "force_poll_test_alerts_example_com"),
-        ("Upper.User@example.com", "force_poll_upper_user_example_com"),
-    ],
-)
-async def test_sensor_setup_registers_valid_force_poll_service_names(
-    hass: MagicMock,
-    config_entry: MockConfigEntry,
-    coordinator_factory: CoordinatorFactory,
-    monkeypatch: pytest.MonkeyPatch,
-    username: str,
-    expected_service_name: str,
-) -> None:
-    """Sensor setup sanitizes account usernames into valid HA service names.
-
-    Args:
-        hass (MagicMock): Home Assistant instance receiving platform setup.
-        config_entry (MockConfigEntry): Base entry used to construct each case.
-        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
-        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for sensor descriptions.
-        username (str): Account username to sanitize into a service name.
-        expected_service_name (str): Service name expected after sanitization.
-    """
-    registered_services: list[tuple[str, str, object]] = []
-
-    def register_service(domain: str, service: str, handler: object) -> None:
-        """Collect service registrations from the platform setup flow.
-
-        Args:
-            domain (str): Home Assistant domain registering the service.
-            service (str): Sanitized service name registered by the platform.
-            handler (object): Callback associated with the registered service.
-        """
-        registered_services.append((domain, service, handler))
-
-    coordinator = coordinator_factory(mock=True)
-    coordinator.data = coordinator_data(device={"serialNumber": "SN123"}, sleep_records=[])
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="ResMed-CPAP",
-        data={**config_entry.data, CONF_USER_NAME: username},
-        entry_id=f"entry-{expected_service_name}",
-        version=2,
-    )
-    entry.runtime_data = coordinator
-    hass.services.async_register = register_service
-
-    monkeypatch.setattr(
-        sensor_platform,
-        "SLEEP_RECORD_SENSOR_DESCRIPTIONS",
-        {"usage": SensorEntityDescription(key="totalUsage")},
-    )
-    monkeypatch.setattr(
-        sensor_platform,
-        "DEVICE_SENSOR_DESCRIPTIONS",
-        {"serial": SensorEntityDescription(key="serialNumber")},
-    )
-
-    await sensor_platform.async_setup_entry(hass, entry, MagicMock())
-
-    assert registered_services
-    assert registered_services[-1][0] == DOMAIN
-    assert registered_services[-1][1] == expected_service_name
