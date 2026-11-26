@@ -48,7 +48,11 @@ def myair_requests() -> Iterator[AsyncMock]:
         Returns:
             MyAirDevice: Simulated device metadata.
         """
-        serial = "SN456" if client._config.username == "other@example.com" else "SN123"
+        serial = (
+            "SN456"
+            if client._config.username in {"other@example.com", "upper+user@example.com"}
+            else "SN123"
+        )
         return MyAirDevice.from_api(
             {"serialNumber": serial, "lastSleepDataReportTime": "2024-06-01T12:00:00+00:00"}
         )
@@ -199,6 +203,30 @@ async def test_force_poll_actions_for_two_entries_are_independent(
     with pytest.raises(ServiceNotFound):
         await hass.services.async_call(DOMAIN, first_action, blocking=True)
     await hass.services.async_call(DOMAIN, second_action, blocking=True)
+    assert myair_requests.await_args_list == [second_request]
+
+
+async def test_unloading_previous_entry_keeps_replacement_force_poll_action(
+    hass: HomeAssistant, myair_requests: AsyncMock
+) -> None:
+    """Unloading an entry preserves a later registration under the same name.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance managing both entries and the action.
+        myair_requests (AsyncMock): Spy recording each client's sleep-record requests.
+    """
+    first = _add_entry(hass, "upper.user@example.com")
+    action = "force_poll_upper_user_example_com"
+    assert await hass.config_entries.async_setup(first.entry_id)
+    await hass.async_block_till_done()
+    second = _add_entry(hass, "upper+user@example.com")
+    assert await hass.config_entries.async_setup(second.entry_id)
+    await hass.async_block_till_done()
+    _, second_request = myair_requests.await_args_list
+    myair_requests.reset_mock()
+
+    assert await hass.config_entries.async_unload(first.entry_id)
+    await hass.services.async_call(DOMAIN, action, blocking=True)
     assert myair_requests.await_args_list == [second_request]
 
 

@@ -5,14 +5,13 @@ myair_client is a reverse engineering and can break at anytime.
 """
 
 from collections.abc import MutableMapping
-from functools import partial
 import logging
 import re
 from typing import Any
 
 from aiohttp import DummyCookieJar
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .client.myair_client import MyAirConfig
@@ -43,8 +42,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         config_entry (ConfigEntry): Stored myAir account configuration.
 
     Returns:
-        bool: ``True`` after the first coordinator refresh and platform setup
-            succeed and the force-poll action is registered.
+        bool: ``True`` after config entry setup completes and the force-poll
+            action is registered.
     """
     _LOGGER.info("Starting ResMed myAir Integration Version: %s", VERSION)
     _LOGGER.debug("[init async_setup_entry] config_entry.data: %s", redact_dict(config_entry.data))
@@ -85,8 +84,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         """
         await coordinator.async_refresh()
 
+    @callback
+    def remove_force_poll_action() -> None:
+        """Remove this load's action if it still owns the registered name."""
+        registered = hass.services.async_services_for_domain(DOMAIN).get(service_name)
+        if registered is not None and registered.job.target is refresh:
+            hass.services.async_remove(DOMAIN, service_name)
+
     hass.services.async_register(DOMAIN, service_name, refresh)
-    config_entry.async_on_unload(partial(hass.services.async_remove, DOMAIN, service_name))
+    config_entry.async_on_unload(remove_force_poll_action)
     return True
 
 
