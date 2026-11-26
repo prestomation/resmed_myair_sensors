@@ -1726,13 +1726,15 @@ async def test_sleep_record_query_falls_back_for_undefined_index(
     assert {"ahi", *index_fields} <= set(reloaded_query)
 
 
+@pytest.mark.parametrize("use_callable_policy", [False, True])
 async def test_sleep_record_http_400_respects_session_status_policy(
-    config_na: MyAirConfig,
+    config_na: MyAirConfig, use_callable_policy: bool
 ) -> None:
     """Inspect only index validation errors before aiohttp applies its status policy.
 
     Args:
         config_na (MyAirConfig): Credentials and region for the simulated client.
+        use_callable_policy (bool): Whether the session status policy is callable.
     """
     calls: list[str] = []
     index_rejection = {
@@ -1745,7 +1747,18 @@ async def test_sleep_record_http_400_respects_session_status_policy(
         ]
     }
     unrelated_error = {"errors": [{"message": "myAir is unavailable"}]}
-    response_body: dict[str, object] = index_rejection
+    response_body: dict[str, object] | list[object] | None = index_rejection
+    response_bytes: bytes | None = None
+    status_policy_calls: list[ClientResponse] = []
+
+    async def status_policy(response: ClientResponse) -> None:
+        """Apply aiohttp's normal status check and record the response.
+
+        Args:
+            response (ClientResponse): Response whose status is being checked.
+        """
+        status_policy_calls.append(response)
+        response.raise_for_status()
 
     async def graphql(request: Any, handler: Any) -> ClientResponse:
         """Return an in-memory response through aiohttp's real request path.
@@ -1786,11 +1799,11 @@ async def test_sleep_record_http_400_respects_session_status_policy(
         response.status = status
         response.reason = HTTPStatus(status).phrase
         response._headers = CIMultiDictProxy(CIMultiDict({"Content-Type": "application/json"}))
-        response._body = json.dumps(body).encode()
+        response._body = response_bytes if response_bytes is not None else json.dumps(body).encode()
         return response
 
     async with ClientSession(
-        raise_for_status=True,
+        raise_for_status=status_policy if use_callable_policy else True,
         response_class=HassClientResponse,
         middlewares=[graphql],
     ) as http_session:
@@ -1810,6 +1823,24 @@ async def test_sleep_record_http_400_respects_session_status_policy(
             await next_client.get_sleep_records()
         assert error.value.status == 400
         assert len(calls) == 3
+
+        for body, raw_body in (([], None), (None, b"{")):
+            response_body = body
+            response_bytes = raw_body
+            with pytest.raises(ClientResponseError) as error:
+                await next_client.get_sleep_records()
+            assert error.value.status == 400
+
+        assert len(calls) == 5
+        if use_callable_policy:
+            assert [response.status for response in status_policy_calls] == [
+                HTTPStatus.OK,
+                HTTPStatus.BAD_REQUEST,
+                HTTPStatus.BAD_REQUEST,
+                HTTPStatus.BAD_REQUEST,
+            ]
+        else:
+            assert not status_policy_calls
 
 
 async def test_sleep_record_query_propagates_unrelated_graphql_error(
