@@ -9,6 +9,8 @@ from decimal import Decimal, InvalidOperation
 import logging
 from typing import Any, Self
 
+from .const import SCORE_COMPONENT_NAMES
+
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
@@ -179,9 +181,7 @@ class MyAirSleepRecord:
             Any | None: Payload value, or ``None`` when absent or an invalid score component.
         """
         value = self.raw.get(key)
-        if key in {"usageScore", "leakScore", "ahiScore", "maskScore"} and (
-            not isinstance(value, int) or isinstance(value, bool)
-        ):
+        if key in SCORE_COMPONENT_NAMES and (not isinstance(value, int) or isinstance(value, bool)):
             return None
         return value
 
