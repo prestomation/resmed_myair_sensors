@@ -62,6 +62,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         self.myair_client = myair_client
         self._client_lock = Lock()
         self._time_in_apnea_serial: str | None = config_entry.unique_id
+        self._time_in_apnea_identity_matches: bool = False
         super().__init__(
             hass=hass,
             config_entry=config_entry,
@@ -161,10 +162,14 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
             )
 
         data = MyAirCoordinatorData(device=device, sleep_records=sleep_records)
-        if device is not None and self._time_in_apnea_serial is None:
-            self._time_in_apnea_serial = device.serial_number
+        if device is not None and device.serial_number:
+            if self._time_in_apnea_serial is None:
+                self._time_in_apnea_serial = device.serial_number
+            self._time_in_apnea_identity_matches = (
+                device.serial_number == self._time_in_apnea_serial
+            )
         latest = data.latest_sleep_record
-        if latest and latest.start_date and self._time_in_apnea_enabled(device):
+        if latest and latest.start_date and self._time_in_apnea_enabled():
             try:
                 async with timeout(_TIMELINE_TIMEOUT_SECONDS):
                     timeline = await self.myair_client.get_nightly_therapy_timeline(
@@ -177,28 +182,17 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                     return replace(data, time_in_apnea=timeline.total_seconds_in_apnea)
         return data
 
-    def _time_in_apnea_enabled(self, device: MyAirDevice | None) -> bool:
+    def _time_in_apnea_enabled(self) -> bool:
         """Check the registered sensor before making an optional timeline request.
-
-        Args:
-            device (MyAirDevice | None): Device returned by the current refresh, when available.
 
         Returns:
             bool: True when this entry's Time in Apnea sensor is enabled.
         """
         if self.config_entry is None:
             return False
-        if (
-            device is not None
-            and device.serial_number
-            and self._time_in_apnea_serial
-            and device.serial_number != self._time_in_apnea_serial
-        ):
-            _LOGGER.debug(
-                "Skipping Time in Apnea lookup because device serial changed for this entry"
-            )
+        if not self._time_in_apnea_identity_matches:
             return False
-        serial = self._time_in_apnea_serial or (device.serial_number if device else None)
+        serial = self._time_in_apnea_serial
         if not serial:
             return False
         registry = er.async_get(self.hass)

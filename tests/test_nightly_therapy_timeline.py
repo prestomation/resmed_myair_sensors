@@ -393,28 +393,58 @@ async def test_time_in_apnea_rejects_timeline_from_replacement_device(
             "localizedName": "Wrong Device",
         }
     )
+    original_device = MyAirDevice.from_api(
+        {
+            "serialNumber": _SERIAL,
+            "fgDeviceManufacturerName": "Original Manufacturer",
+            "deviceType": "Original Model",
+            "localizedName": "Original CPAP",
+        }
+    )
     timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 41}])
     with patch.object(
         RESTClient,
         "get_user_device_data",
-        side_effect=[replacement_device, replacement_device],
+        side_effect=[
+            original_device,
+            replacement_device,
+            ParsingError("Temporary device parsing failure"),
+            original_device,
+        ],
     ):
         entity_id = await _load(hass, config_entry)
         registry_device = dr.async_get(hass).async_get_device_by_identifier(
             (DOMAIN, _SERIAL), config_entry.entry_id
         )
         assert registry_device is not None
-        assert registry_device.manufacturer is None
-        assert registry_device.model is None
+        assert registry_device.manufacturer == "Original Manufacturer"
+        assert registry_device.model == "Original Model"
+        assert registry_device.name == "Original CPAP"
 
         er.async_get(hass).async_update_entity(entity_id, disabled_by=None)
         assert await hass.config_entries.async_reload(config_entry.entry_id)
         await hass.async_block_till_done()
+        registry_device = dr.async_get(hass).async_get_device_by_identifier(
+            (DOMAIN, _SERIAL), config_entry.entry_id
+        )
+        assert registry_device is not None
+        assert registry_device.manufacturer == "Original Manufacturer"
+        assert registry_device.model == "Original Model"
+        assert registry_device.name == "Original CPAP"
+        state = hass.states.get(entity_id)
+        assert state is not None and state.state == STATE_UNKNOWN
 
-    timeline_query.assert_not_awaited()
+        await config_entry.runtime_data.async_refresh()
+        state = hass.states.get(entity_id)
+        assert state is not None and state.state == STATE_UNKNOWN
+        timeline_query.assert_not_awaited()
+
+        await config_entry.runtime_data.async_refresh()
+
     state = hass.states.get(entity_id)
     assert state is not None
-    assert state.state == STATE_UNKNOWN
+    assert float(state.state) == 41
+    timeline_query.assert_awaited_once()
 
 
 async def test_timeline_action_requires_admin_user(
