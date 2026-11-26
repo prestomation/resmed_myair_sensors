@@ -17,6 +17,9 @@
         }
     },
     "exceptions": {
+        "timeline_entry_unloaded": {
+            "message": "The myAir account was unloaded while retrieving the Nightly Therapy Timeline."
+        },
         "timeline_invalid_date": {
             "message": "Provide a valid date for the Nightly Therapy Timeline."
         },

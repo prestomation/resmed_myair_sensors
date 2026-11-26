@@ -102,7 +102,7 @@ async def async_setup_entry(
         [
             MyAirFriendlyUsageTime(coordinator=coordinator),
             MyAirMostRecentSleepDate(coordinator=coordinator),
-            MyAirTimeInApnea(coordinator, config_entry.unique_id),
+            MyAirTimeInApnea(coordinator),
         ]
     )
 
@@ -171,14 +171,11 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
 class MyAirTimeInApnea(MyAirBaseSensor):
     """Report the time myAir measured in apnea for the Current Data Date."""
 
-    def __init__(
-        self, coordinator: MyAirDataUpdateCoordinator, configured_serial: str | None
-    ) -> None:
+    def __init__(self, coordinator: MyAirDataUpdateCoordinator) -> None:
         """Initialize the optional duration sensor.
 
         Args:
             coordinator (MyAirDataUpdateCoordinator): Coordinator supplying the sensor snapshot.
-            configured_serial (str | None): Serial stored in the config entry.
         """
         super().__init__(
             "CPAP Time in Apnea",
@@ -189,8 +186,10 @@ class MyAirTimeInApnea(MyAirBaseSensor):
                 entity_registry_enabled_default=False,
             ),
             coordinator,
-            configured_serial=configured_serial,
+            configured_serial=coordinator.time_in_apnea_serial,
         )
+        if coordinator.time_in_apnea_unique_id is not None:
+            self._attr_unique_id = coordinator.time_in_apnea_unique_id
 
     @callback
     def _handle_coordinator_update(self) -> None:

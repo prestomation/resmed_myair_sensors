@@ -1,6 +1,8 @@
 """Test the timeline action and Time in Apnea sensor through Home Assistant."""
 
+from asyncio import Event, timeout
 from collections.abc import Iterator
+from datetime import date
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.auth.const import GROUP_ID_ADMIN, GROUP_ID_USER
@@ -22,7 +24,11 @@ from custom_components.resmed_myair.const import (
     REGION_NA,
     TIME_IN_APNEA_KEY,
 )
-from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
+from custom_components.resmed_myair.models import (
+    MyAirDevice,
+    MyAirNightlyTherapyTimeline,
+    MyAirSleepRecord,
+)
 
 _ACTION = "get_nightly_therapy_timeline"
 _SERIAL = "SN123"
@@ -444,6 +450,221 @@ async def test_time_in_apnea_rejects_timeline_from_replacement_device(
     state = hass.states.get(entity_id)
     assert state is not None
     assert float(state.state) == 41
+    timeline_query.assert_awaited_once()
+
+
+async def test_legacy_sensor_keeps_opt_in_across_initial_device_failure(
+    hass: HomeAssistant, config_entry: MockConfigEntry, timeline_query: AsyncMock
+) -> None:
+    """Preserve the opt-in and entity ID when a legacy entry first receives its serial.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Source of the example account configuration.
+        timeline_query (AsyncMock): myAir timeline query double.
+    """
+    legacy = MockConfigEntry(domain=DOMAIN, data=config_entry.data, version=2)
+    legacy.add_to_hass(hass)
+    registry = er.async_get(hass)
+    timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 12}])
+    with patch.object(
+        RESTClient, "get_user_device_data", side_effect=ParsingError("Device unavailable")
+    ):
+        assert await hass.config_entries.async_setup(legacy.entry_id)
+        await hass.async_block_till_done()
+        provisional = next(
+            entry
+            for entry in er.async_entries_for_config_entry(registry, legacy.entry_id)
+            if entry.unique_id.endswith(f"_{TIME_IN_APNEA_KEY}")
+        )
+        registry.async_update_entity(provisional.entity_id, disabled_by=None)
+        assert await hass.config_entries.async_reload(legacy.entry_id)
+        await hass.async_block_till_done()
+        timeline_query.assert_not_awaited()
+
+    await legacy.runtime_data.async_refresh()
+    state = hass.states.get(provisional.entity_id)
+    assert state is not None and float(state.state) == 12
+    assert await hass.config_entries.async_reload(legacy.entry_id)
+    await hass.async_block_till_done()
+    state = hass.states.get(provisional.entity_id)
+    assert state is not None and float(state.state) == 12
+    assert [
+        entry.entity_id
+        for entry in er.async_entries_for_config_entry(registry, legacy.entry_id)
+        if entry.unique_id.endswith(f"_{TIME_IN_APNEA_KEY}")
+    ] == [provisional.entity_id]
+
+
+@pytest.mark.parametrize("unload", [False, True], ids=["refresh-finishes", "entry-unloads"])
+async def test_queued_timeline_action_starts_timeout_after_refresh(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    timeline_query: AsyncMock,
+    sleep_records: list[MyAirSleepRecord],
+    unload: bool,
+) -> None:
+    """Start the action deadline after waiting and reject an unloaded entry.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Entry targeted by the action.
+        timeline_query (AsyncMock): myAir timeline query double.
+        sleep_records (list[MyAirSleepRecord]): Daily records after the refresh resumes.
+        unload (bool): Whether to unload before releasing the refresh.
+    """
+    await _load(hass, config_entry)
+    coordinator = config_entry.runtime_data
+    timeline_query.return_value = _payload(
+        [{"date": _DATE, "respiratoryEvents": [], "therapyStatusEvents": []}]
+    )
+    refreshing, resume_refresh, action_started = Event(), Event(), Event()
+    get_timeline = coordinator.async_get_nightly_therapy_timeline
+
+    async def pause_refresh() -> list[MyAirSleepRecord]:
+        """Hold the client until the test releases the daily refresh.
+
+        Returns:
+            list[MyAirSleepRecord]: Records available after the refresh resumes.
+        """
+        refreshing.set()
+        await resume_refresh.wait()
+        return sleep_records
+
+    async def observe_action(assigned_date: date) -> MyAirNightlyTherapyTimeline | None:
+        """Signal that the action reached the coordinator.
+
+        Args:
+            assigned_date (date): Date requested by the action.
+
+        Returns:
+            MyAirNightlyTherapyTimeline | None: Timeline for the test night.
+        """
+        action_started.set()
+        return await get_timeline(assigned_date)
+
+    with (
+        patch.object(RESTClient, "get_sleep_records", side_effect=pause_refresh),
+        patch.object(coordinator, "async_get_nightly_therapy_timeline", side_effect=observe_action),
+        patch("custom_components.resmed_myair.coordinator.timeout", wraps=timeout) as deadlines,
+    ):
+        refresh_task = hass.async_create_task(coordinator.async_refresh())
+        await refreshing.wait()
+        action_task = hass.async_create_task(_get_timeline(hass, config_entry))
+        await action_started.wait()
+        try:
+            deadlines.assert_not_called()
+            if unload:
+                assert await hass.config_entries.async_unload(config_entry.entry_id)
+        finally:
+            resume_refresh.set()
+            await refresh_task
+        if unload:
+            with pytest.raises(ServiceValidationError) as err:
+                await action_task
+            assert err.value.translation_key == "timeline_entry_unloaded"
+            timeline_query.assert_not_awaited()
+        else:
+            response = await action_task
+            assert response is not None and response["date"] == _DATE
+            deadlines.assert_called_once()
+
+
+async def test_in_flight_timeline_action_reports_unload(
+    hass: HomeAssistant, config_entry: MockConfigEntry, timeline_query: AsyncMock
+) -> None:
+    """Translate a closed session from an in-flight action into an unload error.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Account unloaded during the request.
+        timeline_query (AsyncMock): myAir timeline query double.
+    """
+    await _load(hass, config_entry)
+    requesting, finish_request = Event(), Event()
+
+    async def interrupt_request(*_args: object, **_kwargs: object) -> None:
+        """Simulate a session closed by Home Assistant while myAir is responding.
+
+        Args:
+            *_args (object): Positional arguments from the timeline request.
+            **_kwargs (object): Keyword arguments from the timeline request.
+
+        Raises:
+            RuntimeError: The session was closed.
+        """
+        requesting.set()
+        await finish_request.wait()
+        raise RuntimeError("Session is closed")
+
+    timeline_query.side_effect = interrupt_request
+    action_task = hass.async_create_task(_get_timeline(hass, config_entry))
+    await requesting.wait()
+    try:
+        assert await hass.config_entries.async_unload(config_entry.entry_id)
+    finally:
+        finish_request.set()
+
+    with pytest.raises(ServiceValidationError) as err:
+        await action_task
+    assert err.value.translation_key == "timeline_entry_unloaded"
+
+
+async def test_time_in_apnea_keeps_device_mismatch_through_sleep_record_outage(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    timeline_query: AsyncMock,
+    sleep_records: list[MyAirSleepRecord],
+) -> None:
+    """Keep replacement data off the original sensor when either lookup fails.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Entry configured for the original device.
+        timeline_query (AsyncMock): myAir timeline query double.
+        sleep_records (list[MyAirSleepRecord]): Daily records returned after the outage.
+    """
+    entity_id = await _load(hass, config_entry)
+    er.async_get(hass).async_update_entity(entity_id, disabled_by=None)
+    timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 8}])
+    assert await hass.config_entries.async_reload(config_entry.entry_id)
+    await hass.async_block_till_done()
+    state = hass.states.get(entity_id)
+    assert state is not None and float(state.state) == 8
+    timeline_query.reset_mock()
+
+    with (
+        patch.object(
+            RESTClient,
+            "get_user_device_data",
+            side_effect=[
+                MyAirDevice.from_api({"serialNumber": "SN456"}),
+                ParsingError("Temporary device parsing failure"),
+                MyAirDevice.from_api({"serialNumber": _SERIAL}),
+            ],
+        ),
+        patch.object(
+            RESTClient,
+            "get_sleep_records",
+            side_effect=[
+                ServiceUnavailableError("Sleep records unavailable"),
+                sleep_records,
+                sleep_records,
+            ],
+        ),
+    ):
+        timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 41}])
+        await config_entry.runtime_data.async_refresh()
+        await config_entry.runtime_data.async_refresh()
+        state = hass.states.get(entity_id)
+        assert state is not None and state.state == STATE_UNKNOWN
+        timeline_query.assert_not_awaited()
+
+        timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 12}])
+        await config_entry.runtime_data.async_refresh()
+
+    state = hass.states.get(entity_id)
+    assert state is not None and float(state.state) == 12
     timeline_query.assert_awaited_once()
 
 
