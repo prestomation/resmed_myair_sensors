@@ -13,6 +13,8 @@ from aiohttp import DummyCookieJar
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.config_validation import config_entry_only_config_schema
+from homeassistant.helpers.typing import ConfigType
 
 from .client.myair_client import MyAirConfig
 from .client.rest_client import RESTClient
@@ -29,9 +31,25 @@ from .const import (
 from .coordinator import MyAirDataUpdateCoordinator
 from .recorder import async_migrate_mask_leak_statistics_metadata
 from .redaction import redact_dict
+from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _SERVICE_NAME_SANITIZER = re.compile(r"[^a-z0-9_]+")
+CONFIG_SCHEMA = config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
+    """Register actions that Home Assistant can discover before entries load.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        _config (ConfigType): Home Assistant configuration.
+
+    Returns:
+        bool: True once the actions are registered.
+    """
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:

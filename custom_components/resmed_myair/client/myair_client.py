@@ -1,10 +1,14 @@
 """Client contracts and exceptions shared by myAir transport implementations."""
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import date, datetime
 from typing import NamedTuple
 
-from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
+from custom_components.resmed_myair.models import (
+    MyAirDevice,
+    MyAirNightlyTherapyTimeline,
+    MyAirSleepRecord,
+)
 
 
 class AuthenticationError(Exception):
@@ -87,4 +91,17 @@ class MyAirClient(ABC):
         Returns:
             list[MyAirSleepRecord]: Typed sleep records ordered as returned by the
                 transport implementation.
+        """
+
+    @abstractmethod
+    async def get_nightly_therapy_timeline(
+        self, assigned_date: date
+    ) -> MyAirNightlyTherapyTimeline | None:
+        """Fetch one timeline by its myAir-assigned date.
+
+        Args:
+            assigned_date (date): Date assigned to the night by myAir.
+
+        Returns:
+            MyAirNightlyTherapyTimeline | None: The matching timeline, if present.
         """

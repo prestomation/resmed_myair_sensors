@@ -40,6 +40,8 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
     * The date assigned by myAir to the latest sleep record, including a record with zero usage.
 1. CPAP Mask Leak
 1. CPAP Total myAir Score
+1. CPAP Time in Apnea
+    * The duration in seconds myAir reports for the Current Data Date. This sensor is disabled by default. Enabling it adds a nightly timeline request on each refresh.
 1. CPAP myAir Usage Hours Score (up to 70 points)
 1. CPAP myAir Mask Seal Score (up to 20 points)
 1. CPAP myAir Events per Hour Score (up to 5 points)
@@ -56,6 +58,10 @@ The four score component sensors are disabled by default. You can enable them in
 While a ResMed myAir config entry is loaded, `resmed_myair.force_poll_{username}` requests an immediate update from myAir. The action takes no parameters. When an entry successfully unloads, Home Assistant removes the action if the entry still owns its registration. If the myAir Account username changes, reload registers the action under the name derived from the new username.
 
 If two usernames produce the same action name, the action refreshes the entry that registered it most recently. If that entry unloads, reload the remaining entry to restore the action.
+
+`resmed_myair.get_nightly_therapy_timeline` takes `config_entry_id` and a myAir-assigned `date` in `YYYY-MM-DD` format. It works independently of the Time in Apnea sensor and fetches that night on demand. The response contains `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and a chronological `events` list. In an automation, use `response_variable` to access the result.
+
+Each event contains a myAir `type` and a timezone-aware `timestamp`. It can also contain `end_timestamp` and `duration_seconds` when myAir supplies them. Times retain their source offsets across midnight. A night that myAir returns with no events has an empty list. If myAir has no timeline for the date, the action reports it as unavailable. Historical availability depends on myAir.
 
 ## Known Issues
 

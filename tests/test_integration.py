@@ -22,6 +22,7 @@ from custom_components.resmed_myair.sensor import (
     MyAirFriendlyUsageTime,
     MyAirMostRecentSleepDate,
     MyAirSleepRecordSensor,
+    MyAirTimeInApnea,
 )
 from tests.conftest import CoordinatorFactory, CoordinatorLike, coordinator_data
 
@@ -591,9 +592,10 @@ async def test_async_setup_entry_registers_all_sensors(
     assert any(isinstance(e, MyAirDeviceSensor) for e in added_entities)
     assert any(isinstance(e, MyAirFriendlyUsageTime) for e in added_entities)
     assert any(isinstance(e, MyAirMostRecentSleepDate) for e in added_entities)
+    assert any(isinstance(e, MyAirTimeInApnea) for e in added_entities)
     expected_count = (
         len(DEVICE_SENSOR_DESCRIPTIONS)
         + len(SLEEP_RECORD_SENSOR_DESCRIPTIONS)
-        + 2  # FriendlyUsageTime + MostRecentSleepDate
+        + 3  # FriendlyUsageTime + MostRecentSleepDate + TimeInApnea
     )
     assert len(added_entities) == expected_count

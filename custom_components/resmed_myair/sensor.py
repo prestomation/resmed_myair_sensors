@@ -7,13 +7,20 @@ from typing import Any, Final
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DEVICE_SENSOR_DESCRIPTIONS, DOMAIN, SLEEP_RECORD_SENSOR_DESCRIPTIONS, VERSION
+from .const import (
+    DEVICE_SENSOR_DESCRIPTIONS,
+    DOMAIN,
+    SLEEP_RECORD_SENSOR_DESCRIPTIONS,
+    TIME_IN_APNEA_KEY,
+    VERSION,
+)
 from .coordinator import MyAirDataUpdateCoordinator
 from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
 from .redaction import redact_dict
@@ -95,6 +102,7 @@ async def async_setup_entry(
         [
             MyAirFriendlyUsageTime(coordinator=coordinator),
             MyAirMostRecentSleepDate(coordinator=coordinator),
+            MyAirTimeInApnea(coordinator),
         ]
     )
 
@@ -151,6 +159,34 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         """Publish an initial state from already-fetched coordinator data."""
         await super().async_added_to_hass()
         self._handle_coordinator_update()
+
+
+class MyAirTimeInApnea(MyAirBaseSensor):
+    """Report the time myAir measured in apnea for the Current Data Date."""
+
+    def __init__(self, coordinator: MyAirDataUpdateCoordinator) -> None:
+        """Initialize the optional duration sensor.
+
+        Args:
+            coordinator (MyAirDataUpdateCoordinator): Coordinator supplying the sensor snapshot.
+        """
+        super().__init__(
+            "CPAP Time in Apnea",
+            SensorEntityDescription(
+                key=TIME_IN_APNEA_KEY,
+                device_class=SensorDeviceClass.DURATION,
+                native_unit_of_measurement=UnitOfTime.SECONDS,
+                entity_registry_enabled_default=False,
+            ),
+            coordinator,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Publish the current duration, with missing data represented as unknown."""
+        self._available = self.coordinator.last_update_success
+        self._attr_native_value = _coordinator_data(self.coordinator).time_in_apnea
+        self.async_write_ha_state()
 
 
 class MyAirRawSensor(MyAirBaseSensor):
