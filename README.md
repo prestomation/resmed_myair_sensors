@@ -2,23 +2,23 @@
 
 [Full report](https://htmlpreview.github.io/?https://github.com/prestomation/resmed_myair_sensors/blob/python-coverage-comment-action-data/htmlcov/index.html)
 
-| Name                                                     |    Stmts |     Miss |   Branch |   BrPart |    Cover |   Missing |
-|--------------------------------------------------------- | -------: | -------: | -------: | -------: | -------: | --------: |
-| custom\_components/resmed\_myair/\_\_init\_\_.py         |       50 |        0 |        4 |        0 |     100% |           |
-| custom\_components/resmed\_myair/client/\_\_init\_\_.py  |        0 |        0 |        0 |        0 |     100% |           |
-| custom\_components/resmed\_myair/client/auth.py          |      363 |        0 |      100 |        0 |     100% |           |
-| custom\_components/resmed\_myair/client/graphql.py       |       51 |        0 |        6 |        0 |     100% |           |
-| custom\_components/resmed\_myair/client/myair\_client.py |       21 |        0 |        0 |        0 |     100% |           |
-| custom\_components/resmed\_myair/client/regions.py       |       30 |        0 |        4 |        0 |     100% |           |
-| custom\_components/resmed\_myair/client/rest\_client.py  |      102 |        0 |       32 |        0 |     100% |           |
-| custom\_components/resmed\_myair/config\_flow.py         |      259 |        0 |       68 |        0 |     100% |           |
-| custom\_components/resmed\_myair/const.py                |       21 |        0 |        0 |        0 |     100% |           |
-| custom\_components/resmed\_myair/coordinator.py          |       67 |        0 |        8 |        0 |     100% |           |
-| custom\_components/resmed\_myair/models.py               |       84 |        0 |       18 |        0 |     100% |           |
-| custom\_components/resmed\_myair/recorder.py             |       21 |        0 |        4 |        0 |     100% |           |
-| custom\_components/resmed\_myair/redaction.py            |       17 |        0 |       10 |        0 |     100% |           |
-| custom\_components/resmed\_myair/sensor.py               |      112 |        0 |       16 |        0 |     100% |           |
-| **TOTAL**                                                | **1198** |    **0** |  **270** |    **0** | **100%** |           |
+| Name                                                     |    Stmts |     Miss |   Branch |   BrPart |   Cover |   Missing |
+|--------------------------------------------------------- | -------: | -------: | -------: | -------: | ------: | --------: |
+| custom\_components/resmed\_myair/\_\_init\_\_.py         |       50 |        0 |        4 |        0 |    100% |           |
+| custom\_components/resmed\_myair/client/\_\_init\_\_.py  |        0 |        0 |        0 |        0 |    100% |           |
+| custom\_components/resmed\_myair/client/auth.py          |      363 |        0 |      100 |        0 |    100% |           |
+| custom\_components/resmed\_myair/client/graphql.py       |       82 |        0 |       22 |        2 |     98% |128-\>137, 140-\>exit |
+| custom\_components/resmed\_myair/client/myair\_client.py |       21 |        0 |        0 |        0 |    100% |           |
+| custom\_components/resmed\_myair/client/regions.py       |       30 |        0 |        4 |        0 |    100% |           |
+| custom\_components/resmed\_myair/client/rest\_client.py  |      112 |        0 |       36 |        0 |    100% |           |
+| custom\_components/resmed\_myair/config\_flow.py         |      259 |        0 |       68 |        0 |    100% |           |
+| custom\_components/resmed\_myair/const.py                |       22 |        0 |        0 |        0 |    100% |           |
+| custom\_components/resmed\_myair/coordinator.py          |       67 |        0 |        8 |        0 |    100% |           |
+| custom\_components/resmed\_myair/models.py               |       87 |        0 |       20 |        0 |    100% |           |
+| custom\_components/resmed\_myair/recorder.py             |       21 |        0 |        4 |        0 |    100% |           |
+| custom\_components/resmed\_myair/redaction.py            |       17 |        0 |       10 |        0 |    100% |           |
+| custom\_components/resmed\_myair/sensor.py               |      113 |        0 |       16 |        0 |    100% |           |
+| **TOTAL**                                                | **1244** |    **0** |  **292** |    **2** | **99%** |           |
 
 
 ## Setup coverage badge
