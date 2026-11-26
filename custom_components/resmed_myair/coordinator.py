@@ -188,6 +188,16 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         """
         if self.config_entry is None:
             return False
+        if (
+            device is not None
+            and device.serial_number
+            and self._time_in_apnea_serial
+            and device.serial_number != self._time_in_apnea_serial
+        ):
+            _LOGGER.debug(
+                "Skipping Time in Apnea lookup because device serial changed for this entry"
+            )
+            return False
         serial = self._time_in_apnea_serial or (device.serial_number if device else None)
         if not serial:
             return False

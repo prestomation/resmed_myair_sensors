@@ -59,7 +59,7 @@ While a ResMed myAir config entry is loaded, `resmed_myair.force_poll_{username}
 
 If two usernames produce the same action name, the action refreshes the entry that registered it most recently. If that entry unloads, reload the remaining entry to restore the action.
 
-`resmed_myair.get_nightly_therapy_timeline` takes `config_entry_id` and a myAir-assigned `date` in `YYYY-MM-DD` format. It works independently of the Time in Apnea sensor and fetches that night on demand. The response contains `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and a chronological `events` list. In an automation, use `response_variable` to access the result.
+`resmed_myair.get_nightly_therapy_timeline` takes `config_entry_id` and a myAir-assigned `date` in `YYYY-MM-DD` format. Administrators and system-run automations can use it independently of the Time in Apnea sensor. The action fetches the night on demand and returns `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and a chronological `events` list. In an automation, use `response_variable` to access the result.
 
 Each event contains a myAir `type` and a timezone-aware `timestamp`. It can also contain `end_timestamp` and `duration_seconds` when myAir supplies them. Times retain their source offsets across midnight. A night that myAir returns with no events has an empty list. If myAir has no timeline for the date, the action reports it as unavailable. Historical availability depends on myAir.
 

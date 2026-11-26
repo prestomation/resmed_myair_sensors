@@ -138,6 +138,9 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         self.coordinator: MyAirDataUpdateCoordinator = coordinator
         device_data: MyAirDevice | None = _coordinator_data(coordinator).device
         serial_number: str = configured_serial or (device_data.serial_number if device_data else "")
+        device_metadata: MyAirDevice | None = device_data
+        if configured_serial and device_data and device_data.serial_number != configured_serial:
+            device_metadata = None
         self.entity_description: SensorEntityDescription = sensor_desc
 
         self._attr_name: str = friendly_name
@@ -145,9 +148,9 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         self._available: bool = False
         self._attr_device_info: DeviceInfo = DeviceInfo(
             identifiers={(DOMAIN, serial_number)},
-            manufacturer=device_data.manufacturer if device_data else None,
-            model=device_data.model if device_data else None,
-            name=device_data.name if device_data else None,
+            manufacturer=device_metadata.manufacturer if device_metadata else None,
+            model=device_metadata.model if device_metadata else None,
+            name=device_metadata.name if device_metadata else None,
             suggested_area="Bedroom",
             sw_version=VERSION,
         )

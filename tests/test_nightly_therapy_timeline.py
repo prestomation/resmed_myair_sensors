@@ -3,10 +3,11 @@
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.auth.const import GROUP_ID_ADMIN, GROUP_ID_USER
 from homeassistant.const import ATTR_CONFIG_ENTRY_ID, STATE_UNKNOWN
-from homeassistant.core import HomeAssistant, ServiceResponse
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers import entity_registry as er
+from homeassistant.core import Context, HomeAssistant, ServiceResponse
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, Unauthorized
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
@@ -370,3 +371,98 @@ async def test_time_in_apnea_keeps_legacy_sensor_identity_without_device_data(
     assert state is not None
     assert timeline_query.await_count == 2
     assert float(state.state) == 8
+
+
+async def test_time_in_apnea_rejects_timeline_from_replacement_device(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    timeline_query: AsyncMock,
+) -> None:
+    """Keep a replacement device's timeline and metadata off the configured entity.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Entry configured for the original device.
+        timeline_query (AsyncMock): myAir timeline query double.
+    """
+    replacement_device = MyAirDevice.from_api(
+        {
+            "serialNumber": "SN456",
+            "fgDeviceManufacturerName": "Wrong Manufacturer",
+            "deviceType": "Wrong Model",
+            "localizedName": "Wrong Device",
+        }
+    )
+    timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 41}])
+    with patch.object(
+        RESTClient,
+        "get_user_device_data",
+        side_effect=[replacement_device, replacement_device],
+    ):
+        entity_id = await _load(hass, config_entry)
+        registry_device = dr.async_get(hass).async_get_device_by_identifier(
+            (DOMAIN, _SERIAL), config_entry.entry_id
+        )
+        assert registry_device is not None
+        assert registry_device.manufacturer is None
+        assert registry_device.model is None
+
+        er.async_get(hass).async_update_entity(entity_id, disabled_by=None)
+        assert await hass.config_entries.async_reload(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    timeline_query.assert_not_awaited()
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == STATE_UNKNOWN
+
+
+async def test_timeline_action_requires_admin_user(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    timeline_query: AsyncMock,
+) -> None:
+    """Reject non-admin requests and allow an administrator's valid request.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Entry targeted by the action.
+        timeline_query (AsyncMock): myAir timeline query double.
+    """
+    await _load(hass, config_entry)
+    timeline_query.return_value = _payload(
+        [
+            {
+                "date": _DATE,
+                "totalSecondsInApnea": 12,
+                "respiratoryEvents": [],
+                "therapyStatusEvents": [],
+            }
+        ]
+    )
+    admin_user = await hass.auth.async_create_user("Timeline Admin", group_ids=[GROUP_ID_ADMIN])
+    read_only_user = await hass.auth.async_create_user("Timeline Reader", group_ids=[GROUP_ID_USER])
+    call_data = {ATTR_CONFIG_ENTRY_ID: config_entry.entry_id, "date": _DATE}
+
+    with pytest.raises(Unauthorized):
+        await hass.services.async_call(
+            DOMAIN,
+            _ACTION,
+            call_data,
+            blocking=True,
+            return_response=True,
+            context=Context(user_id=read_only_user.id),
+        )
+    timeline_query.assert_not_awaited()
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        _ACTION,
+        call_data,
+        blocking=True,
+        return_response=True,
+        context=Context(user_id=admin_user.id),
+    )
+    assert response is not None
+    assert response["total_seconds_in_apnea"] == 12
+    timeline_query.assert_awaited_once()

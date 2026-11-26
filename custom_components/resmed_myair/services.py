@@ -76,9 +76,12 @@ def async_setup_services(hass: HomeAssistant) -> None:
             "events": [event.as_dict() for event in timeline.events],
         }
 
-    hass.services.async_register(
+    service.async_register_admin_service(
+        hass,
         DOMAIN,
         _TIMELINE_ACTION,
         get_nightly_therapy_timeline,
+        # The action validates its input in the handler. Core supports a null schema.
+        schema=None,  # type: ignore[arg-type]
         supports_response=SupportsResponse.ONLY,
     )
