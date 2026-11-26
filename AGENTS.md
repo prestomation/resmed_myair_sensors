@@ -18,36 +18,13 @@
 - Agents may create and use a repository-local venv at `./.venv` and should reference `./.venv/bin/python` when running commands.
 - Installing packages from repo manifests (e.g., `requirements-dev.txt`, `pyproject.toml`) into `./.venv` is allowed for running tests or local tooling; avoid unrelated network operations without explicit consent.
 
-## Project structure expectations
-
-- Keep code modular: separate files for entity types, services, and utilities.
-- Store constants in `const.py` and use a `config_flow.py` for configuration flows.
-
 ## Coding standards
 
-- Add typing annotations to all functions and classes (including return types).
-- Add or update docstrings for all files, classes and methods, including private methods and nested methods. Method docstrings must follow the Google Style.
-- Preserve existing comments and keep imports at the top of files.
-- Follow existing repository style; run `prek`.
+Read [coding standards](CODING_STANDARDS.md) when changing or reviewing code. It covers module boundaries, Python style, error handling, compatibility, and tests.
 
 ## Local tooling note
 
-- Use the repo's `prek` and `pytest` commands inside `./.venv`. You must always run these inside `./.venv`.
-- By default, run the full pytest suite. If running targeted tests, explain why.
-
-## Error handling & logging
-
-- Use Home Assistant's logging framework.
-- Catch specific exceptions (do not catch Exception directly).
-- Add robust error handling and clear debug/info logs.
 - If tests fail due to missing dev dependencies, either install them into `./.venv` (if allowed) or report exact `pip install` commands.
-
-## Testing
-
-- Use `pytest` and Home Assistant pytest helpers (e.g., `MockConfigEntry`).
-- Add typed, well-documented tests in `tests/` and use fixtures in `conftest.py`.
-- One test module per integration source file; achieve high coverage (target >= 80%).
-- Parameterize tests when appropriate; avoid duplicate test functions.
 
 ## PR & branch behavior
 
@@ -63,8 +40,16 @@
 
 - Use GitHub Actions for CI/CD where applicable.
 
-## Conventions for changes and documentation
+## Agent skills
 
-- When editing code, prefer fixing root causes over surface patches.
-- Keep changes minimal and consistent with the codebase style.
-- Add tests for any changed behavior and update documentation if needed.
+### Issue tracker
+
+Specs, tickets, and wayfinding maps use local Markdown under `.scratch/`. See [issue tracker](docs/agents/issue-tracker.md) when reading or publishing them.
+
+### Triage labels
+
+Use the five default triage labels. See [triage labels](docs/agents/triage-labels.md) when setting an issue's status.
+
+### Domain docs
+
+This repository uses a single glossary and ADR directory. See [domain docs](docs/agents/domain.md) before exploring the domain or proposing changes.
