@@ -527,7 +527,9 @@ async def test_time_in_apnea_rejects_timeline_from_replacement_device(
         entity_registry.async_update_entity(entity_id, disabled_by=None)
         assert await hass.config_entries.async_reload(config_entry.entry_id)
         await hass.async_block_till_done()
-        assert entity_registry.async_get(entity_id).device_id == device_id
+        reloaded_entity = entity_registry.async_get(entity_id)
+        assert reloaded_entity is not None
+        assert reloaded_entity.device_id == device_id
         registry_device = device_registry.async_get(device_id)
         assert registry_device is not None
         assert registry_device.manufacturer == "Original Manufacturer"
