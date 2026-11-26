@@ -1657,6 +1657,99 @@ async def test_get_sleep_records_uses_local_date_range(
     assert 'sleepRecords(startMonth: "2024-07-01", endMonth: "2024-07-31")' in query
 
 
+@pytest.mark.parametrize(("field", "status"), [("apneaIndex", 200), ("hypopneaIndex", 400)])
+async def test_sleep_record_query_falls_back_for_undefined_index(
+    config_na: MyAirConfig, session: MagicMock, field: str, status: int
+) -> None:
+    """Keep AHI available on endpoints that lack an index and probe again with a new client.
+
+    Args:
+        config_na (MyAirConfig): Credentials and region for the simulated client.
+        session (MagicMock): HTTP session returning the simulated AppSync responses.
+        field (str): Optional field rejected by the endpoint.
+        status (int): Status of the GraphQL validation response.
+    """
+    client = RESTClient(config_na, session)
+    client._graphql.country_code = "US"
+    undefined = make_mock_aiohttp_context_manager(
+        {
+            "errors": [
+                {
+                    "errorType": "ValidationError",
+                    "message": f"Validation error of type FieldUndefined: Field '{field}' "
+                    f"in type 'SleepRecord' is undefined @ 'getPatientWrapper/sleepRecords/items/{field}'",
+                }
+            ]
+        },
+        status=status,
+    )
+    record = {"startDate": "2026-11-25", "ahi": 1.3}
+    original = make_mock_aiohttp_context_manager(
+        {"data": {"getPatientWrapper": {"sleepRecords": {"items": [record]}}}}
+    )
+    expanded = make_mock_aiohttp_context_manager(
+        {
+            "data": {
+                "getPatientWrapper": {
+                    "sleepRecords": {"items": [{**record, "apneaIndex": 0, "hypopneaIndex": 1.2}]}
+                }
+            }
+        }
+    )
+    session.post.side_effect = [undefined, original, original, expanded]
+
+    for _ in range(2):
+        (sleep_record,) = await client.get_sleep_records()
+        assert sleep_record.native_value("ahi") == 1.3
+        assert "apneaIndex" not in sleep_record.raw
+        assert "hypopneaIndex" not in sleep_record.raw
+
+    reloaded_client = RESTClient(config_na, session)
+    reloaded_client._graphql.country_code = "US"
+    (sleep_record,) = await reloaded_client.get_sleep_records()
+    assert sleep_record.native_value("apneaIndex") == 0
+    assert sleep_record.native_value("hypopneaIndex") == 1.2
+    assert sleep_record.native_value("ahi") == 1.3
+
+    first_query, fallback_query, next_query, reloaded_query = (
+        request.kwargs["json"]["query"].split() for request in session.post.call_args_list
+    )
+    assert first_query == reloaded_query
+    assert fallback_query == next_query
+    assert [field for field in first_query if field not in {"apneaIndex", "hypopneaIndex"}] == (
+        fallback_query
+    )
+    assert {"ahi", "apneaIndex", "hypopneaIndex"} <= set(first_query)
+
+
+async def test_sleep_record_query_propagates_unrelated_graphql_error(
+    config_na: MyAirConfig, session: MagicMock
+) -> None:
+    """Keep errors from legacy Sleep Record fields on the normal error path.
+
+    Args:
+        config_na (MyAirConfig): Credentials and region for the simulated client.
+        session (MagicMock): HTTP session returning the simulated AppSync response.
+    """
+    client = RESTClient(config_na, session)
+    client._graphql.country_code = "US"
+    session.post.return_value = make_mock_aiohttp_context_manager(
+        {
+            "errors": [
+                {
+                    "errorType": "ValidationError",
+                    "message": "Validation error of type FieldUndefined: Field 'ahi' "
+                    "in type 'SleepRecord' is undefined @ 'getPatientWrapper/sleepRecords/items/ahi'",
+                }
+            ]
+        }
+    )
+
+    with pytest.raises(HttpProcessingError, match="Field 'ahi'"):
+        await client.get_sleep_records()
+    session.post.assert_called_once()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("mock_response", "match_msg"),

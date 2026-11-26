@@ -7,7 +7,10 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import logging
+from math import isfinite
 from typing import Any, Self
+
+from .const import SLEEP_RECORD_INDEX_FIELDS
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -170,15 +173,23 @@ class MyAirSleepRecord:
         )
 
     def native_value(self, key: str) -> Any | None:
-        """Read a sensor value from the original sleep-record payload.
+        """Read a sensor value, validating the optional respiratory indexes.
 
         Args:
             key (str): GraphQL field name used by the sensor description.
 
         Returns:
-            Any | None: Raw payload value, or ``None`` when the key is absent.
+            Any | None: Reported value, or ``None`` when absent or an invalid index.
         """
-        return self.raw.get(key)
+        value = self.raw.get(key)
+        if key in SLEEP_RECORD_INDEX_FIELDS and (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or (isinstance(value, float) and not isfinite(value))
+            or value < 0
+        ):
+            return None
+        return value
 
 
 @dataclass(frozen=True, slots=True)

@@ -34,6 +34,8 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
 ## Sensors
 
 1. CPAP AHI Events Per Hour
+1. CPAP Apnea Index and CPAP Hypopnea Index
+    * Each sensor shows events per hour from the same Sleep Record as AHI. Both are disabled by default. Enable either sensor from the CPAP device page in Home Assistant.
 1. CPAP Usage Minutes
 1. CPAP Mask On/Off Count
 1. CPAP Current Data Date

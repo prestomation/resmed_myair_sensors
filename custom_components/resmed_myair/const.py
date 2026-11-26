@@ -50,12 +50,26 @@ KEYS_TO_REDACT: list[str] = [
     "Username",
 ]
 
+SLEEP_RECORD_INDEX_FIELDS = ("apneaIndex", "hypopneaIndex")
+
 # Our sensor class will prepend the serial number to the key
 # These sensors pass data directly from my air
 SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP AHI Events Per Hour": SensorEntityDescription(
         key="ahi",
         state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "CPAP Apnea Index": SensorEntityDescription(
+        key="apneaIndex",
+        native_unit_of_measurement="events/h",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    "CPAP Hypopnea Index": SensorEntityDescription(
+        key="hypopneaIndex",
+        native_unit_of_measurement="events/h",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
     ),
     "CPAP Usage Minutes": SensorEntityDescription(
         key="totalUsage",

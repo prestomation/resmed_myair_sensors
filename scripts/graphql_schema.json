@@ -106,7 +106,10 @@
         "sleepRecordPatientId": "String",
         "__typename": "String"
       },
-      "type_name_source": "validation probe"
+      "type_name_source": "validation probe",
+      "notes": [
+        "apneaIndex and hypopneaIndex returned numeric values in a live query. Their declared scalar types and nullability have not been verified."
+      ]
     }
   },
   "known_operations": {
@@ -114,7 +117,10 @@
       "query": "query getPatientWrapper { getPatientWrapper { masks { maskCode } fgDevices { serialNumber localizedName deviceSeries deviceFamily lastSleepDataReportTime fgDeviceManufacturerName fgDevicePatientId } } }"
     },
     "GetPatientSleepRecords": {
-      "query": "query GetPatientSleepRecords { getPatientWrapper { patient { firstName } sleepRecords(startMonth: \"YYYY-MM-DD\", endMonth: \"YYYY-MM-DD\") { items { startDate totalUsage sleepScore usageScore ahiScore maskScore leakScore ahi maskPairCount leakPercentile sleepRecordPatientId __typename } __typename } __typename } }"
+      "query": "query GetPatientSleepRecords { getPatientWrapper { patient { firstName } sleepRecords(startMonth: \"YYYY-MM-DD\", endMonth: \"YYYY-MM-DD\") { items { startDate totalUsage sleepScore usageScore ahiScore maskScore leakScore ahi apneaIndex hypopneaIndex maskPairCount leakPercentile sleepRecordPatientId __typename } __typename } __typename } }",
+      "notes": [
+        "If validation rejects either index field, the client uses the same query with both index fields omitted."
+      ]
     }
   }
 }
