@@ -11,7 +11,7 @@ import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.graphql import MyAirGraphQLClient
-from custom_components.resmed_myair.client.myair_client import ServiceUnavailableError
+from custom_components.resmed_myair.client.myair_client import ParsingError, ServiceUnavailableError
 from custom_components.resmed_myair.client.rest_client import RESTClient
 from custom_components.resmed_myair.const import (
     CONF_PASSWORD,
@@ -296,3 +296,77 @@ async def test_time_in_apnea_stays_aligned_with_daily_sensors(
     ahi_id = registry.async_get_entity_id("sensor", DOMAIN, f"{DOMAIN}_{_SERIAL}_ahi")
     assert hass.states.get(date_id).state == "2026-01-09"
     assert float(hass.states.get(ahi_id).state) == 0
+
+
+async def test_time_in_apnea_uses_configured_serial_when_initial_device_is_missing(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    timeline_query: AsyncMock,
+) -> None:
+    """Keep the entity registered and poll its timeline after device recovery.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Entry with a configured device serial.
+        timeline_query (AsyncMock): myAir timeline query double.
+    """
+    timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 8}])
+    with patch.object(
+        RESTClient,
+        "get_user_device_data",
+        side_effect=[
+            ParsingError("Temporary device parsing failure"),
+            MyAirDevice.from_api({"serialNumber": _SERIAL}),
+        ],
+    ):
+        entity_id = await _load(hass, config_entry)
+        assert er.async_get(hass).async_get(entity_id).unique_id == (
+            f"{DOMAIN}_{_SERIAL}_{TIME_IN_APNEA_KEY}"
+        )
+        er.async_get(hass).async_update_entity(entity_id, disabled_by=None)
+        assert await hass.config_entries.async_reload(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get(entity_id)
+    assert state is not None
+    timeline_query.assert_awaited_once()
+    assert float(state.state) == 8
+
+
+async def test_time_in_apnea_keeps_legacy_sensor_identity_without_device_data(
+    hass: HomeAssistant,
+    timeline_query: AsyncMock,
+    sleep_records: list[MyAirSleepRecord],
+) -> None:
+    """Continue polling a legacy entry after a later device-only failure.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        timeline_query (AsyncMock): myAir timeline query double.
+        sleep_records (list[MyAirSleepRecord]): Records returned during refresh.
+    """
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_USER_NAME: "test@example.com", CONF_PASSWORD: "dummy", CONF_REGION: REGION_NA},
+        version=2,
+    )
+    timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 8}])
+    with patch.object(
+        RESTClient,
+        "get_user_device_data",
+        side_effect=[
+            MyAirDevice.from_api({"serialNumber": _SERIAL}),
+            MyAirDevice.from_api({"serialNumber": _SERIAL}),
+            ParsingError("Temporary device parsing failure"),
+        ],
+    ):
+        entity_id = await _load(hass, config_entry)
+        er.async_get(hass).async_update_entity(entity_id, disabled_by=None)
+        assert await hass.config_entries.async_reload(config_entry.entry_id)
+        await hass.async_block_till_done()
+        await config_entry.runtime_data.async_refresh()
+
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert timeline_query.await_count == 2
+    assert float(state.state) == 8

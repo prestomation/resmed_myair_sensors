@@ -1499,6 +1499,25 @@ async def test_gql_query_graphql_error(config_na: MyAirConfig, session: MagicMoc
         await client._gql_query("op", "query")
 
 
+async def test_timeline_request_rejects_malformed_graphql_errors(
+    config_na: MyAirConfig, session: MagicMock
+) -> None:
+    """Convert an invalid errors member to a failure the timeline can isolate.
+
+    Args:
+        config_na (MyAirConfig): Configuration used by the timeline client.
+        session (MagicMock): HTTP session supplying the malformed response.
+    """
+    client = RESTClient(config_na, session)
+    client._graphql.country_code = "US"
+    mock_res = MagicMock(spec=ClientResponse)
+    mock_res.json = AsyncMock(return_value={"errors": ""})
+    session.post.return_value = make_mock_aiohttp_context_manager(mock_res)
+
+    with pytest.raises(ParsingError, match="Invalid myAir GraphQL errors"):
+        await client.get_nightly_therapy_timeline(dt.date(2026, 1, 8))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("method_name", "mock_response", "expected"),

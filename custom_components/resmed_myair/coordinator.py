@@ -61,6 +61,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         _LOGGER.info("Initializing DataUpdateCoordinator for ResMed myAir")
         self.myair_client = myair_client
         self._client_lock = Lock()
+        self._time_in_apnea_serial: str | None = config_entry.unique_id
         super().__init__(
             hass=hass,
             config_entry=config_entry,
@@ -160,6 +161,8 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
             )
 
         data = MyAirCoordinatorData(device=device, sleep_records=sleep_records)
+        if device is not None and self._time_in_apnea_serial is None:
+            self._time_in_apnea_serial = device.serial_number
         latest = data.latest_sleep_record
         if latest and latest.start_date and self._time_in_apnea_enabled(device):
             try:
@@ -185,7 +188,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         """
         if self.config_entry is None:
             return False
-        serial = (device.serial_number if device else None) or self.config_entry.unique_id
+        serial = self._time_in_apnea_serial or (device.serial_number if device else None)
         if not serial:
             return False
         registry = er.async_get(self.hass)

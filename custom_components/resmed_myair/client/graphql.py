@@ -70,7 +70,7 @@ class MyAirGraphQLClient:
             dict[str, Any]: Decoded GraphQL response payload.
 
         Raises:
-            ParsingError: The endpoint did not return a JSON object.
+            ParsingError: The endpoint returned invalid JSON or a malformed GraphQL response.
         """
         headers = self._headers()
         json_query: dict[str, Any] = {
@@ -95,7 +95,10 @@ class MyAirGraphQLClient:
             if not isinstance(records_dict, dict):
                 raise ParsingError("Invalid myAir GraphQL response")
             _LOGGER.debug("[gql_query] records_dict: %s", redact_dict(records_dict))
-            if records_dict.get("errors") != []:
+            errors = records_dict.get("errors", [])
+            if not isinstance(errors, list):
+                raise ParsingError("Invalid myAir GraphQL errors")
+            if errors:
                 await MyAirAuthSession.resmed_response_error_check(
                     "gql_query", records_res, records_dict, initial
                 )
