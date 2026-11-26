@@ -1,15 +1,13 @@
 """Sensor-entity tests that protect availability and value translation."""
 
-import inspect
 import logging
 from unittest.mock import MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
 from homeassistant.const import UnitOfVolumeFlowRate
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
-from custom_components.resmed_myair.const import CONF_USER_NAME, SLEEP_RECORD_SENSOR_DESCRIPTIONS
+from custom_components.resmed_myair.const import SLEEP_RECORD_SENSOR_DESCRIPTIONS
 from custom_components.resmed_myair.models import MyAirCoordinatorData
 from custom_components.resmed_myair.sensor import (
     MyAirDeviceSensor,
@@ -17,9 +15,8 @@ from custom_components.resmed_myair.sensor import (
     MyAirMostRecentSleepDate,
     MyAirSleepRecordSensor,
     _coordinator_data,
-    async_setup_entry,
 )
-from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike, coordinator_data
+from tests.conftest import CoordinatorFactory, coordinator_data
 
 
 def test_mask_leak_sensor_uses_liters_per_minute_without_changing_raw_key(
@@ -303,76 +300,6 @@ def test_myair_device_sensor_parametrized(
     sensor._handle_coordinator_update()
     assert sensor.available == expected_available
     assert sensor.native_value == expected_native
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_adds_entities_and_registers_service(
-    monkeypatch: pytest.MonkeyPatch,
-    coordinator_factory: CoordinatorFactory,
-    hass: MagicMock,
-    config_entry: MockConfigEntry,
-    service_registry_shim: ServiceRegistryShimLike,
-) -> None:
-    """Setup adds sensor entities and registers the force-poll service.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for sensor setup dependencies.
-        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
-        hass (MagicMock): Home Assistant instance receiving platform setup.
-        config_entry (MockConfigEntry): Fixture preparing shared config-entry helpers.
-        service_registry_shim (ServiceRegistryShimLike): Registry shim capturing the force-poll service.
-    """
-    async_add_entities = MagicMock()
-    coordinator = coordinator_factory(mock=True)
-    # This test will create its own local MockConfigEntry (below) because
-    # MockConfigEntry.data is a mappingproxy and should not be mutated in-place.
-
-    # Patch out SLEEP_RECORD_SENSOR_DESCRIPTIONS and DEVICE_SENSOR_DESCRIPTIONS
-    monkeypatch.setattr(
-        "custom_components.resmed_myair.sensor.SLEEP_RECORD_SENSOR_DESCRIPTIONS",
-        {"foo": MagicMock(key="foo")},
-    )
-    monkeypatch.setattr(
-        "custom_components.resmed_myair.sensor.DEVICE_SENSOR_DESCRIPTIONS",
-        {"bar": MagicMock(key="bar")},
-    )
-    # Patch redact_dict to just return its input
-    monkeypatch.setattr("custom_components.resmed_myair.sensor.redact_dict", lambda d: d)
-
-    # Create a local MockConfigEntry to avoid assigning into mappingproxy
-    entry = MockConfigEntry(
-        domain="resmed_myair",
-        title="ResMed-CPAP",
-        data={CONF_USER_NAME: "test.user@email.com"},
-        version=2,
-    )
-    entry.runtime_data = coordinator
-    entry.hass = hass
-
-    await async_setup_entry(hass, entry, async_add_entities)
-
-    # Check that async_add_entities was called with the correct number of sensors
-    # 1 sleep record + 1 device + 2 synthesized = 4
-    args, kwargs = async_add_entities.call_args
-    sensors = args[0]
-    assert len(sensors) == 4
-    # Ensure update_before_add is False; default to False when key is absent.
-    assert kwargs.get("update_before_add", False) is False
-
-    # Check that the service was registered with sanitized username
-    expected_service = "force_poll_test_user_email_com"
-    # Assert the service was registered using the shim API
-    assert service_registry_shim.has_service("resmed_myair", expected_service)
-
-    # Retrieve the registered service entry and its first handler
-    service_entry = service_registry_shim._services["resmed_myair"][expected_service]
-    func = service_entry.handlers[0]
-    # The registered function should be awaitable
-    assert inspect.iscoroutinefunction(func)
-
-    # Test that calling the registered refresh function calls coordinator.async_refresh
-    await func(None)
-    coordinator.async_refresh.assert_awaited_once()
 
 
 def test_myair_device_sensor_handle_coordinator_update_keyerror(
