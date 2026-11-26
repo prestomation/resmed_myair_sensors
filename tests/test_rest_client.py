@@ -1,13 +1,18 @@
 """REST client tests that protect auth, GraphQL, and parsing behavior."""
 
+import asyncio
 import datetime as dt
+from http import HTTPStatus
+import json
 import logging
-from typing import Never
+from types import SimpleNamespace
+from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
-from aiohttp import ClientResponse
+from aiohttp import ClientResponse, ClientResponseError, ClientSession
 from aiohttp.http_exceptions import HttpProcessingError
-from multidict import CIMultiDict
+from homeassistant.helpers.aiohttp_client import HassClientResponse
+from multidict import CIMultiDict, CIMultiDictProxy
 import pytest
 
 from custom_components.resmed_myair.client import rest_client as rest_client_module
@@ -1655,6 +1660,215 @@ async def test_get_sleep_records_uses_local_date_range(
     gql_query.assert_awaited_once()
     query = gql_query.await_args.args[1]
     assert 'sleepRecords(startMonth: "2024-07-01", endMonth: "2024-07-31")' in query
+
+
+@pytest.mark.parametrize(("field", "status"), [("apneaIndex", 200), ("hypopneaIndex", 400)])
+async def test_sleep_record_query_falls_back_for_undefined_index(
+    config_na: MyAirConfig, session: MagicMock, field: str, status: int
+) -> None:
+    """Keep AHI available on endpoints that lack an index and probe again with a new client.
+
+    Args:
+        config_na (MyAirConfig): Credentials and region for the simulated client.
+        session (MagicMock): HTTP session returning the simulated AppSync responses.
+        field (str): Optional field rejected by the endpoint.
+        status (int): Status of the GraphQL validation response.
+    """
+    client = RESTClient(config_na, session)
+    client._graphql.country_code = "US"
+    undefined = make_mock_aiohttp_context_manager(
+        {
+            "errors": [
+                {
+                    "errorType": "ValidationError",
+                    "message": f"Validation error of type FieldUndefined: Field '{field}' "
+                    f"in type 'SleepRecord' is undefined @ 'getPatientWrapper/sleepRecords/items/{field}'",
+                }
+            ]
+        },
+        status=status,
+    )
+    record = {"startDate": "2026-11-25", "ahi": 1.3}
+    original = make_mock_aiohttp_context_manager(
+        {"data": {"getPatientWrapper": {"sleepRecords": {"items": [record]}}}}
+    )
+    expanded = make_mock_aiohttp_context_manager(
+        {
+            "data": {
+                "getPatientWrapper": {
+                    "sleepRecords": {"items": [{**record, "apneaIndex": 0, "hypopneaIndex": 1.2}]}
+                }
+            }
+        }
+    )
+    session.post.side_effect = [undefined, original, original, expanded]
+
+    for _ in range(2):
+        (sleep_record,) = await client.get_sleep_records()
+        assert sleep_record.native_value("ahi") == 1.3
+        assert "apneaIndex" not in sleep_record.raw
+        assert "hypopneaIndex" not in sleep_record.raw
+
+    reloaded_client = RESTClient(config_na, session)
+    reloaded_client._graphql.country_code = "US"
+    (sleep_record,) = await reloaded_client.get_sleep_records()
+    assert sleep_record.native_value("apneaIndex") == 0
+    assert sleep_record.native_value("hypopneaIndex") == 1.2
+    assert sleep_record.native_value("ahi") == 1.3
+
+    first_query, fallback_query, next_query, reloaded_query = (
+        request.kwargs["json"]["query"].split() for request in session.post.call_args_list
+    )
+    index_fields = {"apneaIndex", "hypopneaIndex"}
+    assert {"ahi", *index_fields} <= set(first_query)
+    assert [field for field in first_query if field not in index_fields] == fallback_query
+    assert "ahi" in next_query and index_fields.isdisjoint(next_query)
+    assert {"ahi", *index_fields} <= set(reloaded_query)
+
+
+@pytest.mark.parametrize("use_callable_policy", [False, True])
+async def test_sleep_record_http_400_respects_session_status_policy(
+    config_na: MyAirConfig, use_callable_policy: bool
+) -> None:
+    """Inspect only index validation errors before aiohttp applies its status policy.
+
+    Args:
+        config_na (MyAirConfig): Credentials and region for the simulated client.
+        use_callable_policy (bool): Whether the session status policy is callable.
+    """
+    calls: list[str] = []
+    index_rejection = {
+        "errors": [
+            {
+                "errorType": "ValidationError",
+                "message": "Validation error of type FieldUndefined: Field 'apneaIndex' "
+                "in type 'SleepRecord' is undefined @ 'getPatientWrapper/sleepRecords/items/apneaIndex'",
+            }
+        ]
+    }
+    unrelated_error = {"errors": [{"message": "myAir is unavailable"}]}
+    response_body: dict[str, object] | list[object] | None = index_rejection
+    response_bytes: bytes | None = None
+    status_policy_calls: list[ClientResponse] = []
+
+    async def status_policy(response: ClientResponse) -> None:
+        """Apply aiohttp's normal status check and record the response.
+
+        Args:
+            response (ClientResponse): Response whose status is being checked.
+        """
+        status_policy_calls.append(response)
+        response.raise_for_status()
+
+    async def graphql(request: Any, handler: Any) -> ClientResponse:
+        """Return an in-memory response through aiohttp's real request path.
+
+        Args:
+            request (Any): Aiohttp request intercepted by the test middleware.
+            handler (Any): Next middleware or request handler in the chain.
+
+        Returns:
+            ClientResponse: Simulated GraphQL response with its real HTTP status.
+        """
+        query = json.loads(await request.body.as_bytes())["query"]
+        calls.append(query)
+        if "apneaIndex" in query:
+            status = 400
+            body = response_body
+        else:
+            status = 200
+            body = {
+                "data": {
+                    "getPatientWrapper": {
+                        "sleepRecords": {"items": [{"startDate": "2026-11-25", "ahi": 1.3}]}
+                    }
+                }
+            }
+        response = request.response_class(
+            request.method,
+            request.url,
+            writer=None,
+            continue100=None,
+            timer=None,
+            request_info=request.request_info,
+            traces=[],
+            loop=asyncio.get_running_loop(),
+            session=http_session,
+            stream_writer=SimpleNamespace(output_size=0),
+        )
+        response.status = status
+        response.reason = HTTPStatus(status).phrase
+        response._headers = CIMultiDictProxy(CIMultiDict({"Content-Type": "application/json"}))
+        response._body = response_bytes if response_bytes is not None else json.dumps(body).encode()
+        return response
+
+    async with ClientSession(
+        raise_for_status=status_policy if use_callable_policy else True,
+        response_class=HassClientResponse,
+        middlewares=[graphql],
+    ) as http_session:
+        client = RESTClient(config_na, http_session)
+        client._graphql.country_code = "US"
+
+        (sleep_record,) = await client.get_sleep_records()
+        assert sleep_record.native_value("ahi") == 1.3
+        assert len(calls) == 2
+        assert "apneaIndex" in calls[0]
+        assert "apneaIndex" not in calls[1]
+
+        response_body = unrelated_error
+        next_client = RESTClient(config_na, http_session)
+        next_client._graphql.country_code = "US"
+        with pytest.raises(ClientResponseError) as error:
+            await next_client.get_sleep_records()
+        assert error.value.status == 400
+        assert len(calls) == 3
+
+        for body, raw_body in (([], None), (None, b"{")):
+            response_body = body
+            response_bytes = raw_body
+            with pytest.raises(ClientResponseError) as error:
+                await next_client.get_sleep_records()
+            assert error.value.status == 400
+
+        assert len(calls) == 5
+        if use_callable_policy:
+            assert [response.status for response in status_policy_calls] == [
+                HTTPStatus.OK,
+                HTTPStatus.BAD_REQUEST,
+                HTTPStatus.BAD_REQUEST,
+                HTTPStatus.BAD_REQUEST,
+            ]
+        else:
+            assert not status_policy_calls
+
+
+async def test_sleep_record_query_propagates_unrelated_graphql_error(
+    config_na: MyAirConfig, session: MagicMock
+) -> None:
+    """Keep errors from legacy Sleep Record fields on the normal error path.
+
+    Args:
+        config_na (MyAirConfig): Credentials and region for the simulated client.
+        session (MagicMock): HTTP session returning the simulated AppSync response.
+    """
+    client = RESTClient(config_na, session)
+    client._graphql.country_code = "US"
+    session.post.return_value = make_mock_aiohttp_context_manager(
+        {
+            "errors": [
+                {
+                    "errorType": "ValidationError",
+                    "message": "Validation error of type FieldUndefined: Field 'ahi' "
+                    "in type 'SleepRecord' is undefined @ 'getPatientWrapper/sleepRecords/items/ahi'",
+                }
+            ]
+        }
+    )
+
+    with pytest.raises(HttpProcessingError, match="Field 'ahi'"):
+        await client.get_sleep_records()
+    session.post.assert_called_once()
 
 
 @pytest.mark.asyncio

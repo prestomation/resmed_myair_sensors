@@ -13,7 +13,13 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DEVICE_SENSOR_DESCRIPTIONS, DOMAIN, SLEEP_RECORD_SENSOR_DESCRIPTIONS, VERSION
+from .const import (
+    DEVICE_SENSOR_DESCRIPTIONS,
+    DOMAIN,
+    SLEEP_RECORD_INDEX_FIELDS,
+    SLEEP_RECORD_SENSOR_DESCRIPTIONS,
+    VERSION,
+)
 from .coordinator import MyAirDataUpdateCoordinator
 from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
 from .redaction import redact_dict
@@ -183,7 +189,10 @@ class MyAirRawSensor(MyAirBaseSensor):
             value: Any | None = None
             self._available = False
         elif self.sensor_key not in payload.raw:
-            _LOGGER.error("Unable to parse %s. %s", self._parse_error_source, self.sensor_key)
+            log_missing = (
+                _LOGGER.debug if self.sensor_key in SLEEP_RECORD_INDEX_FIELDS else _LOGGER.error
+            )
+            log_missing("Unable to parse %s. %s", self._parse_error_source, self.sensor_key)
             value = None
             self._available = False
         else:

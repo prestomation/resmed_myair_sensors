@@ -1,14 +1,39 @@
 """Sensor-entity tests that protect availability and value translation."""
 
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
-from homeassistant.const import UnitOfVolumeFlowRate
+from homeassistant.components.sensor import (
+    ATTR_STATE_CLASS,
+    SensorDeviceClass,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import (
+    ATTR_UNIT_OF_MEASUREMENT,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    UnitOfVolumeFlowRate,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 import pytest
+from pytest_homeassistant.common import MockConfigEntry
 
-from custom_components.resmed_myair.const import SLEEP_RECORD_SENSOR_DESCRIPTIONS
-from custom_components.resmed_myair.models import MyAirCoordinatorData
+from custom_components.resmed_myair.client.rest_client import RESTClient
+from custom_components.resmed_myair.const import (
+    CONF_PASSWORD,
+    CONF_REGION,
+    CONF_USER_NAME,
+    DOMAIN,
+    REGION_NA,
+    SLEEP_RECORD_SENSOR_DESCRIPTIONS,
+)
+from custom_components.resmed_myair.models import (
+    MyAirCoordinatorData,
+    MyAirDevice,
+    MyAirSleepRecord,
+)
 from custom_components.resmed_myair.sensor import (
     MyAirDeviceSensor,
     MyAirFriendlyUsageTime,
@@ -17,6 +42,124 @@ from custom_components.resmed_myair.sensor import (
     _coordinator_data,
 )
 from tests.conftest import CoordinatorFactory, coordinator_data
+
+
+@pytest.fixture(autouse=True)
+def configure_hass(enable_custom_integrations: None) -> None:
+    """Use Home Assistant's real config-entry manager for sensor setup tests.
+
+    Args:
+        enable_custom_integrations (None): Enable loading the integration under test.
+    """
+
+
+async def test_nightly_indexes_are_opt_in_and_follow_the_latest_sleep_record(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opt-in indexes report independent readings alongside the existing AHI sensor.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance loading the integration.
+        monkeypatch (pytest.MonkeyPatch): Replace only myAir network operations.
+    """
+    record_fields = {"totalUsage": 120, "sleepScore": 95, "maskPairCount": 2, "leakPercentile": 4}
+    older_record = MyAirSleepRecord.from_api(
+        {**record_fields, "startDate": "2024-06-01", "apneaIndex": 8, "hypopneaIndex": 9, "ahi": 17}
+    )
+    current_record = {**record_fields, "startDate": "2024-06-02", "ahi": 1.8}
+    record_requests = AsyncMock(
+        return_value=[
+            MyAirSleepRecord.from_api({**current_record, "apneaIndex": 0.25, "hypopneaIndex": 0.5}),
+            older_record,
+        ]
+    )
+    monkeypatch.setattr(RESTClient, "connect", AsyncMock(return_value="token"))
+    monkeypatch.setattr(RESTClient, "get_sleep_records", record_requests)
+    monkeypatch.setattr(
+        RESTClient,
+        "get_user_device_data",
+        AsyncMock(
+            return_value=MyAirDevice.from_api(
+                {"serialNumber": "SN123", "lastSleepDataReportTime": "2024-06-02T12:00:00+00:00"}
+            )
+        ),
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_USER_NAME: "test@example.com",
+            CONF_PASSWORD: "password",
+            CONF_REGION: REGION_NA,
+        },
+        version=2,
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    ahi_id = registry.async_get_entity_id("sensor", DOMAIN, "resmed_myair_SN123_ahi")
+    assert ahi_id is not None
+    ahi_entry = registry.async_get(ahi_id)
+    assert ahi_entry is not None and ahi_entry.device_id is not None
+    ahi = hass.states.get(ahi_id)
+    assert ahi is not None and ahi.state == "1.8"
+    assert ATTR_UNIT_OF_MEASUREMENT not in ahi.attributes
+
+    index_ids = []
+    for field, name in (
+        ("apneaIndex", "CPAP Apnea Index"),
+        ("hypopneaIndex", "CPAP Hypopnea Index"),
+    ):
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"resmed_myair_SN123_{field}")
+        assert entity_id is not None
+        entity = registry.async_get(entity_id)
+        assert entity is not None
+        assert entity.original_name == name
+        assert entity.device_id == ahi_entry.device_id
+        assert entity.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        assert hass.states.get(entity_id) is None
+        registry.async_update_entity(entity_id, disabled_by=None)
+        index_ids.append(entity_id)
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    for entity_id, expected in zip(index_ids, ("0.25", "0.5"), strict=True):
+        state = hass.states.get(entity_id)
+        assert state is not None and state.state == expected
+        assert state.attributes[ATTR_UNIT_OF_MEASUREMENT] == "events/h"
+        assert state.attributes[ATTR_STATE_CLASS] == SensorStateClass.MEASUREMENT
+
+    for records, expected_states in (
+        (
+            [
+                MyAirSleepRecord.from_api(
+                    {**current_record, "totalUsage": 0, "apneaIndex": 0, "hypopneaIndex": None}
+                ),
+                older_record,
+            ],
+            ("0", STATE_UNKNOWN, "1.8"),
+        ),
+        (
+            [MyAirSleepRecord.from_api({**current_record, "hypopneaIndex": 0.75}), older_record],
+            (STATE_UNAVAILABLE, "0.75", "1.8"),
+        ),
+        (
+            [
+                MyAirSleepRecord.from_api(
+                    {**current_record, "apneaIndex": 0.125, "hypopneaIndex": True}
+                )
+            ],
+            ("0.125", STATE_UNKNOWN, "1.8"),
+        ),
+        ([], (STATE_UNAVAILABLE,) * 3),
+    ):
+        record_requests.return_value = records
+        await hass.services.async_call(DOMAIN, "force_poll_test_example_com", blocking=True)
+        for entity_id, expected in zip([*index_ids, ahi_id], expected_states, strict=True):
+            state = hass.states.get(entity_id)
+            assert state is not None and state.state == expected
 
 
 def test_mask_leak_sensor_uses_liters_per_minute_without_changing_raw_key(

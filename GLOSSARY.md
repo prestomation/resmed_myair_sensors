@@ -37,6 +37,12 @@ The total duration of CPAP use reported for a sleep record.
 **Apnea-Hypopnea Index (AHI)**:
 The rate of apnea and hypopnea events per hour reported by myAir for a sleep record.
 
+**Apnea Index**:
+The rate of apnea events per hour of CPAP therapy reported by myAir for a Sleep Record.
+
+**Hypopnea Index**:
+The rate of hypopnea events per hour of CPAP therapy reported by myAir for a Sleep Record.
+
 **Mask On/Off Count**:
 The number of mask on/off pairs reported by myAir for a sleep record.
 
