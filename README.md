@@ -42,10 +42,16 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
     * The date assigned by myAir to the latest sleep record, including a record with zero usage.
 1. CPAP Mask Leak
 1. CPAP Total myAir Score
+1. CPAP myAir Usage Hours Score (up to 70 points)
+1. CPAP myAir Mask Seal Score (up to 20 points)
+1. CPAP myAir Events per Hour Score (up to 5 points)
+1. CPAP myAir Mask On/Off Score (up to 5 points)
 1. CPAP Sleep Data Last Collected
     * The CPAP device’s last sleep data report time, as shown in myAir.
 1. Most Recent Sleep Date
     * The latest sleep record date with positive CPAP usage. It can precede Current Data Date when a newer record has zero or unavailable usage.
+
+The four score component sensors are disabled by default. You can enable them individually from the CPAP device page in Home Assistant. Like the total score, they report values for the Current Data Date.
 
 ## Services
 

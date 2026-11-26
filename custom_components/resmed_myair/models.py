@@ -10,7 +10,7 @@ import logging
 from math import isfinite
 from typing import Any, Self
 
-from .const import SLEEP_RECORD_INDEX_FIELDS
+from .const import SCORE_COMPONENT_NAMES, SLEEP_RECORD_INDEX_FIELDS
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -173,13 +173,13 @@ class MyAirSleepRecord:
         )
 
     def native_value(self, key: str) -> Any | None:
-        """Read a sensor value, validating the optional respiratory indexes.
+        """Read a sensor value, validating respiratory indexes and score components.
 
         Args:
             key (str): GraphQL field name used by the sensor description.
 
         Returns:
-            Any | None: Reported value, or ``None`` when absent or an invalid index.
+            Any | None: Reported value, or ``None`` when absent or invalid.
         """
         value = self.raw.get(key)
         if key in SLEEP_RECORD_INDEX_FIELDS and (
@@ -188,6 +188,8 @@ class MyAirSleepRecord:
             or (isinstance(value, float) and not isfinite(value))
             or value < 0
         ):
+            return None
+        if key in SCORE_COMPONENT_NAMES and (not isinstance(value, int) or isinstance(value, bool)):
             return None
         return value
 
