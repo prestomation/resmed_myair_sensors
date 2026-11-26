@@ -6,6 +6,8 @@ from datetime import date
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 from custom_components.resmed_myair.models import (
     MyAirCoordinatorData,
     MyAirDevice,
@@ -74,6 +76,10 @@ def test_build_default_payload_matches_readme_sensor_fields() -> None:
                     "startDate": "2026-05-30",
                     "totalUsage": 421,
                     "sleepScore": 92,
+                    "usageScore": 70,
+                    "leakScore": 15,
+                    "ahiScore": 3,
+                    "maskScore": 4,
                     "ahi": 1.2,
                     "maskPairCount": 3,
                     "leakPercentile": 8,
@@ -100,11 +106,43 @@ def test_build_default_payload_matches_readme_sensor_fields() -> None:
             "cpap_current_data_date": "2026-05-30",
             "cpap_mask_leak_percent": 8,
             "cpap_total_myair_score": 92,
+            "cpap_myair_usage_hours_score": 70,
+            "cpap_myair_mask_seal_score": 15,
+            "cpap_myair_events_per_hour_score": 3,
+            "cpap_myair_mask_on_off_score": 4,
             "cpap_sleep_data_last_collected": "2026-05-30T11:22:33Z",
             "most_recent_sleep_date": "2026-05-30",
         },
         "record_count": 2,
     }
+
+
+@pytest.mark.parametrize(
+    ("record", "usage_score"),
+    [
+        (None, None),
+        ({"startDate": "2026-05-30", "usageScore": 0, "ahiScore": None, "maskScore": True}, 0),
+    ],
+    ids=["no-record", "zero-and-unavailable-scores"],
+)
+def test_build_default_payload_preserves_zero_and_reports_missing_scores(
+    record: dict[str, object] | None, usage_score: int | None
+) -> None:
+    """Distinguish reported zeroes from unavailable score components.
+
+    Args:
+        record (dict[str, object] | None): Optional myAir sleep record for the output.
+        usage_score (int | None): Expected score for Usage Hours.
+    """
+    records = (MyAirSleepRecord.from_api(record),) if record is not None else ()
+    payload = live_smoke_test.build_default_payload(
+        MyAirCoordinatorData(sleep_records=records), status="SUCCESS", region="NA"
+    )
+
+    assert payload["sensors"]["cpap_myair_usage_hours_score"] == usage_score
+    assert payload["sensors"]["cpap_myair_mask_seal_score"] is None
+    assert payload["sensors"]["cpap_myair_events_per_hour_score"] is None
+    assert payload["sensors"]["cpap_myair_mask_on_off_score"] is None
 
 
 def test_write_json_payload_serializes_dates(tmp_path: Path) -> None:

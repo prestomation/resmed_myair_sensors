@@ -50,6 +50,13 @@ KEYS_TO_REDACT: list[str] = [
     "Username",
 ]
 
+SCORE_COMPONENT_NAMES: Mapping[str, str] = {
+    "usageScore": "CPAP myAir Usage Hours Score",
+    "leakScore": "CPAP myAir Mask Seal Score",
+    "ahiScore": "CPAP myAir Events per Hour Score",
+    "maskScore": "CPAP myAir Mask On/Off Score",
+}
+
 # Our sensor class will prepend the serial number to the key
 # These sensors pass data directly from my air
 SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
@@ -83,6 +90,14 @@ SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP Total myAir Score": SensorEntityDescription(
         key="sleepScore", state_class=SensorStateClass.MEASUREMENT
     ),
+    **{
+        name: SensorEntityDescription(
+            key=key,
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_registry_enabled_default=False,
+        )
+        for key, name in SCORE_COMPONENT_NAMES.items()
+    },
 }
 
 DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {

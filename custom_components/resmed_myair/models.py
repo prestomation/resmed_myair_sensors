@@ -9,6 +9,8 @@ from decimal import Decimal, InvalidOperation
 import logging
 from typing import Any, Self
 
+from .const import SCORE_COMPONENT_NAMES
+
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
@@ -170,15 +172,18 @@ class MyAirSleepRecord:
         )
 
     def native_value(self, key: str) -> Any | None:
-        """Read a sensor value from the original sleep-record payload.
+        """Read a sensor value, validating myAir Score Components as integers.
 
         Args:
             key (str): GraphQL field name used by the sensor description.
 
         Returns:
-            Any | None: Raw payload value, or ``None`` when the key is absent.
+            Any | None: Payload value, or ``None`` when absent or an invalid score component.
         """
-        return self.raw.get(key)
+        value = self.raw.get(key)
+        if key in SCORE_COMPONENT_NAMES and (not isinstance(value, int) or isinstance(value, bool)):
+            return None
+        return value
 
 
 @dataclass(frozen=True, slots=True)
