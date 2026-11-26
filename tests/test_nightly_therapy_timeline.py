@@ -475,6 +475,7 @@ async def test_time_in_apnea_rejects_timeline_from_replacement_device(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
     timeline_query: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Keep a replacement device's timeline and metadata off the configured entity.
 
@@ -482,6 +483,7 @@ async def test_time_in_apnea_rejects_timeline_from_replacement_device(
         hass (HomeAssistant): Home Assistant instance.
         config_entry (MockConfigEntry): Entry configured for the original device.
         timeline_query (AsyncMock): myAir timeline query double.
+        caplog (pytest.LogCaptureFixture): Home Assistant startup and reload logs.
     """
     replacement_device = MyAirDevice.from_api(
         {
@@ -511,20 +513,24 @@ async def test_time_in_apnea_rejects_timeline_from_replacement_device(
         ],
     ):
         entity_id = await _load(hass, config_entry)
-        registry_device = dr.async_get(hass).async_get_device_by_identifier(
-            (DOMAIN, _SERIAL), config_entry.entry_id
-        )
+        entity_registry = er.async_get(hass)
+        device_registry = dr.async_get(hass)
+        device_id = entity_registry.async_get(entity_id).device_id
+        assert device_id is not None
+        registry_device = device_registry.async_get(device_id)
         assert registry_device is not None
+        assert registry_device.identifiers == {(DOMAIN, _SERIAL)}
         assert registry_device.manufacturer == "Original Manufacturer"
         assert registry_device.model == "Original Model"
         assert registry_device.name == "Original CPAP"
 
-        er.async_get(hass).async_update_entity(entity_id, disabled_by=None)
+        entity_registry.async_update_entity(entity_id, disabled_by=None)
         assert await hass.config_entries.async_reload(config_entry.entry_id)
         await hass.async_block_till_done()
-        registry_device = dr.async_get(hass).async_get_device_by_identifier(
-            (DOMAIN, _SERIAL), config_entry.entry_id
-        )
+        reloaded_entity = entity_registry.async_get(entity_id)
+        assert reloaded_entity is not None
+        assert reloaded_entity.device_id == device_id
+        registry_device = device_registry.async_get(device_id)
         assert registry_device is not None
         assert registry_device.manufacturer == "Original Manufacturer"
         assert registry_device.model == "Original Model"
@@ -543,6 +549,7 @@ async def test_time_in_apnea_rejects_timeline_from_replacement_device(
     assert state is not None
     assert float(state.state) == 41
     timeline_query.assert_awaited_once()
+    assert "which is deprecated as device infos are dataclasses" not in caplog.text
 
 
 async def test_legacy_sensor_keeps_opt_in_across_initial_device_failure(

@@ -144,19 +144,25 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         self._attr_name: str = friendly_name
         self._attr_unique_id: str = f"{DOMAIN}_{serial_number}_{self.sensor_key}"
         self._available: bool = False
-        self._attr_device_info: DeviceInfo = DeviceInfo(
-            identifiers={(DOMAIN, serial_number)},
-            suggested_area="Bedroom",
-            sw_version=VERSION,
-        )
+        self._attr_device_info: DeviceInfo
         if not configured_serial or (
             device_data and device_data.serial_number == configured_serial
         ):
-            self._attr_device_info["manufacturer"] = (
-                device_data.manufacturer if device_data else None
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, serial_number)},
+                suggested_area="Bedroom",
+                sw_version=VERSION,
+                manufacturer=device_data.manufacturer if device_data else None,
+                model=device_data.model if device_data else None,
+                name=device_data.name if device_data else None,
             )
-            self._attr_device_info["model"] = device_data.model if device_data else None
-            self._attr_device_info["name"] = device_data.name if device_data else None
+        else:
+            # Omit unverified metadata so the device registry retains its existing values.
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, serial_number)},
+                suggested_area="Bedroom",
+                sw_version=VERSION,
+            )
 
     @property
     def available(self) -> bool:
