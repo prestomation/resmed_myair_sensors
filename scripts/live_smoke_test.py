@@ -213,6 +213,18 @@ def build_default_payload(
             "cpap_total_myair_score": latest_record.native_value("sleepScore")
             if latest_record
             else None,
+            "cpap_myair_usage_hours_score": latest_record.native_value("usageScore")
+            if latest_record
+            else None,
+            "cpap_myair_mask_seal_score": latest_record.native_value("leakScore")
+            if latest_record
+            else None,
+            "cpap_myair_events_per_hour_score": latest_record.native_value("ahiScore")
+            if latest_record
+            else None,
+            "cpap_myair_mask_on_off_score": latest_record.native_value("maskScore")
+            if latest_record
+            else None,
             "cpap_sleep_data_last_collected": device.native_value("lastSleepDataReportTime")
             if device
             else None,
