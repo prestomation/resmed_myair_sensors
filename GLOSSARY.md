@@ -44,4 +44,7 @@ The number of mask on/off pairs reported by myAir for a sleep record.
 The rate of air leakage reported by myAir for a sleep record, expressed in liters per minute.
 
 **Total myAir Score**:
-The overall score myAir reports for a sleep record. myAir also reports scores for usage, AHI, mask on/off, and mask leak.
+The overall score myAir reports for a Sleep Record.
+
+**myAir Score Component**:
+The points myAir reports for one scoring category on a Sleep Record. The categories are usage hours, mask seal, events per hour, and mask on/off.

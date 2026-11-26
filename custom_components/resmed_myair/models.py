@@ -170,15 +170,20 @@ class MyAirSleepRecord:
         )
 
     def native_value(self, key: str) -> Any | None:
-        """Read a sensor value from the original sleep-record payload.
+        """Read a sensor value, validating myAir Score Components as integers.
 
         Args:
             key (str): GraphQL field name used by the sensor description.
 
         Returns:
-            Any | None: Raw payload value, or ``None`` when the key is absent.
+            Any | None: Payload value, or ``None`` when absent or an invalid score component.
         """
-        return self.raw.get(key)
+        value = self.raw.get(key)
+        if key in {"usageScore", "leakScore", "ahiScore", "maskScore"} and (
+            not isinstance(value, int) or isinstance(value, bool)
+        ):
+            return None
+        return value
 
 
 @dataclass(frozen=True, slots=True)

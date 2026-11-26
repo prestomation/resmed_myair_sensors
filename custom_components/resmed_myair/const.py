@@ -83,6 +83,26 @@ SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP Total myAir Score": SensorEntityDescription(
         key="sleepScore", state_class=SensorStateClass.MEASUREMENT
     ),
+    "CPAP myAir Usage Hours Score": SensorEntityDescription(
+        key="usageScore",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    "CPAP myAir Mask Seal Score": SensorEntityDescription(
+        key="leakScore",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    "CPAP myAir Events per Hour Score": SensorEntityDescription(
+        key="ahiScore",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    "CPAP myAir Mask On/Off Score": SensorEntityDescription(
+        key="maskScore",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
 }
 
 DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
