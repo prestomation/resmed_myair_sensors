@@ -68,3 +68,17 @@
 - When editing code, prefer fixing root causes over surface patches.
 - Keep changes minimal and consistent with the codebase style.
 - Add tests for any changed behavior and update documentation if needed.
+
+## Agent skills
+
+### Issue tracker
+
+Specs, tickets, and wayfinding maps use local Markdown under `.scratch/`. See [issue tracker](docs/agents/issue-tracker.md) when reading or publishing them.
+
+### Triage labels
+
+Use the five default triage labels. See [triage labels](docs/agents/triage-labels.md) when setting an issue's status.
+
+### Domain docs
+
+This repository uses a single glossary and ADR directory. See [domain docs](docs/agents/domain.md) before exploring the domain or proposing changes.
