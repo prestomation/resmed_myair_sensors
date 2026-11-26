@@ -7,6 +7,7 @@ from typing import Any, Final
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -18,6 +19,7 @@ from .const import (
     DOMAIN,
     SLEEP_RECORD_INDEX_FIELDS,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
+    TIME_IN_APNEA_KEY,
     VERSION,
 )
 from .coordinator import MyAirDataUpdateCoordinator
@@ -101,6 +103,7 @@ async def async_setup_entry(
         [
             MyAirFriendlyUsageTime(coordinator=coordinator),
             MyAirMostRecentSleepDate(coordinator=coordinator),
+            MyAirTimeInApnea(coordinator),
         ]
     )
 
@@ -115,6 +118,7 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         friendly_name: str,
         sensor_desc: SensorEntityDescription,
         coordinator: MyAirDataUpdateCoordinator,
+        configured_serial: str | None = None,
     ) -> None:
         """Initialize the HA entity metadata shared by all myAir sensors.
 
@@ -128,12 +132,13 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
                 myAir field key.
             coordinator (MyAirDataUpdateCoordinator): Data coordinator containing
                 typed device and sleep snapshots.
+            configured_serial (str | None): Serial to use for entity identity when configured.
         """
         super().__init__(coordinator)
         self.sensor_key: Final[str] = sensor_desc.key
         self.coordinator: MyAirDataUpdateCoordinator = coordinator
         device_data: MyAirDevice | None = _coordinator_data(coordinator).device
-        serial_number: str = device_data.serial_number if device_data else ""
+        serial_number: str = configured_serial or (device_data.serial_number if device_data else "")
         self.entity_description: SensorEntityDescription = sensor_desc
 
         self._attr_name: str = friendly_name
@@ -141,12 +146,17 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         self._available: bool = False
         self._attr_device_info: DeviceInfo = DeviceInfo(
             identifiers={(DOMAIN, serial_number)},
-            manufacturer=device_data.manufacturer if device_data else None,
-            model=device_data.model if device_data else None,
-            name=device_data.name if device_data else None,
             suggested_area="Bedroom",
             sw_version=VERSION,
         )
+        if not configured_serial or (
+            device_data and device_data.serial_number == configured_serial
+        ):
+            self._attr_device_info["manufacturer"] = (
+                device_data.manufacturer if device_data else None
+            )
+            self._attr_device_info["model"] = device_data.model if device_data else None
+            self._attr_device_info["name"] = device_data.name if device_data else None
 
     @property
     def available(self) -> bool:
@@ -157,6 +167,37 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         """Publish an initial state from already-fetched coordinator data."""
         await super().async_added_to_hass()
         self._handle_coordinator_update()
+
+
+class MyAirTimeInApnea(MyAirBaseSensor):
+    """Report the time myAir measured in apnea for the Current Data Date."""
+
+    def __init__(self, coordinator: MyAirDataUpdateCoordinator) -> None:
+        """Initialize the optional duration sensor.
+
+        Args:
+            coordinator (MyAirDataUpdateCoordinator): Coordinator supplying the sensor snapshot.
+        """
+        super().__init__(
+            "CPAP Time in Apnea",
+            SensorEntityDescription(
+                key=TIME_IN_APNEA_KEY,
+                device_class=SensorDeviceClass.DURATION,
+                native_unit_of_measurement=UnitOfTime.SECONDS,
+                entity_registry_enabled_default=False,
+            ),
+            coordinator,
+            configured_serial=coordinator.time_in_apnea_serial,
+        )
+        if coordinator.time_in_apnea_unique_id is not None:
+            self._attr_unique_id = coordinator.time_in_apnea_unique_id
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Publish the current duration, with missing data represented as unknown."""
+        self._available = self.coordinator.last_update_success
+        self._attr_native_value = _coordinator_data(self.coordinator).time_in_apnea
+        self.async_write_ha_state()
 
 
 class MyAirRawSensor(MyAirBaseSensor):

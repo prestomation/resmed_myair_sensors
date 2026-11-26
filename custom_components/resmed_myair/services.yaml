@@ -1,0 +1,11 @@
+get_nightly_therapy_timeline:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: resmed_myair
+    date:
+      required: true
+      selector:
+        date: {}

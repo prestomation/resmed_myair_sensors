@@ -5,6 +5,7 @@ import datetime as dt
 from http import HTTPStatus
 import json
 import logging
+import re
 from types import SimpleNamespace
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
@@ -1502,6 +1503,124 @@ async def test_gql_query_graphql_error(config_na: MyAirConfig, session: MagicMoc
     session.post.return_value = make_mock_aiohttp_context_manager(mock_res)
     with pytest.raises(StaleSessionError, match="unauthorized: 401"):
         await client._gql_query("op", "query")
+
+
+async def test_timeline_request_selects_summary_and_event_fields(
+    config_na: MyAirConfig, session: MagicMock
+) -> None:
+    """Send the full Nightly Therapy Timeline selection to the GraphQL endpoint.
+
+    Args:
+        config_na (MyAirConfig): Configuration used by the timeline client.
+        session (MagicMock): HTTP session capturing the outbound GraphQL request.
+    """
+    client = RESTClient(config_na, session)
+    client._graphql.country_code = "US"
+    response = MagicMock(spec=ClientResponse)
+    response.json = AsyncMock(
+        return_value={
+            "data": {
+                "getPatientWrapper": {
+                    "dailyTherapyData": [
+                        {
+                            "date": "2026-01-08",
+                            "ahi": 0.6,
+                            "totalSecondsInApnea": 12,
+                            "totalUsageHours": 7,
+                            "respiratoryEvents": [],
+                            "therapyStatusEvents": [],
+                        }
+                    ]
+                }
+            }
+        }
+    )
+    session.post.return_value = make_mock_aiohttp_context_manager(response)
+
+    timeline = await client.get_nightly_therapy_timeline(dt.date(2026, 1, 8))
+    assert timeline is not None and timeline.total_seconds_in_apnea == 12
+
+    document = session.post.call_args.kwargs["json"]
+    assert document["operationName"] == "GetDailyTherapyData"
+    assert document["variables"] == {"startDate": "2026-01-08", "endDate": "2026-01-08"}
+    selection = re.search(r"dailyTherapyData\s*\([^)]*\)\s*\{", document["query"])
+    assert selection is not None
+    fields = document["query"][selection.end() :]
+    respiratory = re.search(r"respiratoryEvents\s*\{([^}]*)\}", fields)
+    status = re.search(r"therapyStatusEvents\s*\{([^}]*)\}", fields)
+    assert respiratory is not None
+    assert status is not None
+    summary = re.sub(r"\{[^{}]*\}", "", fields)
+    assert {"date", "ahi", "totalSecondsInApnea", "totalUsageHours"} <= set(
+        re.findall(r"\w+", summary)
+    )
+    assert {"startDate", "endDate", "durationSeconds", "eventType"} <= set(respiratory[1].split())
+    assert {"date", "eventType"} <= set(status[1].split())
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_message"),
+    [
+        (ValueError("invalid JSON"), "Invalid myAir GraphQL JSON response"),
+        ([], "Invalid myAir GraphQL response"),
+        ({"errors": ""}, "Invalid myAir GraphQL errors"),
+    ],
+    ids=["invalid-json", "non-object", "invalid-errors"],
+)
+async def test_timeline_request_rejects_invalid_graphql_response_body(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    body: object,
+    expected_message: str,
+) -> None:
+    """Timeline requests translate malformed GraphQL response bodies to parsing errors.
+
+    Args:
+        config_na (MyAirConfig): Configuration used by the timeline client.
+        session (MagicMock): HTTP session supplying the malformed response.
+        body (object): Decoded body or a JSON decoding failure.
+        expected_message (str): Parsing error message expected for the case.
+    """
+    client = RESTClient(config_na, session)
+    client._graphql.country_code = "US"
+    response = MagicMock(spec=ClientResponse)
+    if isinstance(body, ValueError):
+        response.json = AsyncMock(side_effect=body)
+    else:
+        response.json = AsyncMock(return_value=body)
+    session.post.return_value = make_mock_aiohttp_context_manager(response)
+
+    with pytest.raises(ParsingError, match=expected_message):
+        await client.get_nightly_therapy_timeline(dt.date(2026, 1, 8))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "wrapper",
+    [{}, {"dailyTherapyData": {}}],
+    ids=["missing", "non-list"],
+)
+async def test_timeline_request_rejects_missing_or_non_list_daily_data(
+    config_na: MyAirConfig,
+    session: MagicMock,
+    wrapper: dict[str, object],
+) -> None:
+    """Timeline data must be a list when myAir does not return explicit null.
+
+    Args:
+        config_na (MyAirConfig): Configuration used by the timeline client.
+        session (MagicMock): HTTP session supplying the malformed response.
+        wrapper (dict[str, object]): Patient wrapper with missing or invalid
+            nightly timeline data.
+    """
+    client = RESTClient(config_na, session)
+    client._graphql.country_code = "US"
+    response = MagicMock(spec=ClientResponse)
+    response.json = AsyncMock(return_value={"data": {"getPatientWrapper": wrapper}})
+    session.post.return_value = make_mock_aiohttp_context_manager(response)
+
+    with pytest.raises(ParsingError, match="Invalid or missing nightly timeline list"):
+        await client.get_nightly_therapy_timeline(dt.date(2026, 1, 8))
 
 
 @pytest.mark.asyncio

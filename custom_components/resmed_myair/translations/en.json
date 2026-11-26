@@ -1,5 +1,38 @@
 {
     "title": "ResMed myAir CPAP Sensors",
+    "services": {
+        "get_nightly_therapy_timeline": {
+            "name": "Get Nightly Therapy Timeline",
+            "description": "Fetch the myAir therapy summary and timestamped events for one night.",
+            "fields": {
+                "config_entry_id": {
+                    "name": "myAir Account",
+                    "description": "The myAir integration entry to query."
+                },
+                "date": {
+                    "name": "Date",
+                    "description": "The date myAir assigned to the night."
+                }
+            }
+        }
+    },
+    "exceptions": {
+        "timeline_entry_unloaded": {
+            "message": "The myAir account was unloaded while retrieving the Nightly Therapy Timeline."
+        },
+        "timeline_invalid_date": {
+            "message": "Provide a valid date for the Nightly Therapy Timeline."
+        },
+        "timeline_missing_account": {
+            "message": "Select a myAir account before requesting the Nightly Therapy Timeline."
+        },
+        "timeline_request_failed": {
+            "message": "Unable to retrieve the Nightly Therapy Timeline from myAir."
+        },
+        "timeline_unavailable": {
+            "message": "The Nightly Therapy Timeline is unavailable for {date}."
+        }
+    },
     "config": {
         "step": {
             "user": {

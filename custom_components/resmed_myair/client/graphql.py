@@ -1,5 +1,6 @@
 """GraphQL transport for ResMed myAir."""
 
+from collections.abc import Mapping
 import logging
 from typing import Any
 
@@ -92,24 +93,33 @@ class MyAirGraphQLClient:
         """
         self._country_code = value
 
-    async def query(self, operation_name: str, query: str, initial: bool = False) -> dict[str, Any]:
+    async def query(
+        self,
+        operation_name: str,
+        query: str,
+        initial: bool = False,
+        *,
+        variables: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
         """Post a myAir GraphQL operation and validate ResMed errors.
 
         Args:
             operation_name (str): GraphQL operation name.
             query (str): GraphQL query text.
             initial (bool): Whether this query is part of initial config flow.
+            variables (Mapping[str, str] | None): GraphQL date variables when required.
 
         Returns:
             dict[str, Any]: Decoded GraphQL response payload.
 
         Raises:
+            ParsingError: The endpoint returned invalid JSON or a malformed GraphQL response.
             UndefinedSleepRecordIndexError: When schema validation rejects an index field.
         """
         headers = self._headers()
         json_query: dict[str, Any] = {
             "operationName": operation_name,
-            "variables": {},
+            "variables": dict(variables or {}),
             "query": query,
         }
         _LOGGER.debug("[gql_query] graphql_url: %s", self._region_config.graphql_url)
@@ -153,17 +163,26 @@ class MyAirGraphQLClient:
             **request_options,
         ) as records_res:
             _LOGGER.debug("[gql_query] records_res: %s", records_res)
-            records_dict: dict[str, Any] = await records_res.json()
+            try:
+                records_dict = await records_res.json()
+            except ValueError as err:
+                raise ParsingError("Invalid myAir GraphQL JSON response") from err
+            if not isinstance(records_dict, dict):
+                raise ParsingError("Invalid myAir GraphQL response")
             _LOGGER.debug("[gql_query] records_dict: %s", redact_dict(records_dict))
+            errors = records_dict.get("errors", [])
+            if not isinstance(errors, list):
+                raise ParsingError("Invalid myAir GraphQL errors")
             if (
                 operation_name == "GetPatientSleepRecords"
                 and records_res.status in (200, 400)
                 and _is_undefined_index_response(records_dict)
             ):
                 raise UndefinedSleepRecordIndexError("myAir rejected the Sleep Record indexes")
-            await MyAirAuthSession.resmed_response_error_check(
-                "gql_query", records_res, records_dict, initial
-            )
+            if errors:
+                await MyAirAuthSession.resmed_response_error_check(
+                    "gql_query", records_res, records_dict, initial
+                )
 
         return dict(records_dict)
 

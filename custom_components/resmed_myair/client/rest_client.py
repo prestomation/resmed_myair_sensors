@@ -8,7 +8,11 @@ from typing import Any
 from aiohttp import ClientSession
 
 from custom_components.resmed_myair.const import SLEEP_RECORD_INDEX_FIELDS
-from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
+from custom_components.resmed_myair.models import (
+    MyAirDevice,
+    MyAirNightlyTherapyTimeline,
+    MyAirSleepRecord,
+)
 from custom_components.resmed_myair.redaction import redact_dict
 
 from .auth import MyAirAuthSession
@@ -16,6 +20,19 @@ from .graphql import MyAirGraphQLClient, UndefinedSleepRecordIndexError
 from .myair_client import MyAirClient, MyAirConfig, ParsingError, StaleSessionError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+_NIGHTLY_THERAPY_QUERY = """query GetDailyTherapyData($startDate: AWSDate!, $endDate: AWSDate!) {
+    getPatientWrapper {
+        dailyTherapyData(startDate: $startDate, endDate: $endDate) {
+            date
+            ahi
+            totalUsageHours
+            totalSecondsInApnea
+            respiratoryEvents { startDate endDate durationSeconds eventType }
+            therapyStatusEvents { date eventType }
+        }
+    }
+}"""
 
 
 def _required_mapping(value: Any, message: str) -> Mapping[str, Any]:
@@ -279,6 +296,40 @@ class RESTClient(MyAirClient):
                 )
             typed_records.append(MyAirSleepRecord.from_api(record))
         return typed_records
+
+    async def get_nightly_therapy_timeline(
+        self, assigned_date: dt.date
+    ) -> MyAirNightlyTherapyTimeline | None:
+        """Fetch one timeline by its myAir-assigned date.
+
+        Args:
+            assigned_date (dt.date): Date assigned to the night by myAir.
+
+        Returns:
+            MyAirNightlyTherapyTimeline | None: The matching timeline, if present.
+
+        Raises:
+            ParsingError: The timeline response could not be interpreted.
+        """
+        iso_date = assigned_date.isoformat()
+        result = await self._graphql.query(
+            "GetDailyTherapyData",
+            _NIGHTLY_THERAPY_QUERY,
+            variables={"startDate": iso_date, "endDate": iso_date},
+        )
+        data = _required_mapping(result.get("data"), "Invalid nightly timeline response")
+        wrapper = _required_mapping(data.get("getPatientWrapper"), "Invalid timeline patient")
+        timelines = wrapper.get("dailyTherapyData")
+        if timelines is None and "dailyTherapyData" in wrapper:
+            return None
+        if not isinstance(timelines, list):
+            raise ParsingError("Invalid or missing nightly timeline list")
+
+        for raw in timelines:
+            record = _required_mapping(raw, "Invalid nightly timeline record")
+            if record.get("date") == iso_date:
+                return MyAirNightlyTherapyTimeline.from_api(assigned_date, record)
+        return None
 
     async def get_user_device_data(self, initial: bool = False) -> MyAirDevice:
         """Fetch and normalize the account's assigned flow-generator device.

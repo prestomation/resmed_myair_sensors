@@ -19,6 +19,9 @@ _Avoid_: Account, when referring to the machine.
 The myAir summary of CPAP therapy for an assigned date. A record can exist with zero usage.
 _Avoid_: Sleep session, which suggests a single period of use.
 
+**Nightly Therapy Timeline**:
+The myAir summary and timestamped respiratory and therapy status events for an assigned date. Events in one timeline can occur on both sides of midnight.
+
 **Current Data Date**:
 The date assigned by myAir to the latest sleep record, including a record with zero usage.
 
@@ -42,6 +45,9 @@ The rate of apnea events per hour of CPAP therapy reported by myAir for a Sleep 
 
 **Hypopnea Index**:
 The rate of hypopnea events per hour of CPAP therapy reported by myAir for a Sleep Record.
+
+**Time in Apnea**:
+The total time in seconds myAir reports as spent in apnea for a Nightly Therapy Timeline.
 
 **Mask On/Off Count**:
 The number of mask on/off pairs reported by myAir for a sleep record.

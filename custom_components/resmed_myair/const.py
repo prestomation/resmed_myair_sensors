@@ -16,6 +16,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 DEFAULT_UPDATE_RATE_MIN = 30
 # Wait this long past the end of a reported myAir outage before polling again.
 OUTAGE_RETRY_MARGIN_SEC = 60
+TIME_IN_APNEA_KEY = "totalSecondsInApnea"
 
 AUTHN_SUCCESS = "SUCCESS"
 AUTH_NEEDS_MFA = "MFA_REQUIRED"
@@ -33,6 +34,7 @@ REGION_EU = "EU"
 KEYS_TO_REDACT: list[str] = [
     "access_token",
     "Authorization",
+    "dailyTherapyData",
     "email",
     "family_name",
     "firstName",
