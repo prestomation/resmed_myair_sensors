@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from aiohttp import ClientSession
+from aiohttp import ClientError, ClientResponse, ClientSession
 import jwt
 from jwt import InvalidTokenError
 
@@ -38,6 +38,25 @@ def _is_undefined_index_error(error: Any) -> bool:
         return False
     message = error.get("message")
     return isinstance(message, str) and message.startswith(_UNDEFINED_INDEX_MESSAGES)
+
+
+def _is_undefined_index_response(response_body: Any) -> bool:
+    """Identify a GraphQL response containing only undefined-index errors.
+
+    Args:
+        response_body (Any): Decoded GraphQL response body.
+
+    Returns:
+        bool: Whether every GraphQL error rejects one of the new index fields.
+    """
+    if not isinstance(response_body, dict):
+        return False
+    errors = response_body.get("errors")
+    return (
+        isinstance(errors, list)
+        and bool(errors)
+        and all(_is_undefined_index_error(error) for error in errors)
+    )
 
 
 class MyAirGraphQLClient:
@@ -97,10 +116,41 @@ class MyAirGraphQLClient:
         _LOGGER.debug("[gql_query] headers: %s", redact_dict(headers))
         _LOGGER.debug("[gql_query] json_query: %s", redact_dict(json_query))
 
+        async def raise_for_status(response: ClientResponse) -> None:
+            """Read index validation errors before applying the session status policy.
+
+            Args:
+                response (ClientResponse): HTTP response returned for the query.
+
+            Returns:
+                None: The response is accepted only for a rejected index selection.
+            """
+            if response.status == 400:
+                try:
+                    response_body = await response.json()
+                except ClientError, ValueError:
+                    pass
+                else:
+                    if _is_undefined_index_response(response_body):
+                        return
+
+            session_policy = self._session.raise_for_status
+            if callable(session_policy):
+                await session_policy(response)
+            elif session_policy:
+                response.raise_for_status()
+
+        request_options: dict[str, Any] = {}
+        if operation_name == "GetPatientSleepRecords" and all(
+            field in query.split() for field in SLEEP_RECORD_INDEX_FIELDS
+        ):
+            request_options["raise_for_status"] = raise_for_status
+
         async with self._session.post(
             self._region_config.graphql_url,
             headers=headers,
             json=json_query,
+            **request_options,
         ) as records_res:
             _LOGGER.debug("[gql_query] records_res: %s", records_res)
             records_dict: dict[str, Any] = await records_res.json()
@@ -108,10 +158,7 @@ class MyAirGraphQLClient:
             if (
                 operation_name == "GetPatientSleepRecords"
                 and records_res.status in (200, 400)
-                and isinstance(records_dict, dict)
-                and isinstance(errors := records_dict.get("errors"), list)
-                and errors
-                and all(_is_undefined_index_error(error) for error in errors)
+                and _is_undefined_index_response(records_dict)
             ):
                 raise UndefinedSleepRecordIndexError("myAir rejected the Sleep Record indexes")
             await MyAirAuthSession.resmed_response_error_check(

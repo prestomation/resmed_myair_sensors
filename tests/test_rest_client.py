@@ -1,13 +1,18 @@
 """REST client tests that protect auth, GraphQL, and parsing behavior."""
 
+import asyncio
 import datetime as dt
+from http import HTTPStatus
+import json
 import logging
-from typing import Never
+from types import SimpleNamespace
+from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
-from aiohttp import ClientResponse
+from aiohttp import ClientResponse, ClientResponseError, ClientSession
 from aiohttp.http_exceptions import HttpProcessingError
-from multidict import CIMultiDict
+from homeassistant.helpers.aiohttp_client import HassClientResponse
+from multidict import CIMultiDict, CIMultiDictProxy
 import pytest
 
 from custom_components.resmed_myair.client import rest_client as rest_client_module
@@ -1720,6 +1725,92 @@ async def test_sleep_record_query_falls_back_for_undefined_index(
         fallback_query
     )
     assert {"ahi", "apneaIndex", "hypopneaIndex"} <= set(first_query)
+
+
+async def test_sleep_record_http_400_respects_session_status_policy(
+    config_na: MyAirConfig,
+) -> None:
+    """Inspect only index validation errors before aiohttp applies its status policy.
+
+    Args:
+        config_na (MyAirConfig): Credentials and region for the simulated client.
+    """
+    calls: list[str] = []
+    index_rejection = {
+        "errors": [
+            {
+                "errorType": "ValidationError",
+                "message": "Validation error of type FieldUndefined: Field 'apneaIndex' "
+                "in type 'SleepRecord' is undefined @ 'getPatientWrapper/sleepRecords/items/apneaIndex'",
+            }
+        ]
+    }
+    unrelated_error = {"errors": [{"message": "myAir is unavailable"}]}
+    response_body: dict[str, object] = index_rejection
+
+    async def graphql(request: Any, handler: Any) -> ClientResponse:
+        """Return an in-memory response through aiohttp's real request path.
+
+        Args:
+            request (Any): Aiohttp request intercepted by the test middleware.
+            handler (Any): Next middleware or request handler in the chain.
+
+        Returns:
+            ClientResponse: Simulated GraphQL response with its real HTTP status.
+        """
+        query = json.loads(await request._body.as_bytes())["query"]
+        calls.append(query)
+        if "apneaIndex" in query:
+            status = 400
+            body = response_body
+        else:
+            status = 200
+            body = {
+                "data": {
+                    "getPatientWrapper": {
+                        "sleepRecords": {"items": [{"startDate": "2026-11-25", "ahi": 1.3}]}
+                    }
+                }
+            }
+        response = request.response_class(
+            request.method,
+            request.url,
+            writer=None,
+            continue100=None,
+            timer=None,
+            request_info=request.request_info,
+            traces=[],
+            loop=asyncio.get_running_loop(),
+            session=request._session,
+            stream_writer=SimpleNamespace(output_size=0),
+        )
+        response.status = status
+        response.reason = HTTPStatus(status).phrase
+        response._headers = CIMultiDictProxy(CIMultiDict({"Content-Type": "application/json"}))
+        response._body = json.dumps(body).encode()
+        return response
+
+    async with ClientSession(
+        raise_for_status=True,
+        response_class=HassClientResponse,
+        middlewares=[graphql],
+    ) as http_session:
+        client = RESTClient(config_na, http_session)
+        client._graphql.country_code = "US"
+
+        (sleep_record,) = await client.get_sleep_records()
+        assert sleep_record.native_value("ahi") == 1.3
+        assert len(calls) == 2
+        assert "apneaIndex" in calls[0]
+        assert "apneaIndex" not in calls[1]
+
+        response_body = unrelated_error
+        next_client = RESTClient(config_na, http_session)
+        next_client._graphql.country_code = "US"
+        with pytest.raises(ClientResponseError) as error:
+            await next_client.get_sleep_records()
+        assert error.value.status == 400
+        assert len(calls) == 3
 
 
 async def test_sleep_record_query_propagates_unrelated_graphql_error(
