@@ -7,6 +7,7 @@ from typing import Any
 
 from aiohttp import ClientSession
 
+from custom_components.resmed_myair.const import SLEEP_RECORD_INDEX_FIELDS
 from custom_components.resmed_myair.models import (
     MyAirDevice,
     MyAirNightlyTherapyTimeline,
@@ -15,7 +16,7 @@ from custom_components.resmed_myair.models import (
 from custom_components.resmed_myair.redaction import redact_dict
 
 from .auth import MyAirAuthSession
-from .graphql import MyAirGraphQLClient
+from .graphql import MyAirGraphQLClient, UndefinedSleepRecordIndexError
 from .myair_client import MyAirClient, MyAirConfig, ParsingError, StaleSessionError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -144,6 +145,7 @@ class RESTClient(MyAirClient):
         _LOGGER.debug("[RESTClient init] config: %s", redact_dict(config._asdict()))
         self._config: MyAirConfig = config
         self._session: ClientSession = session
+        self._sleep_record_indexes_supported: bool = True
         self._auth = MyAirAuthSession(config, session)
         self._graphql = MyAirGraphQLClient(
             session=self._session,
@@ -236,6 +238,7 @@ class RESTClient(MyAirClient):
                         maskScore
                         leakScore
                         ahi
+                        INDEX_FIELDS
                         maskPairCount
                         leakPercentile
                         sleepRecordPatientId
@@ -249,9 +252,24 @@ class RESTClient(MyAirClient):
         """.replace("ONE_MONTH_AGO", one_month_ago).replace("DATE", today)
 
         _LOGGER.info("Getting Sleep Records")
-        records_dict: MutableMapping[str, Any] = await self._gql_query(
-            "GetPatientSleepRecords", query, initial
-        )
+        records_dict: dict[str, Any] | None = None
+        if self._sleep_record_indexes_supported:
+            try:
+                records_dict = await self._gql_query(
+                    "GetPatientSleepRecords",
+                    query.replace("INDEX_FIELDS", " ".join(SLEEP_RECORD_INDEX_FIELDS)),
+                    initial,
+                )
+            except UndefinedSleepRecordIndexError:
+                # Keep existing nightly data available. A new client checks support again.
+                self._sleep_record_indexes_supported = False
+                _LOGGER.debug(
+                    "myAir rejected the indexes; retrying the original Sleep Record query"
+                )
+        if records_dict is None:
+            records_dict = await self._gql_query(
+                "GetPatientSleepRecords", query.replace("INDEX_FIELDS", ""), initial
+            )
         _LOGGER.debug("[get_sleep_records] records_dict: %s", redact_dict(records_dict))
         data = _required_session_mapping(
             records_dict.get("data"), "Error getting Patient Sleep Records"

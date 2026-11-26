@@ -12,7 +12,7 @@ from typing import Any, Self
 
 from homeassistant.util.json import JsonObjectType
 
-from .const import SCORE_COMPONENT_NAMES
+from .const import SCORE_COMPONENT_NAMES, SLEEP_RECORD_INDEX_FIELDS
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -175,15 +175,22 @@ class MyAirSleepRecord:
         )
 
     def native_value(self, key: str) -> Any | None:
-        """Read a sensor value, validating myAir Score Components as integers.
+        """Read a sensor value, validating respiratory indexes and score components.
 
         Args:
             key (str): GraphQL field name used by the sensor description.
 
         Returns:
-            Any | None: Payload value, or ``None`` when absent or an invalid score component.
+            Any | None: Reported value, or ``None`` when absent or invalid.
         """
         value = self.raw.get(key)
+        if key in SLEEP_RECORD_INDEX_FIELDS and (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or (isinstance(value, float) and not isfinite(value))
+            or value < 0
+        ):
+            return None
         if key in SCORE_COMPONENT_NAMES and (not isinstance(value, int) or isinstance(value, bool)):
             return None
         return value

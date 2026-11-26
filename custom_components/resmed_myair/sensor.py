@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     DEVICE_SENSOR_DESCRIPTIONS,
     DOMAIN,
+    SLEEP_RECORD_INDEX_FIELDS,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
     TIME_IN_APNEA_KEY,
     VERSION,
@@ -229,7 +230,10 @@ class MyAirRawSensor(MyAirBaseSensor):
             value: Any | None = None
             self._available = False
         elif self.sensor_key not in payload.raw:
-            _LOGGER.error("Unable to parse %s. %s", self._parse_error_source, self.sensor_key)
+            log_missing = (
+                _LOGGER.debug if self.sensor_key in SLEEP_RECORD_INDEX_FIELDS else _LOGGER.error
+            )
+            log_missing("Unable to parse %s. %s", self._parse_error_source, self.sensor_key)
             value = None
             self._available = False
         else:
