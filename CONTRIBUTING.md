@@ -44,7 +44,7 @@ People *love* thorough bug reports. I'm not even kidding.
 
 ## Use a Consistent Coding Style
 
-Use [ruff](https://docs.astral.sh/ruff/) to make sure the code follows the style.
+Follow the [coding standards](CODING_STANDARDS.md) for project conventions and local checks.
 
 ## Local setup
 
