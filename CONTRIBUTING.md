@@ -61,11 +61,16 @@ covers it: `pytest-homeassistant` from Home Assistant 2026.11, otherwise its pre
 `pytest-homeassistant-custom-component`. It installs them with the `pytest-base` group
 in a separate environment. Raising the minimum in `hacs.json` is all the job needs.
 
+Both jobs require Python 3.14.2 or newer. Before running the tests, each one checks that
+exactly one test plugin is installed, that the plugin pins the installed Home Assistant
+and that the release meets the `hacs.json` minimum, then prints the Python, Home
+Assistant and test plugin versions.
+
 Import Home Assistant test plugin helpers such as `MockConfigEntry` from `tests.common`
 so the tests work with either plugin. To reproduce the job locally, run the workflow's
 minimum steps from a separate clone or worktree with `RUNNER_TEMP` set to a scratch
-directory. The steps create their own `.venv` in the current directory, so they fail in a
-checkout that already has one.
+directory. The steps create their own `.venv` in the current directory, so use a checkout
+that has none: in an interactive terminal, uv offers to replace an existing one.
 
 ## License
 
