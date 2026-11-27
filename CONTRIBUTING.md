@@ -66,6 +66,9 @@ exactly one test plugin is installed, that the plugin pins the installed Home As
 and that the release meets the `hacs.json` minimum, then prints the Python, Home
 Assistant and test plugin versions.
 
+For pull requests from bots or labeled `dependencies`, both check names are reported
+without running tests.
+
 Import Home Assistant test plugin helpers such as `MockConfigEntry` from `tests.common`
 so the tests work with either plugin. To reproduce the job locally, run the workflow's
 minimum steps from a separate clone or worktree with `RUNNER_TEMP` set to a scratch
