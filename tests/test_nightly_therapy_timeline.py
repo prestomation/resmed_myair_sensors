@@ -12,7 +12,6 @@ from homeassistant.core import Context, HomeAssistant, ServiceResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, Unauthorized
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.graphql import MyAirGraphQLClient
 from custom_components.resmed_myair.client.myair_client import (
@@ -34,6 +33,7 @@ from custom_components.resmed_myair.models import (
     MyAirNightlyTherapyTimeline,
     MyAirSleepRecord,
 )
+from tests.common import MockConfigEntry
 
 _ACTION = "get_nightly_therapy_timeline"
 _SERIAL = "SN123"

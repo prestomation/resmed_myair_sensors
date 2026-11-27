@@ -3,6 +3,7 @@
 import asyncio
 import datetime as dt
 from http import HTTPStatus
+import inspect
 import json
 import logging
 import re
@@ -1903,6 +1904,10 @@ async def test_sleep_record_http_400_respects_session_status_policy(
                     }
                 }
             }
+        response_options: dict[str, Any] = {}
+        # Older supported Home Assistant releases pin an aiohttp without this argument.
+        if "stream_writer" in inspect.signature(ClientResponse).parameters:
+            response_options["stream_writer"] = SimpleNamespace(output_size=0)
         response = request.response_class(
             request.method,
             request.url,
@@ -1913,7 +1918,7 @@ async def test_sleep_record_http_400_respects_session_status_policy(
             traces=[],
             loop=asyncio.get_running_loop(),
             session=http_session,
-            stream_writer=SimpleNamespace(output_size=0),
+            **response_options,
         )
         response.status = status
         response.reason = HTTPStatus(status).phrase

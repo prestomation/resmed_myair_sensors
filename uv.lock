@@ -2360,6 +2360,7 @@ dev = [
     { name = "homeassistant" },
     { name = "mypy" },
     { name = "prek" },
+    { name = "probatio" },
     { name = "pyjwt" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -2378,6 +2379,7 @@ lint = [
     { name = "homeassistant" },
     { name = "mypy" },
     { name = "prek" },
+    { name = "probatio" },
     { name = "pyjwt" },
     { name = "ruff" },
     { name = "uv" },
@@ -2389,6 +2391,15 @@ pytest = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-homeassistant" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+]
+pytest-base = [
+    { name = "homeassistant" },
+    { name = "pyjwt" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
 ]
@@ -2400,6 +2411,7 @@ dev = [
     { name = "homeassistant", specifier = ">=2026.3" },
     { name = "mypy" },
     { name = "prek" },
+    { name = "probatio" },
     { name = "pyjwt" },
     { name = "pytest", specifier = ">=9" },
     { name = "pytest-asyncio" },
@@ -2418,6 +2430,7 @@ lint = [
     { name = "homeassistant", specifier = ">=2026.3" },
     { name = "mypy" },
     { name = "prek" },
+    { name = "probatio" },
     { name = "pyjwt" },
     { name = "ruff" },
     { name = "uv" },
@@ -2429,6 +2442,15 @@ pytest = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-homeassistant", specifier = ">=2026.11.0" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+]
+pytest-base = [
+    { name = "homeassistant", specifier = ">=2026.3" },
+    { name = "pyjwt" },
+    { name = "pytest", specifier = ">=9" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
 ]

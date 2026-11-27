@@ -6,7 +6,6 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.rest_client import RESTClient
 from custom_components.resmed_myair.const import (
@@ -16,6 +15,7 @@ from custom_components.resmed_myair.const import (
     DOMAIN,
     REGION_NA,
 )
+from tests.common import MockConfigEntry
 
 
 @pytest.fixture

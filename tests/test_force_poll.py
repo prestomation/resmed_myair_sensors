@@ -8,7 +8,6 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceNotFound
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.myair_client import ServiceUnavailableError
 from custom_components.resmed_myair.client.rest_client import RESTClient
@@ -20,6 +19,7 @@ from custom_components.resmed_myair.const import (
     REGION_NA,
 )
 from custom_components.resmed_myair.models import MyAirDevice, MyAirSleepRecord
+from tests.common import MockConfigEntry
 
 
 @pytest.fixture(autouse=True)
@@ -272,3 +272,5 @@ async def test_force_poll_remains_usable_after_failed_unload(
 
     await hass.services.async_call(DOMAIN, "force_poll_test_example_com", blocking=True)
     assert myair_requests.await_args_list == [setup_request]
+    # The failed unload leaves the coordinator running, so cancel its refresh timer.
+    await entry.runtime_data.async_shutdown()
