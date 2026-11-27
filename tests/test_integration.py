@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components.resmed_myair as resmed_module
 from custom_components.resmed_myair import (
@@ -23,6 +22,7 @@ from custom_components.resmed_myair.sensor import (
     MyAirMostRecentSleepDate,
     MyAirSleepRecordSensor,
 )
+from tests.common import MockConfigEntry
 from tests.conftest import CoordinatorFactory, CoordinatorLike, coordinator_data
 
 

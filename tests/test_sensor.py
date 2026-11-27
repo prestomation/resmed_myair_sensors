@@ -18,7 +18,6 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.rest_client import RESTClient
 from custom_components.resmed_myair.const import (
@@ -41,6 +40,7 @@ from custom_components.resmed_myair.sensor import (
     MyAirSleepRecordSensor,
     _coordinator_data,
 )
+from tests.common import MockConfigEntry
 from tests.conftest import CoordinatorFactory, coordinator_data
 
 

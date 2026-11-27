@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 from aiohttp import ClientResponse, ClientSession
 from multidict import CIMultiDict
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.myair_client import MyAirConfig
 from custom_components.resmed_myair.client.rest_client import RESTClient
@@ -23,6 +22,7 @@ from custom_components.resmed_myair.models import (
     MyAirDevice,
     MyAirSleepRecord,
 )
+from tests.common import MockConfigEntry
 
 type JSONValue = str | int | float | bool | dict[str, JSONValue] | list[JSONValue] | None
 type HeadersValue = Mapping[str, str] | CIMultiDict[str] | None
