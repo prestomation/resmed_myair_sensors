@@ -49,8 +49,12 @@ Follow the [coding standards](CODING_STANDARDS.md) for project conventions and l
 ## Local setup
 
 Install [uv](https://docs.astral.sh/uv/), then run `scripts/setup` to create the
-Python 3.14 virtualenv, sync development dependencies and editable-install settings
-from `pyproject.toml`, and install the Git hooks. Run `scripts/test` to run the tests.
+virtualenv, sync development dependencies and editable-install settings from
+`pyproject.toml`, and install the Git hooks. Run `scripts/test` to run the tests.
+
+`requires-python` in [pyproject.toml](pyproject.toml) is the only place the supported
+Python range is set. uv, Ruff, the local checks and CI follow it. After changing it,
+run `uv lock`.
 
 ## Minimum Home Assistant tests
 
@@ -61,10 +65,10 @@ covers it: `pytest-homeassistant` from Home Assistant 2026.11, otherwise its pre
 `pytest-homeassistant-custom-component`. It installs them with the `pytest-base` group
 in a separate environment. Raising the minimum in `hacs.json` is all the job needs.
 
-Both jobs require Python 3.14.2 or newer. Before running the tests, each one checks that
-exactly one test plugin is installed, that the plugin pins the installed Home Assistant
-and that the release meets the `hacs.json` minimum, then prints the Python, Home
-Assistant and test plugin versions.
+Both jobs use the Python range in `pyproject.toml`. Before running the tests, each one
+checks that exactly one test plugin is installed, that the plugin pins the installed
+Home Assistant and that the release meets the `hacs.json` minimum, then prints the
+Python, Home Assistant and test plugin versions.
 
 For pull requests from bots or labeled `dependencies`, both check names are reported
 without running tests.

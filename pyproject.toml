@@ -1,6 +1,6 @@
 [project]
 name = "resmed_myair"
-requires-python = ">=3.14.2"
+requires-python = ">=3.14.2,<3.15"
 dynamic = ["version"]
 
 [build-system]
@@ -30,6 +30,7 @@ lint = [
     "mypy",
     "prek",
     "probatio",
+    "pydoclint>=0.12.0",
     "ruff",
     "uv",
 ]
@@ -58,7 +59,6 @@ config-settings = { editable_mode = "compat" }
 required-version = ">=0.11.0"
 
 [tool.mypy]
-python_version = "3.14"
 files = ["custom_components/resmed_myair"]
 check_untyped_defs = true
 explicit_package_bases = true

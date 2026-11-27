@@ -16,11 +16,12 @@ platform conventions, and the [glossary](GLOSSARY.md) defines project terms.
 
 ## Python, errors, and logging
 
-- Target Python 3.14 and current Home Assistant. Type function and method
-  parameters and return values, and annotate class attributes. Write module and
-  class docstrings and use Google-style docstrings for functions and methods,
-  including private and nested ones. Keep imports at the top of the module and
-  preserve useful comments, updating them when behavior changes.
+- Target current Home Assistant and the Python range in `requires-python` in
+  [pyproject.toml](pyproject.toml). Type function and method parameters and return
+  values, and annotate class attributes. Write module and class docstrings and use
+  Google-style docstrings for functions and methods, including private and nested
+  ones. Keep imports at the top of the module and preserve useful comments, updating
+  them when behavior changes.
 - Validate myAir data at the client or model boundary. Treat a missing or invalid
   measurement separately from a real zero. Use the glossary’s date distinctions
   when selecting records or exposing dates and timestamps.
