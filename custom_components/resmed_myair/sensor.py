@@ -178,6 +178,19 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         self._handle_coordinator_update()
 
     @callback
+    def async_registry_entry_updated(self) -> None:
+        """Keep this sensor's unique ID in step with its registry entry.
+
+        The coordinator can move a sensor built before the serial was known onto its
+        serial-based unique ID while the sensor keeps running. Home Assistant may then
+        remove and re-add this object, registering whatever unique ID it still holds.
+        Copying the registry's unique ID keeps the re-added entity on the adopted ID.
+        """
+        if self.registry_entry is not None:
+            self._attr_unique_id = self.registry_entry.unique_id
+        super().async_registry_entry_updated()
+
+    @callback
     def _handle_coordinator_update(self) -> None:
         """Publish state only from data attributed to the Configured CPAP Device."""
         data = _coordinator_data(self.coordinator)

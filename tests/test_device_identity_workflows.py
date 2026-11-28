@@ -377,6 +377,32 @@ async def test_legacy_entry_without_a_known_serial_adopts_the_first_reported_dev
     assert hass.states.get(ahi_id).state == "0.6"
 
 
+async def test_renamed_adopted_sensor_keeps_its_serial_unique_id(
+    hass: HomeAssistant, myair: _MyAir
+) -> None:
+    """Keep a sensor renamed after adoption on its serial-based unique ID.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        myair (_MyAir): Simulated myAir account.
+    """
+    myair.device = ParsingError("Device unavailable")
+    entry = _entry(hass, unique_id=None)
+    await _setup(hass, entry)
+    ahi_id = _sensors(hass, entry)[f"{DOMAIN}_entry-{entry.entry_id}_ahi"]
+
+    myair.device = _device(_ORIGINAL)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    er.async_get(hass).async_update_entity(ahi_id, new_entity_id="sensor.renamed_ahi")
+    await hass.async_block_till_done()
+
+    sensors = _sensors(hass, entry)
+    assert not any("entry-" in unique_id for unique_id in sensors)
+    assert sensors[f"{DOMAIN}_{_ORIGINAL}_ahi"] == "sensor.renamed_ahi"
+    assert hass.states.get("sensor.renamed_ahi").state == "0.6"
+
+
 async def test_entry_for_replacement_device_adopts_its_existing_sensors(
     hass: HomeAssistant, myair: _MyAir
 ) -> None:
