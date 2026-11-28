@@ -1,4 +1,4 @@
-"""Test the timeline action and Time in Apnea sensor through Home Assistant."""
+"""Test the timeline action and timeline sensors through Home Assistant."""
 
 from asyncio import Event, timeout
 from collections.abc import Iterator
@@ -25,6 +25,7 @@ from custom_components.resmed_myair.const import (
     CONF_REGION,
     CONF_USER_NAME,
     DOMAIN,
+    NIGHTLY_TIMELINE_KEY,
     REGION_NA,
     TIME_IN_APNEA_KEY,
 )
@@ -35,7 +36,7 @@ from custom_components.resmed_myair.models import (
 )
 from tests.common import MockConfigEntry
 
-_ACTION = "get_nightly_therapy_timeline"
+_ACTION = "get_nightly_timeline"
 _SERIAL = "SN123"
 _DATE = "2026-01-08"
 
@@ -835,3 +836,74 @@ async def test_timeline_action_requires_admin_user(
     assert response is not None
     assert response["total_seconds_in_apnea"] == 12
     timeline_query.assert_awaited_once()
+
+
+async def test_nightly_timeline_sensor_exposes_current_date_timeline(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    timeline_query: AsyncMock,
+    sleep_records: list[MyAirSleepRecord],
+) -> None:
+    """Show the Current Data Date with the action's timeline output as attributes.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (MockConfigEntry): Entry owning the sensor.
+        timeline_query (AsyncMock): myAir timeline query double.
+        sleep_records (list[MyAirSleepRecord]): Daily records returned during refresh.
+    """
+    await _load(hass, config_entry)
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{DOMAIN}_{_SERIAL}_{NIGHTLY_TIMELINE_KEY}"
+    )
+    assert entity_id is not None
+    assert hass.states.get(entity_id) is None
+    timeline_query.assert_not_awaited()
+
+    timeline_query.return_value = _payload(
+        [
+            {
+                "date": _DATE,
+                "ahi": 0.6,
+                "totalSecondsInApnea": 12,
+                "totalUsageHours": 7,
+                "respiratoryEvents": [
+                    {
+                        "eventType": "obstructiveApnea",
+                        "startDate": "2026-01-09T01:00:00-05:00",
+                        "endDate": "2026-01-09T01:00:12-05:00",
+                        "durationSeconds": 12,
+                    }
+                ],
+                "therapyStatusEvents": [
+                    {"eventType": "maskOn", "date": "2026-01-08T23:00:00-05:00"}
+                ],
+            }
+        ]
+    )
+    # Enabling only the timeline sensor is enough to request the timeline.
+    registry.async_update_entity(entity_id, disabled_by=None)
+    assert await hass.config_entries.async_reload(config_entry.entry_id)
+    await hass.async_block_till_done()
+    timeline_query.assert_awaited_once()
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == _DATE
+    assert "events" in state.state_info["unrecorded_attributes"]
+    action_response = await _get_timeline(hass, config_entry)
+    assert action_response is not None
+    assert {key: state.attributes[key] for key in action_response} == action_response
+    assert action_response["events"][0] == {
+        "type": "maskOn",
+        "timestamp": "2026-01-08T23:00:00-05:00",
+    }
+
+    sleep_records.append(MyAirSleepRecord.from_api({"startDate": "2026-01-09", "totalUsage": 0}))
+    timeline_query.return_value = _payload(None)
+    await config_entry.runtime_data.async_refresh()
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == "2026-01-09"
+    assert "events" not in state.attributes
+    assert timeline_query.await_args.kwargs["variables"]["startDate"] == "2026-01-09"

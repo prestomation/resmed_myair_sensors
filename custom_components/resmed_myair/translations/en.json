@@ -1,8 +1,8 @@
 {
     "title": "ResMed myAir CPAP Sensors",
     "services": {
-        "get_nightly_therapy_timeline": {
-            "name": "Get Nightly Therapy Timeline",
+        "get_nightly_timeline": {
+            "name": "Get Nightly Timeline",
             "description": "Fetch the myAir therapy summary and timestamped events for one night.",
             "fields": {
                 "config_entry_id": {

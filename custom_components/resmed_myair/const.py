@@ -17,6 +17,9 @@ DEFAULT_UPDATE_RATE_MIN = 30
 # Wait this long past the end of a reported myAir outage before polling again.
 OUTAGE_RETRY_MARGIN_SEC = 60
 TIME_IN_APNEA_KEY = "totalSecondsInApnea"
+NIGHTLY_TIMELINE_KEY = "nightlyTimeline"
+# Opt-in sensors that need a Nightly Therapy Timeline request at each refresh.
+TIMELINE_SENSOR_KEYS = (TIME_IN_APNEA_KEY, NIGHTLY_TIMELINE_KEY)
 
 AUTHN_SUCCESS = "SUCCESS"
 AUTH_NEEDS_MFA = "MFA_REQUIRED"
