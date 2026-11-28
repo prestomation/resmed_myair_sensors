@@ -890,6 +890,7 @@ async def test_nightly_timeline_sensor_exposes_current_date_timeline(
     state = hass.states.get(entity_id)
     assert state is not None
     assert state.state == _DATE
+    assert "events" in state.state_info["unrecorded_attributes"]
     action_response = await _get_timeline(hass, config_entry)
     assert action_response is not None
     assert {key: state.attributes[key] for key in action_response} == action_response

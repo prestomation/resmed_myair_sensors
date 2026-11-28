@@ -236,16 +236,12 @@ class MyAirNightlyTimeline(MyAirBaseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Publish the Current Data Date and the matching timeline, when received."""
+        """Publish the Current Data Date and that night's timeline, when received."""
         data = _coordinator_data(self.coordinator)
         latest = data.latest_sleep_record
         current_date = latest.start_date if latest else None
         timeline = data.nightly_timeline
-        attributes = (
-            timeline.as_dict()
-            if timeline is not None and timeline.assigned_date == current_date
-            else None
-        )
+        attributes = timeline.as_dict() if timeline is not None else None
         self._available = self.coordinator.last_update_success and current_date is not None
         self._attr_native_value = current_date
         self._attr_extra_state_attributes = attributes or {}
