@@ -18,22 +18,22 @@
     },
     "exceptions": {
         "timeline_device_unverified": {
-            "message": "The Nightly Therapy Timeline is unavailable because the latest myAir data could not be matched to this entry's CPAP device."
+            "message": "The Nightly Timeline is unavailable because the latest myAir data could not be matched to this entry's CPAP device."
         },
         "timeline_entry_unloaded": {
-            "message": "The myAir account was unloaded while retrieving the Nightly Therapy Timeline."
+            "message": "The myAir account was unloaded while retrieving the Nightly Timeline."
         },
         "timeline_invalid_date": {
-            "message": "Provide a valid date for the Nightly Therapy Timeline."
+            "message": "Provide a valid date for the Nightly Timeline."
         },
         "timeline_missing_account": {
-            "message": "Select a myAir account before requesting the Nightly Therapy Timeline."
+            "message": "Select a myAir account before requesting the Nightly Timeline."
         },
         "timeline_request_failed": {
-            "message": "Unable to retrieve the Nightly Therapy Timeline from myAir."
+            "message": "Unable to retrieve the Nightly Timeline from myAir."
         },
         "timeline_unavailable": {
-            "message": "The Nightly Therapy Timeline is unavailable for {date}."
+            "message": "The Nightly Timeline is unavailable for {date}."
         }
     },
     "config": {
