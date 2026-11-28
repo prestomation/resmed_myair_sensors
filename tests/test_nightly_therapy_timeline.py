@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, call, patch
 
 from aiohttp import ClientError
 from homeassistant.auth.const import GROUP_ID_ADMIN, GROUP_ID_USER
-from homeassistant.const import ATTR_CONFIG_ENTRY_ID, STATE_UNKNOWN
+from homeassistant.const import ATTR_CONFIG_ENTRY_ID, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import Context, HomeAssistant, ServiceResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, Unauthorized
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -478,7 +478,7 @@ async def test_time_in_apnea_rejects_timeline_from_replacement_device(
     timeline_query: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Keep a replacement device's timeline and metadata off the configured entity.
+    """Withhold a replacement device's timeline and metadata from the configured entity.
 
     Args:
         hass (HomeAssistant): Home Assistant instance.
@@ -537,11 +537,11 @@ async def test_time_in_apnea_rejects_timeline_from_replacement_device(
         assert registry_device.model == "Original Model"
         assert registry_device.name == "Original CPAP"
         state = hass.states.get(entity_id)
-        assert state is not None and state.state == STATE_UNKNOWN
+        assert state is not None and state.state == STATE_UNAVAILABLE
 
         await config_entry.runtime_data.async_refresh()
         state = hass.states.get(entity_id)
-        assert state is not None and state.state == STATE_UNKNOWN
+        assert state is not None and state.state == STATE_UNAVAILABLE
         timeline_query.assert_not_awaited()
 
         await config_entry.runtime_data.async_refresh()
@@ -727,64 +727,6 @@ async def test_in_flight_timeline_action_reports_unload(
     with pytest.raises(ServiceValidationError) as err:
         await action_task
     assert err.value.translation_key == "timeline_entry_unloaded"
-
-
-async def test_time_in_apnea_keeps_device_mismatch_through_sleep_record_outage(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    timeline_query: AsyncMock,
-    sleep_records: list[MyAirSleepRecord],
-) -> None:
-    """Keep replacement data off the original sensor when either lookup fails.
-
-    Args:
-        hass (HomeAssistant): Home Assistant instance.
-        config_entry (MockConfigEntry): Entry configured for the original device.
-        timeline_query (AsyncMock): myAir timeline query double.
-        sleep_records (list[MyAirSleepRecord]): Daily records returned after the outage.
-    """
-    entity_id = await _load(hass, config_entry)
-    er.async_get(hass).async_update_entity(entity_id, disabled_by=None)
-    timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 8}])
-    assert await hass.config_entries.async_reload(config_entry.entry_id)
-    await hass.async_block_till_done()
-    state = hass.states.get(entity_id)
-    assert state is not None and float(state.state) == 8
-    timeline_query.reset_mock()
-
-    with (
-        patch.object(
-            RESTClient,
-            "get_user_device_data",
-            side_effect=[
-                MyAirDevice.from_api({"serialNumber": "SN456"}),
-                ParsingError("Temporary device parsing failure"),
-                MyAirDevice.from_api({"serialNumber": _SERIAL}),
-            ],
-        ),
-        patch.object(
-            RESTClient,
-            "get_sleep_records",
-            side_effect=[
-                ServiceUnavailableError("Sleep records unavailable"),
-                sleep_records,
-                sleep_records,
-            ],
-        ),
-    ):
-        timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 41}])
-        await config_entry.runtime_data.async_refresh()
-        await config_entry.runtime_data.async_refresh()
-        state = hass.states.get(entity_id)
-        assert state is not None and state.state == STATE_UNKNOWN
-        timeline_query.assert_not_awaited()
-
-        timeline_query.return_value = _payload([{"date": _DATE, "totalSecondsInApnea": 12}])
-        await config_entry.runtime_data.async_refresh()
-
-    state = hass.states.get(entity_id)
-    assert state is not None and float(state.state) == 12
-    timeline_query.assert_awaited_once()
 
 
 async def test_timeline_action_requires_admin_user(

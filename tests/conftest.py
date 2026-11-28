@@ -14,6 +14,7 @@ from custom_components.resmed_myair.const import (
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
+    DOMAIN,
     REGION_EU,
     REGION_NA,
 )
@@ -72,6 +73,8 @@ def coordinator_data(
 ) -> MyAirCoordinatorData:
     """Build typed coordinator data for sensor and integration tests.
 
+    The device's serial, when present, is used as the Configured CPAP Device serial.
+
     Args:
         device (dict[str, object] | None): Optional raw device payload to convert into typed
             model data.
@@ -82,9 +85,11 @@ def coordinator_data(
         MyAirCoordinatorData: A coordinator-data instance populated from the provided
             payloads.
     """
+    typed_device = MyAirDevice.from_api(device) if device is not None else None
     return MyAirCoordinatorData(
-        device=MyAirDevice.from_api(device) if device is not None else None,
+        device=typed_device,
         sleep_records=tuple(MyAirSleepRecord.from_api(record) for record in (sleep_records or [])),
+        serial=typed_device.serial_number or None if typed_device is not None else None,
     )
 
 
@@ -418,6 +423,7 @@ def coordinator_factory() -> CoordinatorFactory:
                     d (MyAirCoordinatorData): Typed coordinator payload used by sensor tests.
                 """
                 self.data = d
+                self.config_entry = MockConfigEntry(domain=DOMAIN, entry_id="mock_entry_id")
 
             def async_add_listener(self, *args: object, **kwargs: object) -> Callable[[], None]:
                 """Accept listener registration and return a no-op unsubscribe callback.

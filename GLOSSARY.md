@@ -13,6 +13,10 @@ The account used to sign in to ResMed myAir and access sleep records and registe
 The physical therapy machine registered in myAir, identified by its serial number.
 _Avoid_: Account, when referring to the machine.
 
+**Configured CPAP Device**:
+The CPAP Device whose serial number a Home Assistant myAir entry is tied to. The integration shows myAir data under the entry's sensors only while that data can be attributed to this device.
+_Avoid_: Current device, which can mean whichever device myAir reports now.
+
 ### Sleep records and dates
 
 **Sleep Record**:

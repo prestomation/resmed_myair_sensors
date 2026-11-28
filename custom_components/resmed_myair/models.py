@@ -359,11 +359,25 @@ class MyAirNightlyTherapyTimeline:
 
 @dataclass(frozen=True, slots=True)
 class MyAirCoordinatorData:
-    """Immutable snapshot of the latest myAir device and sleep data."""
+    """Immutable snapshot of the latest myAir data for the Configured CPAP Device.
+
+    Attributes:
+        device (MyAirDevice | None): Device payload, when myAir returned one.
+        sleep_records (tuple[MyAirSleepRecord, ...]): Recent Sleep Records.
+        nightly_timeline (MyAirNightlyTherapyTimeline | None): Timeline for the
+            Current Data Date, when requested and returned.
+        serial (str | None): Serial of the Configured CPAP Device, or ``None``
+            until the entry has one.
+        withheld (bool): Whether myAir data was withheld because it cannot be
+            attributed to the Configured CPAP Device. A withheld snapshot carries
+            no device, Sleep Record, or timeline data.
+    """
 
     device: MyAirDevice | None = None
     sleep_records: tuple[MyAirSleepRecord, ...] = ()
     nightly_timeline: MyAirNightlyTherapyTimeline | None = None
+    serial: str | None = None
+    withheld: bool = False
 
     @property
     def latest_sleep_record(self) -> MyAirSleepRecord | None:
