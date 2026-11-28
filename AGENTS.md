@@ -10,7 +10,8 @@
 - Be concise and explain coding steps briefly when making code changes; include code snippets and tests where relevant.
 - For non-trivial edits, provide a short plan. For small, low-risk edits, implement and include a one-line summary.
 - Focus on a single conceptual change at a time when public APIs or multiple modules are affected.
-- Maintain project style and Python 3.14+ compatibility. Target latest Home Assistant core.
+- Maintain project style and the Python compatibility declared in
+  [pyproject.toml](pyproject.toml). Target latest Home Assistant core.
 - If deviating from these guidelines, explicitly state which guideline is deviated from and why.
 
 ## Agent permissions and venv policy

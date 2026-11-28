@@ -9,5 +9,5 @@ if ! command -v uv >/dev/null 2>&1; then
 	exit 1
 fi
 
-uv sync --python 3.14 --group dev
+uv sync --group dev
 .venv/bin/prek install
