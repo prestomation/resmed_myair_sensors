@@ -94,7 +94,12 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         self._client_lock = Lock()
         self._serial: str | None = config_entry.unique_id
         self._adopted_serial: str | None = None
-        self._device_mismatch: bool = False
+        self._device_mismatch: bool = (
+            ir.async_get(hass).async_get_issue(
+                DOMAIN, device_mismatch_issue_id(config_entry.entry_id)
+            )
+            is not None
+        )
         super().__init__(
             hass=hass,
             config_entry=config_entry,

@@ -245,6 +245,15 @@ async def test_replacement_device_withholds_every_sensor_until_the_configured_de
         for device in dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
     ] == [{(DOMAIN, _ORIGINAL)}]
 
+    # A reload whose first refresh has no device payload keeps the open mismatch in effect.
+    myair.device = ParsingError("Device unavailable")
+    await _setup(hass, entry)
+    assert _state(hass, entry, "ahi") == STATE_UNAVAILABLE
+    assert _state(hass, entry, NIGHTLY_TIMELINE_KEY) == STATE_UNAVAILABLE
+    myair.sleep_records.assert_not_awaited()
+    myair.timeline.assert_not_awaited()
+    assert _mismatch_issue(hass, entry) is not None
+
     myair.device = _device(_ORIGINAL)
     await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
