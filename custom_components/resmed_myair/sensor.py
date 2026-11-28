@@ -380,7 +380,7 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
         """Initialize the synthesized usage-time entity.
 
         This sensor uses the normalized ``friendly_usage_time`` model field instead
-        of a raw myAir GraphQL key, so it keeps its own update handler.
+        of a raw myAir GraphQL key, so it implements its own ``_update_from_data``.
 
         Args:
             coordinator (MyAirDataUpdateCoordinator): Data coordinator that supplies

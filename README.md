@@ -87,7 +87,7 @@ Developers can run a local smoke test against the live myAir API without Home As
 
 The script prompts for credentials when they are not provided. For repeatable local runs, create a `live_smoke_test.env` file using `live_smoke_test.env.example`.
 
-By default, the script writes device and Sleep Record metrics to `live_smoke_test_output.json`. Use the Home Assistant integration to inspect Time in Apnea and the Nightly Therapy Timeline. Add `--raw` to include raw myAir payload values for local inspection. The [myAir API reference](docs/myair-api.md) documents observed endpoints and links to the curated GraphQL schema.
+By default, the script writes device and Sleep Record metrics to `live_smoke_test_output.json`. Use the Home Assistant integration to inspect Time in Apnea and the Nightly Timeline. Add `--raw` to include raw myAir payload values for local inspection. The [myAir API reference](docs/myair-api.md) documents observed endpoints and links to the curated GraphQL schema.
 
 ## Contributions are welcome!
 

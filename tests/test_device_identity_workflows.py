@@ -209,6 +209,8 @@ async def test_replacement_device_withholds_every_sensor_until_the_configured_de
     myair.timeline.assert_not_awaited()
     issue = _mismatch_issue(hass, entry)
     assert issue is not None
+    # Persistent issues are restored active after a restart, keeping the explanation visible.
+    assert issue.is_persistent
     assert issue.translation_placeholders == {
         "title": entry.title,
         "configured": _ORIGINAL,
