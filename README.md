@@ -45,7 +45,7 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
 1. CPAP Time in Apnea
     * The duration in seconds myAir reports for the Current Data Date. This sensor is disabled by default. Enabling it adds a nightly timeline request on each refresh.
 1. CPAP Nightly Timeline
-    * The Current Data Date, with that night's timeline as attributes: `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and `events`, in the same format as the `get_nightly_timeline` action. This sensor is disabled by default. Enabling it adds a nightly timeline request on each refresh, shared with CPAP Time in Apnea. The attributes are empty when myAir has no usable timeline for that date. The recorder does not store `events`.
+    * The Current Data Date, with that night's timeline as attributes: `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and `events`, in the same format as the `get_nightly_timeline` action. This sensor is disabled by default. Enabling it adds a nightly timeline request on each refresh, shared with CPAP Time in Apnea. The attributes are empty when myAir has no usable timeline for that date. The recorder does not store `events`. Unlike the administrator-only action, these attributes, including `events`, are visible to anyone who can view the entity.
 1. CPAP myAir Usage Hours Score (up to 70 points)
 1. CPAP myAir Mask Seal Score (up to 20 points)
 1. CPAP myAir Events per Hour Score (up to 5 points)
