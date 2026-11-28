@@ -273,9 +273,8 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
 
         Returns:
             str | None: The observed serial when it is registered for this entry;
-                otherwise the lowest-sorting registered serial. ``None`` when no
-                serial is registered, or when several are registered and myAir
-                reported none.
+                otherwise the lowest-sorting registered serial; ``None`` when no
+                serial is registered.
         """
         prefix = f"{DOMAIN}_"
         registry = er.async_get(self.hass)
@@ -291,8 +290,6 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                 serials.add(serial)
         if observed in serials:
             return observed
-        if observed is None and len(serials) > 1:
-            return None
         return min(serials, default=None)
 
     def _adopt_placeholder_entities(self, serial: str) -> None:
