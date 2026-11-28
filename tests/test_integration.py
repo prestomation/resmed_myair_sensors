@@ -593,6 +593,6 @@ async def test_async_setup_entry_registers_all_sensors(
     expected_count = (
         len(DEVICE_SENSOR_DESCRIPTIONS)
         + len(SLEEP_RECORD_SENSOR_DESCRIPTIONS)
-        + 3  # FriendlyUsageTime + MostRecentSleepDate + TimeInApnea
+        + 4  # FriendlyUsageTime + MostRecentSleepDate + TimeInApnea + NightlyTimeline
     )
     assert len(added_entities) == expected_count

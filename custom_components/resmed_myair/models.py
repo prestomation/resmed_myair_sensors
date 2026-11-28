@@ -339,6 +339,23 @@ class MyAirNightlyTherapyTimeline:
             events=_timeline_events(raw),
         )
 
+    def as_dict(self) -> JsonObjectType | None:
+        """Serialize the timeline for an action response or sensor attributes.
+
+        Returns:
+            JsonObjectType | None: The summary and chronological events, or None when
+                myAir did not supply reliable event lists.
+        """
+        if self.events is None:
+            return None
+        return {
+            "date": self.assigned_date.isoformat(),
+            "ahi": self.ahi,
+            "total_seconds_in_apnea": self.total_seconds_in_apnea,
+            "total_usage_hours": self.total_usage_hours,
+            "events": [event.as_dict() for event in self.events],
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class MyAirCoordinatorData:
@@ -346,7 +363,16 @@ class MyAirCoordinatorData:
 
     device: MyAirDevice | None = None
     sleep_records: tuple[MyAirSleepRecord, ...] = ()
-    time_in_apnea: int | None = None
+    nightly_timeline: MyAirNightlyTherapyTimeline | None = None
+
+    @property
+    def time_in_apnea(self) -> int | None:
+        """Return the Time in Apnea from the Current Data Date's timeline.
+
+        Returns:
+            int | None: Seconds in apnea, or ``None`` when no timeline value was received.
+        """
+        return self.nightly_timeline.total_seconds_in_apnea if self.nightly_timeline else None
 
     @property
     def latest_sleep_record(self) -> MyAirSleepRecord | None:

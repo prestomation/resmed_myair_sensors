@@ -44,6 +44,8 @@ By the nature of CPAP data, sensors will only update once per day (assuming your
 1. CPAP Total myAir Score
 1. CPAP Time in Apnea
     * The duration in seconds myAir reports for the Current Data Date. This sensor is disabled by default. Enabling it adds a nightly timeline request on each refresh.
+1. CPAP Nightly Timeline
+    * The Current Data Date, with that night's timeline as attributes: `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and `events`, in the same format as the `get_nightly_timeline` action. This sensor is disabled by default. Enabling it adds a nightly timeline request on each refresh, shared with CPAP Time in Apnea. The attributes are empty when myAir has no usable timeline for that date. The recorder does not store `events`.
 1. CPAP myAir Usage Hours Score (up to 70 points)
 1. CPAP myAir Mask Seal Score (up to 20 points)
 1. CPAP myAir Events per Hour Score (up to 5 points)
@@ -61,7 +63,7 @@ While a ResMed myAir config entry is loaded, `resmed_myair.force_poll_{username}
 
 If two usernames produce the same action name, the action refreshes the entry that registered it most recently. If that entry unloads, reload the remaining entry to restore the action.
 
-`resmed_myair.get_nightly_therapy_timeline` takes `config_entry_id` and a myAir-assigned `date` in `YYYY-MM-DD` format. Administrators and system-run automations can use it independently of the Time in Apnea sensor. The action fetches the night on demand and returns `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and a chronological `events` list. In an automation, use `response_variable` to access the result.
+`resmed_myair.get_nightly_timeline` takes `config_entry_id` and a myAir-assigned `date` in `YYYY-MM-DD` format. Administrators and system-run automations can use it independently of the Time in Apnea and Nightly Timeline sensors. The action fetches the night on demand and returns `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and a chronological `events` list. In an automation, use `response_variable` to access the result.
 
 Each event contains a myAir `type` and a timezone-aware `timestamp`. It can also contain `end_timestamp` and `duration_seconds` when myAir supplies them. Times retain their source offsets across midnight. A night that myAir returns with no events has an empty list. If myAir has no timeline for the date, the action reports it as unavailable. Historical availability depends on myAir.
 

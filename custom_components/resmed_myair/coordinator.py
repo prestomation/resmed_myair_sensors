@@ -22,7 +22,7 @@ from .client.myair_client import (
     ServiceUnavailableError,
     StaleSessionError,
 )
-from .const import DEFAULT_UPDATE_RATE_MIN, DOMAIN, OUTAGE_RETRY_MARGIN_SEC, TIME_IN_APNEA_KEY
+from .const import DEFAULT_UPDATE_RATE_MIN, DOMAIN, OUTAGE_RETRY_MARGIN_SEC, TIMELINE_SENSOR_KEYS
 from .models import MyAirCoordinatorData, MyAirDevice, MyAirNightlyTherapyTimeline, MyAirSleepRecord
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -62,9 +62,9 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         _LOGGER.info("Initializing DataUpdateCoordinator for ResMed myAir")
         self.myair_client = myair_client
         self._client_lock = Lock()
-        self._time_in_apnea_serial: str | None = config_entry.unique_id
-        self._time_in_apnea_identity_matches: bool = False
-        self.time_in_apnea_unique_id: str | None = None
+        self._timeline_serial: str | None = config_entry.unique_id
+        self._timeline_identity_matches: bool = False
+        self._timeline_unique_ids: dict[str, str] = {}
         super().__init__(
             hass=hass,
             config_entry=config_entry,
@@ -138,7 +138,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
             )
 
         # Keep the observed identity even if the subsequent sleep-record request fails.
-        timeline_unique_id = self._update_time_in_apnea_identity(device)
+        timeline_unique_ids = self._update_timeline_identity(device)
 
         try:
             sleep_records = tuple(await self.myair_client.get_sleep_records())
@@ -168,93 +168,116 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
 
         data = MyAirCoordinatorData(device=device, sleep_records=sleep_records)
         latest = data.latest_sleep_record
-        if latest and latest.start_date and self._time_in_apnea_enabled(timeline_unique_id):
+        if latest and latest.start_date and self._timeline_sensor_enabled(timeline_unique_ids):
             try:
                 async with timeout(_TIMELINE_TIMEOUT_SECONDS):
                     timeline = await self.myair_client.get_nightly_therapy_timeline(
                         latest.start_date
                     )
             except TIMELINE_REQUEST_ERRORS as err:
-                _LOGGER.debug("Time in Apnea lookup failed: %s", type(err).__name__)
+                _LOGGER.debug("Nightly Therapy Timeline lookup failed: %s", type(err).__name__)
             else:
                 if timeline is not None:
-                    return replace(data, time_in_apnea=timeline.total_seconds_in_apnea)
+                    return replace(data, nightly_timeline=timeline)
         return data
 
-    def _update_time_in_apnea_identity(self, device: MyAirDevice | None) -> str:
-        """Bind the sensor to a verified serial without losing a legacy registry entry.
+    def _update_timeline_identity(self, device: MyAirDevice | None) -> tuple[str, ...]:
+        """Bind the timeline sensors to a verified serial without losing legacy registry entries.
 
         Args:
             device (MyAirDevice | None): Device returned before fetching sleep records.
 
         Returns:
-            str: The serial-based or provisional sensor unique ID.
+            tuple[str, ...]: The serial-based or provisional unique IDs of the timeline sensors.
         """
         config_entry = self.config_entry
         prefix = f"{DOMAIN}_"
-        suffix = f"_{TIME_IN_APNEA_KEY}"
-        provisional = f"{prefix}entry-{config_entry.entry_id}{suffix}"
-        blank = f"{prefix}{suffix}"
+        suffixes = {key: f"_{key}" for key in TIMELINE_SENSOR_KEYS}
         observed = device.serial_number if device is not None else None
         registry = er.async_get(self.hass)
 
-        if self.time_in_apnea_unique_id is None and self._time_in_apnea_serial is None:
+        if not self._timeline_unique_ids and self._timeline_serial is None:
+            placeholders = {
+                f"{prefix}{marker}{suffix}"
+                for suffix in suffixes.values()
+                for marker in (f"entry-{config_entry.entry_id}", "")
+            }
             for entry in er.async_entries_for_config_entry(registry, config_entry.entry_id):
                 if entry.domain != "sensor" or entry.platform != DOMAIN:
                     continue
-                if not (entry.unique_id.startswith(prefix) and entry.unique_id.endswith(suffix)):
+                if entry.unique_id in placeholders or not entry.unique_id.startswith(prefix):
                     continue
-                if entry.unique_id not in (provisional, blank):
-                    self._time_in_apnea_serial = entry.unique_id[len(prefix) : -len(suffix)]
+                suffix = next((s for s in suffixes.values() if entry.unique_id.endswith(s)), None)
+                if suffix is not None:
+                    self._timeline_serial = entry.unique_id[len(prefix) : -len(suffix)]
                     break
 
         if observed:
-            if not self._time_in_apnea_serial:
-                self._time_in_apnea_serial = observed
-            self._time_in_apnea_identity_matches = observed == self._time_in_apnea_serial
-        serial = self._time_in_apnea_serial
-        unique_id = f"{prefix}{serial}{suffix}" if serial else provisional
-        if unique_id == self.time_in_apnea_unique_id:
-            return unique_id
-        self.time_in_apnea_unique_id = unique_id
-        # Promote a provisional registry entry without changing its entity ID or opt-in.
-        if registry.async_get_entity_id("sensor", DOMAIN, unique_id) is None:
-            for old_unique_id in (provisional, blank):
-                entity_id = registry.async_get_entity_id("sensor", DOMAIN, old_unique_id)
-                registered = registry.async_get(entity_id) if entity_id else None
-                if registered is not None and registered.config_entry_id == config_entry.entry_id:
-                    registry.async_update_entity(registered.entity_id, new_unique_id=unique_id)
-                    break
-        return unique_id
+            if not self._timeline_serial:
+                self._timeline_serial = observed
+            self._timeline_identity_matches = observed == self._timeline_serial
+        serial = self._timeline_serial
+        for key, suffix in suffixes.items():
+            provisional = f"{prefix}entry-{config_entry.entry_id}{suffix}"
+            unique_id = f"{prefix}{serial}{suffix}" if serial else provisional
+            if self._timeline_unique_ids.get(key) == unique_id:
+                continue
+            self._timeline_unique_ids[key] = unique_id
+            # Promote a provisional registry entry without changing its entity ID or opt-in.
+            if registry.async_get_entity_id("sensor", DOMAIN, unique_id) is None:
+                for old_unique_id in (provisional, f"{prefix}{suffix}"):
+                    entity_id = registry.async_get_entity_id("sensor", DOMAIN, old_unique_id)
+                    registered = registry.async_get(entity_id) if entity_id else None
+                    if (
+                        registered is not None
+                        and registered.config_entry_id == config_entry.entry_id
+                    ):
+                        registry.async_update_entity(registered.entity_id, new_unique_id=unique_id)
+                        break
+        return tuple(self._timeline_unique_ids.values())
 
     @property
-    def time_in_apnea_serial(self) -> str | None:
-        """Return the serial pinned to the timeline sensor.
+    def timeline_serial(self) -> str | None:
+        """Return the serial pinned to the timeline sensors.
 
         Returns:
             str | None: The configured or previously verified serial, when known.
         """
-        return self._time_in_apnea_serial
+        return self._timeline_serial
 
-    def _time_in_apnea_enabled(self, unique_id: str) -> bool:
-        """Check the registered sensor before making an optional timeline request.
+    def timeline_unique_id(self, key: str) -> str | None:
+        """Return the registry key resolved for a timeline sensor.
 
         Args:
-            unique_id (str): Sensor's registry key from the current refresh.
+            key (str): One of ``TIMELINE_SENSOR_KEYS``.
 
         Returns:
-            bool: True when this entry's Time in Apnea sensor is enabled.
+            str | None: The sensor's unique ID once the first refresh resolved it.
         """
-        if not self._time_in_apnea_identity_matches:
+        return self._timeline_unique_ids.get(key)
+
+    def _timeline_sensor_enabled(self, unique_ids: tuple[str, ...]) -> bool:
+        """Check the registered sensors before making an optional timeline request.
+
+        Args:
+            unique_ids (tuple[str, ...]): Timeline sensors' registry keys from the current refresh.
+
+        Returns:
+            bool: True when any of this entry's timeline sensors is enabled.
+        """
+        if not self._timeline_identity_matches:
             return False
         registry = er.async_get(self.hass)
-        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
-        entry = registry.async_get(entity_id) if entity_id else None
-        return (
-            entry is not None
-            and entry.config_entry_id == self.config_entry.entry_id
-            and not entry.disabled
-        )
+        for unique_id in unique_ids:
+            entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+            entry = registry.async_get(entity_id) if entity_id else None
+            if (
+                entry is not None
+                and entry.config_entry_id == self.config_entry.entry_id
+                and not entry.disabled
+            ):
+                return True
+        return False
 
     async def async_get_nightly_therapy_timeline(
         self, assigned_date: date

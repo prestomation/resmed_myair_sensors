@@ -1,4 +1,4 @@
-get_nightly_therapy_timeline:
+get_nightly_timeline:
   fields:
     config_entry_id:
       required: true

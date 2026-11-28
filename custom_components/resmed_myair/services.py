@@ -17,7 +17,7 @@ from homeassistant.util.dt import parse_date
 from .const import DOMAIN
 from .coordinator import TIMELINE_REQUEST_ERRORS, MyAirDataUpdateCoordinator
 
-_TIMELINE_ACTION = "get_nightly_therapy_timeline"
+_TIMELINE_ACTION = "get_nightly_timeline"
 
 
 @callback
@@ -28,7 +28,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         hass (HomeAssistant): Home Assistant instance.
     """
 
-    async def get_nightly_therapy_timeline(call: ServiceCall) -> ServiceResponse:
+    async def get_nightly_timeline(call: ServiceCall) -> ServiceResponse:
         """Return the summary and ordered events for the requested night.
 
         Args:
@@ -62,25 +62,20 @@ def async_setup_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError(
                 translation_domain=DOMAIN, translation_key="timeline_request_failed"
             ) from None
-        if timeline is None or timeline.events is None:
+        response = timeline.as_dict() if timeline is not None else None
+        if response is None:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="timeline_unavailable",
                 translation_placeholders={"date": assigned_date.isoformat()},
             )
-        return {
-            "date": timeline.assigned_date.isoformat(),
-            "ahi": timeline.ahi,
-            "total_seconds_in_apnea": timeline.total_seconds_in_apnea,
-            "total_usage_hours": timeline.total_usage_hours,
-            "events": [event.as_dict() for event in timeline.events],
-        }
+        return response
 
     service.async_register_admin_service(
         hass,
         DOMAIN,
         _TIMELINE_ACTION,
-        get_nightly_therapy_timeline,
+        get_nightly_timeline,
         # The action validates its input in the handler. Core supports a null schema.
         schema=None,  # type: ignore[arg-type]
         supports_response=SupportsResponse.ONLY,

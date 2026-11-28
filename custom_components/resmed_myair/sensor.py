@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     DEVICE_SENSOR_DESCRIPTIONS,
     DOMAIN,
+    NIGHTLY_TIMELINE_KEY,
     SLEEP_RECORD_INDEX_FIELDS,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
     TIME_IN_APNEA_KEY,
@@ -104,6 +105,7 @@ async def async_setup_entry(
             MyAirFriendlyUsageTime(coordinator=coordinator),
             MyAirMostRecentSleepDate(coordinator=coordinator),
             MyAirTimeInApnea(coordinator),
+            MyAirNightlyTimeline(coordinator),
         ]
     )
 
@@ -193,16 +195,60 @@ class MyAirTimeInApnea(MyAirBaseSensor):
                 entity_registry_enabled_default=False,
             ),
             coordinator,
-            configured_serial=coordinator.time_in_apnea_serial,
+            configured_serial=coordinator.timeline_serial,
         )
-        if coordinator.time_in_apnea_unique_id is not None:
-            self._attr_unique_id = coordinator.time_in_apnea_unique_id
+        if (unique_id := coordinator.timeline_unique_id(TIME_IN_APNEA_KEY)) is not None:
+            self._attr_unique_id = unique_id
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Publish the current duration, with missing data represented as unknown."""
         self._available = self.coordinator.last_update_success
         self._attr_native_value = _coordinator_data(self.coordinator).time_in_apnea
+        self.async_write_ha_state()
+
+
+class MyAirNightlyTimeline(MyAirBaseSensor):
+    """Report the Current Data Date with that night's timeline as attributes."""
+
+    # The event list can be long and is refetched from myAir on demand.
+    _unrecorded_attributes = frozenset({"events"})
+
+    def __init__(self, coordinator: MyAirDataUpdateCoordinator) -> None:
+        """Initialize the optional timeline sensor.
+
+        Args:
+            coordinator (MyAirDataUpdateCoordinator): Coordinator supplying the sensor snapshot.
+        """
+        super().__init__(
+            "CPAP Nightly Timeline",
+            SensorEntityDescription(
+                key=NIGHTLY_TIMELINE_KEY,
+                device_class=SensorDeviceClass.DATE,
+                icon="mdi:chart-timeline-variant",
+                entity_registry_enabled_default=False,
+            ),
+            coordinator,
+            configured_serial=coordinator.timeline_serial,
+        )
+        if (unique_id := coordinator.timeline_unique_id(NIGHTLY_TIMELINE_KEY)) is not None:
+            self._attr_unique_id = unique_id
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Publish the Current Data Date and the matching timeline, when received."""
+        data = _coordinator_data(self.coordinator)
+        latest = data.latest_sleep_record
+        current_date = latest.start_date if latest else None
+        timeline = data.nightly_timeline
+        attributes = (
+            timeline.as_dict()
+            if timeline is not None and timeline.assigned_date == current_date
+            else None
+        )
+        self._available = self.coordinator.last_update_success and current_date is not None
+        self._attr_native_value = current_date
+        self._attr_extra_state_attributes = attributes or {}
         self.async_write_ha_state()
 
 
