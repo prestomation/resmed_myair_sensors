@@ -9,6 +9,7 @@ live_smoke_test_output.json
 .pytest_cache
 .qodo
 .ruff_cache
+/.scratch/
 .tox
 .venv
 .vscode

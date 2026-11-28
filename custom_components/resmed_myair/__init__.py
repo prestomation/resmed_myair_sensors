@@ -6,12 +6,15 @@ myair_client is a reverse engineering and can break at anytime.
 
 from collections.abc import MutableMapping
 import logging
+import re
 from typing import Any
 
 from aiohttp import DummyCookieJar
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.config_validation import config_entry_only_config_schema
+from homeassistant.helpers.typing import ConfigType
 
 from .client.myair_client import MyAirConfig
 from .client.rest_client import RESTClient
@@ -20,6 +23,7 @@ from .const import (
     CONF_PASSWORD,
     CONF_REGION,
     CONF_USER_NAME,
+    DOMAIN,
     PLATFORMS,
     REGION_NA,
     VERSION,
@@ -27,20 +31,37 @@ from .const import (
 from .coordinator import MyAirDataUpdateCoordinator
 from .recorder import async_migrate_mask_leak_statistics_metadata
 from .redaction import redact_dict
+from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+_SERVICE_NAME_SANITIZER = re.compile(r"[^a-z0-9_]+")
+CONFIG_SCHEMA = config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
+    """Register actions that Home Assistant can discover before entries load.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        _config (ConfigType): Home Assistant configuration.
+
+    Returns:
+        bool: True once the actions are registered.
+    """
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Create the myAir client, coordinator, and platform entities for an entry.
+    """Set up the myAir coordinator, platform entities, and force-poll action.
 
     Args:
         hass (HomeAssistant): Home Assistant instance loading the integration.
         config_entry (ConfigEntry): Stored myAir account configuration.
 
     Returns:
-        bool: ``True`` after the first coordinator refresh and platform setup
-            succeed.
+        bool: ``True`` after config entry setup completes and the force-poll
+            action is registered.
     """
     _LOGGER.info("Starting ResMed myAir Integration Version: %s", VERSION)
     _LOGGER.debug("[init async_setup_entry] config_entry.data: %s", redact_dict(config_entry.data))
@@ -67,6 +88,29 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     async_migrate_mask_leak_statistics_metadata(hass)
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+
+    sanitized_username = _SERVICE_NAME_SANITIZER.sub("_", client_config.username.casefold()).strip(
+        "_"
+    )
+    service_name = f"force_poll_{sanitized_username}"
+
+    async def refresh(call: ServiceCall) -> None:
+        """Refresh data for the coordinator created by this load.
+
+        Args:
+            call (ServiceCall): Force-poll action call, which takes no parameters.
+        """
+        await coordinator.async_refresh()
+
+    @callback
+    def remove_force_poll_action() -> None:
+        """Remove this load's action if it still owns the registered name."""
+        registered = hass.services.async_services_for_domain(DOMAIN).get(service_name)
+        if registered is not None and registered.job.target is refresh:
+            hass.services.async_remove(DOMAIN, service_name)
+
+    hass.services.async_register(DOMAIN, service_name, refresh)
+    config_entry.async_on_unload(remove_force_poll_action)
     return True
 
 

@@ -374,7 +374,7 @@ async def test_async_update_data_service_unavailable_raises_update_failed(
         myair_client.get_user_device_data.side_effect = outage
     elif failing_call == "sleep_records":
         myair_client.get_user_device_data.return_value = MyAirDevice.from_api(
-            {"serialNumber": "1234"}
+            {"serialNumber": "SN123"}
         )
         myair_client.get_sleep_records.side_effect = outage
     else:

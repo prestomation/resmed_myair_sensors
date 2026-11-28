@@ -36,23 +36,41 @@ For nightly metrics, the integration also imports dated myAir records into Home 
 ## Sensors
 
 1. CPAP AHI Events Per Hour
+1. CPAP Apnea Index and CPAP Hypopnea Index
+    * Each sensor shows events per hour from the same Sleep Record as AHI. Both are disabled by default. Enable either sensor from the CPAP device page in Home Assistant.
 1. CPAP Usage Minutes
 1. CPAP Usage Hours
 1. CPAP Usage Hours 7 Day Average
 1. CPAP Usage Hours 30 Day Average
 1. CPAP Mask On/Off Count
 1. CPAP Current Data Date
-    * This is the last date currently being displayed by the other sensors
+    * The date assigned by myAir to the latest sleep record, including a record with zero usage.
 1. CPAP Mask Leak
 1. CPAP Total myAir Score
+1. CPAP Time in Apnea
+    * The duration in seconds myAir reports for the Current Data Date. This sensor is disabled by default. Enabling it adds a nightly timeline request on each refresh.
+1. CPAP Nightly Timeline
+    * The Current Data Date, with that night's timeline as attributes: `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and `events`, in the same format as the `get_nightly_timeline` action. This sensor is disabled by default. Enabling it adds a nightly timeline request on each refresh, shared with CPAP Time in Apnea. The attributes are empty when myAir has no usable timeline for that date. The recorder does not store `events`. Unlike the administrator-only action, these attributes, including `events`, are visible to anyone who can view the entity.
+1. CPAP myAir Usage Hours Score (up to 70 points)
+1. CPAP myAir Mask Seal Score (up to 20 points)
+1. CPAP myAir Events per Hour Score (up to 5 points)
+1. CPAP myAir Mask On/Off Score (up to 5 points)
 1. CPAP Sleep Data Last Collected
-    * This is the datetime the CPAP uploaded the most recent data
+    * The CPAP device’s last sleep data report time, as shown in myAir.
 1. Most Recent Sleep Date
-    * This is the most recent date for which data is available. This will match Current Data Date if you use your CPAP every day. An automation that triggers when these two sensors are different will signal that you have missed a night
+    * The latest sleep record date with positive CPAP usage. It can precede Current Data Date when a newer record has zero or unavailable usage.
+
+The four score component sensors are disabled by default. You can enable them individually from the CPAP device page in Home Assistant. Like the total score, they report values for the Current Data Date.
 
 ## Services
 
-Each config entry for this integration will create a service called `resmed_myair.force_poll_{username}` that will force an update from myAir.
+While a ResMed myAir config entry is loaded, `resmed_myair.force_poll_{username}` requests an immediate update from myAir. The action takes no parameters. When an entry successfully unloads, Home Assistant removes the action if the entry still owns its registration. If the myAir Account username changes, reload registers the action under the name derived from the new username.
+
+If two usernames produce the same action name, the action refreshes the entry that registered it most recently. If that entry unloads, reload the remaining entry to restore the action.
+
+`resmed_myair.get_nightly_timeline` takes `config_entry_id` and a myAir-assigned `date` in `YYYY-MM-DD` format. Administrators and system-run automations can use it independently of the Time in Apnea and Nightly Timeline sensors. The action fetches the night on demand and returns `date`, `ahi`, `total_seconds_in_apnea`, `total_usage_hours`, and a chronological `events` list. In an automation, use `response_variable` to access the result.
+
+Each event contains a myAir `type` and a timezone-aware `timestamp`. It can also contain `end_timestamp` and `duration_seconds` when myAir supplies them. Times retain their source offsets across midnight. A night that myAir returns with no events has an empty list. If myAir has no timeline for the date, the action reports it as unavailable. Historical availability depends on myAir.
 
 ## Known Issues
 
@@ -70,7 +88,7 @@ Developers can run a local smoke test against the live myAir API without Home As
 
 The script prompts for credentials when they are not provided. For repeatable local runs, create a `live_smoke_test.env` file using `live_smoke_test.env.example`.
 
-By default, output is written to `live_smoke_test_output.json` with the same fields shown in the sensor list above. Add `--raw` to include raw myAir payload values for local inspection. `scripts/graphql_schema.json` is a curated developer reference for observed GraphQL fields; it is not generated from endpoint introspection.
+By default, the script writes device and Sleep Record metrics to `live_smoke_test_output.json`. Use the Home Assistant integration to inspect Time in Apnea and the Nightly Therapy Timeline. Add `--raw` to include raw myAir payload values for local inspection. The [myAir API reference](docs/myair-api.md) documents observed endpoints and links to the curated GraphQL schema.
 
 ## Contributions are welcome!
 

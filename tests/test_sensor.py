@@ -1,16 +1,38 @@
 """Sensor-entity tests that protect availability and value translation."""
 
-import inspect
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
-from homeassistant.const import UnitOfVolumeFlowRate
+from homeassistant.components.sensor import (
+    ATTR_STATE_CLASS,
+    SensorDeviceClass,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import (
+    ATTR_UNIT_OF_MEASUREMENT,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    UnitOfVolumeFlowRate,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
-from custom_components.resmed_myair.const import CONF_USER_NAME, SLEEP_RECORD_SENSOR_DESCRIPTIONS
-from custom_components.resmed_myair.models import MyAirCoordinatorData
+from custom_components.resmed_myair.client.rest_client import RESTClient
+from custom_components.resmed_myair.const import (
+    CONF_PASSWORD,
+    CONF_REGION,
+    CONF_USER_NAME,
+    DOMAIN,
+    REGION_NA,
+    SLEEP_RECORD_SENSOR_DESCRIPTIONS,
+)
+from custom_components.resmed_myair.models import (
+    MyAirCoordinatorData,
+    MyAirDevice,
+    MyAirSleepRecord,
+)
 from custom_components.resmed_myair.sensor import (
     MyAirDeviceSensor,
     MyAirFriendlyUsageTime,
@@ -18,9 +40,127 @@ from custom_components.resmed_myair.sensor import (
     MyAirSleepRecordSensor,
     MyAirUsageHoursAverageSensor,
     _coordinator_data,
-    async_setup_entry,
 )
-from tests.conftest import CoordinatorFactory, ServiceRegistryShimLike, coordinator_data
+from tests.common import MockConfigEntry
+from tests.conftest import CoordinatorFactory, coordinator_data
+
+
+@pytest.fixture(autouse=True)
+def configure_hass(enable_custom_integrations: None) -> None:
+    """Use Home Assistant's real config-entry manager for sensor setup tests.
+
+    Args:
+        enable_custom_integrations (None): Enable loading the integration under test.
+    """
+
+
+async def test_nightly_indexes_are_opt_in_and_follow_the_latest_sleep_record(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opt-in indexes report independent readings alongside the existing AHI sensor.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance loading the integration.
+        monkeypatch (pytest.MonkeyPatch): Replace only myAir network operations.
+    """
+    record_fields = {"totalUsage": 120, "sleepScore": 95, "maskPairCount": 2, "leakPercentile": 4}
+    older_record = MyAirSleepRecord.from_api(
+        {**record_fields, "startDate": "2024-06-01", "apneaIndex": 8, "hypopneaIndex": 9, "ahi": 17}
+    )
+    current_record = {**record_fields, "startDate": "2024-06-02", "ahi": 1.8}
+    record_requests = AsyncMock(
+        return_value=[
+            MyAirSleepRecord.from_api({**current_record, "apneaIndex": 0.25, "hypopneaIndex": 0.5}),
+            older_record,
+        ]
+    )
+    monkeypatch.setattr(RESTClient, "connect", AsyncMock(return_value="token"))
+    monkeypatch.setattr(RESTClient, "get_sleep_records", record_requests)
+    monkeypatch.setattr(
+        RESTClient,
+        "get_user_device_data",
+        AsyncMock(
+            return_value=MyAirDevice.from_api(
+                {"serialNumber": "SN123", "lastSleepDataReportTime": "2024-06-02T12:00:00+00:00"}
+            )
+        ),
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_USER_NAME: "test@example.com",
+            CONF_PASSWORD: "password",
+            CONF_REGION: REGION_NA,
+        },
+        version=2,
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    ahi_id = registry.async_get_entity_id("sensor", DOMAIN, "resmed_myair_SN123_ahi")
+    assert ahi_id is not None
+    ahi_entry = registry.async_get(ahi_id)
+    assert ahi_entry is not None and ahi_entry.device_id is not None
+    ahi = hass.states.get(ahi_id)
+    assert ahi is not None and ahi.state == "1.8"
+    assert ATTR_UNIT_OF_MEASUREMENT not in ahi.attributes
+
+    index_ids = []
+    for field, name in (
+        ("apneaIndex", "CPAP Apnea Index"),
+        ("hypopneaIndex", "CPAP Hypopnea Index"),
+    ):
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"resmed_myair_SN123_{field}")
+        assert entity_id is not None
+        entity = registry.async_get(entity_id)
+        assert entity is not None
+        assert entity.original_name == name
+        assert entity.device_id == ahi_entry.device_id
+        assert entity.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        assert hass.states.get(entity_id) is None
+        registry.async_update_entity(entity_id, disabled_by=None)
+        index_ids.append(entity_id)
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    for entity_id, expected in zip(index_ids, ("0.25", "0.5"), strict=True):
+        state = hass.states.get(entity_id)
+        assert state is not None and state.state == expected
+        assert state.attributes[ATTR_UNIT_OF_MEASUREMENT] == "events/h"
+        assert state.attributes[ATTR_STATE_CLASS] == SensorStateClass.MEASUREMENT
+
+    for records, expected_states in (
+        (
+            [
+                MyAirSleepRecord.from_api(
+                    {**current_record, "totalUsage": 0, "apneaIndex": 0, "hypopneaIndex": None}
+                ),
+                older_record,
+            ],
+            ("0", STATE_UNKNOWN, "1.8"),
+        ),
+        (
+            [MyAirSleepRecord.from_api({**current_record, "hypopneaIndex": 0.75}), older_record],
+            (STATE_UNAVAILABLE, "0.75", "1.8"),
+        ),
+        (
+            [
+                MyAirSleepRecord.from_api(
+                    {**current_record, "apneaIndex": 0.125, "hypopneaIndex": True}
+                )
+            ],
+            ("0.125", STATE_UNKNOWN, "1.8"),
+        ),
+        ([], (STATE_UNAVAILABLE,) * 3),
+    ):
+        record_requests.return_value = records
+        await hass.services.async_call(DOMAIN, "force_poll_test_example_com", blocking=True)
+        for entity_id, expected in zip([*index_ids, ahi_id], expected_states, strict=True):
+            state = hass.states.get(entity_id)
+            assert state is not None and state.state == expected
 
 
 def test_mask_leak_sensor_uses_liters_per_minute_without_changing_raw_key(
@@ -335,76 +475,6 @@ def test_myair_device_sensor_parametrized(
     sensor._handle_coordinator_update()
     assert sensor.available == expected_available
     assert sensor.native_value == expected_native
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_adds_entities_and_registers_service(
-    monkeypatch: pytest.MonkeyPatch,
-    coordinator_factory: CoordinatorFactory,
-    hass: MagicMock,
-    config_entry: MockConfigEntry,
-    service_registry_shim: ServiceRegistryShimLike,
-) -> None:
-    """Setup adds sensor entities and registers the force-poll service.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture for sensor setup dependencies.
-        coordinator_factory (CoordinatorFactory): Factory creating the test coordinator.
-        hass (MagicMock): Home Assistant instance receiving platform setup.
-        config_entry (MockConfigEntry): Fixture preparing shared config-entry helpers.
-        service_registry_shim (ServiceRegistryShimLike): Registry shim capturing the force-poll service.
-    """
-    async_add_entities = MagicMock()
-    coordinator = coordinator_factory(mock=True)
-    # This test will create its own local MockConfigEntry (below) because
-    # MockConfigEntry.data is a mappingproxy and should not be mutated in-place.
-
-    # Patch out SLEEP_RECORD_SENSOR_DESCRIPTIONS and DEVICE_SENSOR_DESCRIPTIONS
-    monkeypatch.setattr(
-        "custom_components.resmed_myair.sensor.SLEEP_RECORD_SENSOR_DESCRIPTIONS",
-        {"foo": MagicMock(key="foo")},
-    )
-    monkeypatch.setattr(
-        "custom_components.resmed_myair.sensor.DEVICE_SENSOR_DESCRIPTIONS",
-        {"bar": MagicMock(key="bar")},
-    )
-    # Patch redact_dict to just return its input
-    monkeypatch.setattr("custom_components.resmed_myair.sensor.redact_dict", lambda d: d)
-
-    # Create a local MockConfigEntry to avoid assigning into mappingproxy
-    entry = MockConfigEntry(
-        domain="resmed_myair",
-        title="ResMed-CPAP",
-        data={CONF_USER_NAME: "test.user@email.com"},
-        version=2,
-    )
-    entry.runtime_data = coordinator
-    entry.hass = hass
-
-    await async_setup_entry(hass, entry, async_add_entities)
-
-    # Check that async_add_entities was called with the correct number of sensors
-    # 1 sleep record + 1 device + 5 synthesized = 7
-    args, kwargs = async_add_entities.call_args
-    sensors = args[0]
-    assert len(sensors) == 7
-    # Ensure update_before_add is False; default to False when key is absent.
-    assert kwargs.get("update_before_add", False) is False
-
-    # Check that the service was registered with sanitized username
-    expected_service = "force_poll_test_user_email_com"
-    # Assert the service was registered using the shim API
-    assert service_registry_shim.has_service("resmed_myair", expected_service)
-
-    # Retrieve the registered service entry and its first handler
-    service_entry = service_registry_shim._services["resmed_myair"][expected_service]
-    func = service_entry.handlers[0]
-    # The registered function should be awaitable
-    assert inspect.iscoroutinefunction(func)
-
-    # Test that calling the registered refresh function calls coordinator.async_refresh
-    await func(None)
-    coordinator.async_refresh.assert_awaited_once()
 
 
 def test_myair_device_sensor_handle_coordinator_update_keyerror(

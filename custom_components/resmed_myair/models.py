@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import logging
+from math import isfinite
 from typing import Any, Self
+
+from homeassistant.util.json import JsonObjectType
+
+from .const import SCORE_COMPONENT_NAMES, SLEEP_RECORD_INDEX_FIELDS
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -170,15 +175,186 @@ class MyAirSleepRecord:
         )
 
     def native_value(self, key: str) -> Any | None:
-        """Read a sensor value from the original sleep-record payload.
+        """Read a sensor value, validating respiratory indexes and score components.
 
         Args:
             key (str): GraphQL field name used by the sensor description.
 
         Returns:
-            Any | None: Raw payload value, or ``None`` when the key is absent.
+            Any | None: Reported value, or ``None`` when absent or invalid.
         """
-        return self.raw.get(key)
+        value = self.raw.get(key)
+        if key in SLEEP_RECORD_INDEX_FIELDS and (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or (isinstance(value, float) and not isfinite(value))
+            or value < 0
+        ):
+            return None
+        if key in SCORE_COMPONENT_NAMES and (not isinstance(value, int) or isinstance(value, bool)):
+            return None
+        return value
+
+
+def _event_time(raw: object) -> datetime | None:
+    """Parse a myAir event timestamp with an explicit timezone.
+
+    Args:
+        raw (object): Timestamp from a respiratory or therapy status event.
+
+    Returns:
+        datetime | None: The offset-aware timestamp, or None for missing or invalid values.
+    """
+    if not isinstance(raw, str):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return timestamp if timestamp.tzinfo is not None else None
+
+
+def _seconds(raw: object) -> int | None:
+    """Validate an integer duration reported by myAir.
+
+    Args:
+        raw (object): Duration in seconds.
+
+    Returns:
+        int | None: Nonnegative integer seconds, or None for missing or invalid values.
+    """
+    return raw if type(raw) is int and raw >= 0 else None
+
+
+def _summary_number(raw: object) -> float | None:
+    """Validate a numeric value from the nightly summary.
+
+    Args:
+        raw (object): AHI or usage hours reported by myAir.
+
+    Returns:
+        float | None: A finite, nonnegative value, or None when unavailable.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, int | float):
+        return None
+    return float(raw) if raw >= 0 and isfinite(raw) else None
+
+
+@dataclass(frozen=True, slots=True)
+class MyAirTherapyEvent:
+    """A respiratory event or therapy status transition at its original time."""
+
+    event_type: str
+    timestamp: datetime
+    end_timestamp: datetime | None = None
+    duration_seconds: int | None = None
+
+    def as_dict(self) -> JsonObjectType:
+        """Serialize the event for a Home Assistant action response.
+
+        Returns:
+            JsonObjectType: The event timestamps and details myAir supplied.
+        """
+        event: JsonObjectType = {
+            "type": self.event_type,
+            "timestamp": self.timestamp.isoformat(),
+        }
+        if self.end_timestamp is not None:
+            event["end_timestamp"] = self.end_timestamp.isoformat()
+        if self.duration_seconds is not None:
+            event["duration_seconds"] = self.duration_seconds
+        return event
+
+
+def _timeline_events(raw: Mapping[str, Any]) -> tuple[MyAirTherapyEvent, ...] | None:
+    """Merge complete myAir event lists, sorting by occurrence time.
+
+    Args:
+        raw (Mapping[str, Any]): Nightly Therapy Timeline payload.
+
+    Returns:
+        tuple[MyAirTherapyEvent, ...] | None: Ordered events, or None when either
+            list cannot be reliably interpreted.
+    """
+    respiratory = raw.get("respiratoryEvents")
+    therapy_status = raw.get("therapyStatusEvents")
+    if not isinstance(respiratory, list) or not isinstance(therapy_status, list):
+        return None
+
+    events: list[MyAirTherapyEvent] = []
+    for item in respiratory:
+        if not isinstance(item, Mapping) or not (
+            event_type := _to_optional_str(item.get("eventType"))
+        ):
+            return None
+        start = _event_time(item.get("startDate"))
+        end = _event_time(item.get("endDate"))
+        timestamp = start or end
+        if timestamp is None:
+            return None
+        events.append(
+            MyAirTherapyEvent(
+                event_type, timestamp, end if start else None, _seconds(item.get("durationSeconds"))
+            )
+        )
+
+    for item in therapy_status:
+        if (
+            not isinstance(item, Mapping)
+            or not (event_type := _to_optional_str(item.get("eventType")))
+            or (timestamp := _event_time(item.get("date"))) is None
+        ):
+            return None
+        events.append(MyAirTherapyEvent(event_type, timestamp))
+
+    return tuple(sorted(events, key=lambda event: event.timestamp))
+
+
+@dataclass(frozen=True, slots=True)
+class MyAirNightlyTherapyTimeline:
+    """The myAir summary and events for a single assigned date."""
+
+    assigned_date: date
+    ahi: float | None
+    total_seconds_in_apnea: int | None
+    total_usage_hours: float | None
+    events: tuple[MyAirTherapyEvent, ...] | None
+
+    @classmethod
+    def from_api(cls, assigned_date: date, raw: Mapping[str, Any]) -> Self:
+        """Parse a matching Nightly Therapy Timeline payload.
+
+        Args:
+            assigned_date (date): myAir-assigned date of this timeline.
+            raw (Mapping[str, Any]): Timeline data returned by myAir.
+
+        Returns:
+            Self: Normalized summary and events.
+        """
+        return cls(
+            assigned_date=assigned_date,
+            ahi=_summary_number(raw.get("ahi")),
+            total_seconds_in_apnea=_seconds(raw.get("totalSecondsInApnea")),
+            total_usage_hours=_summary_number(raw.get("totalUsageHours")),
+            events=_timeline_events(raw),
+        )
+
+    def as_dict(self) -> JsonObjectType | None:
+        """Serialize the timeline for an action response or sensor attributes.
+
+        Returns:
+            JsonObjectType | None: The summary and chronological events, or None when
+                myAir did not supply reliable event lists.
+        """
+        if self.events is None:
+            return None
+        return {
+            "date": self.assigned_date.isoformat(),
+            "ahi": self.ahi,
+            "total_seconds_in_apnea": self.total_seconds_in_apnea,
+            "total_usage_hours": self.total_usage_hours,
+            "events": [event.as_dict() for event in self.events],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +363,7 @@ class MyAirCoordinatorData:
 
     device: MyAirDevice | None = None
     sleep_records: tuple[MyAirSleepRecord, ...] = ()
+    nightly_timeline: MyAirNightlyTherapyTimeline | None = None
 
     @property
     def latest_sleep_record(self) -> MyAirSleepRecord | None:

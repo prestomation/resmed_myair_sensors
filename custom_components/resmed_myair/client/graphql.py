@@ -1,12 +1,14 @@
 """GraphQL transport for ResMed myAir."""
 
+from collections.abc import Mapping
 import logging
 from typing import Any
 
-from aiohttp import ClientSession
+from aiohttp import ClientError, ClientResponse, ClientSession
 import jwt
 from jwt import InvalidTokenError
 
+from custom_components.resmed_myair.const import SLEEP_RECORD_INDEX_FIELDS
 from custom_components.resmed_myair.redaction import redact_dict
 
 from .auth import MyAirAuthSession
@@ -14,6 +16,48 @@ from .myair_client import ParsingError
 from .regions import RegionConfig
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+_UNDEFINED_INDEX_MESSAGES = tuple(
+    f"Validation error of type FieldUndefined: Field '{field}' in type "
+    for field in SLEEP_RECORD_INDEX_FIELDS
+)
+
+
+class UndefinedSleepRecordIndexError(ParsingError):
+    """The myAir endpoint rejected an optional field in the Sleep Record query."""
+
+
+def _is_undefined_index_error(error: Any) -> bool:
+    """Identify an AppSync schema validation error for either new index.
+
+    Args:
+        error (Any): One entry from the GraphQL errors list.
+
+    Returns:
+        bool: Whether the error identifies a missing index field in the schema.
+    """
+    if not isinstance(error, dict) or error.get("errorType") != "ValidationError":
+        return False
+    message = error.get("message")
+    return isinstance(message, str) and message.startswith(_UNDEFINED_INDEX_MESSAGES)
+
+
+def _is_undefined_index_response(response_body: Any) -> bool:
+    """Identify a GraphQL response containing only undefined-index errors.
+
+    Args:
+        response_body (Any): Decoded GraphQL response body.
+
+    Returns:
+        bool: Whether every GraphQL error rejects one of the new index fields.
+    """
+    if not isinstance(response_body, dict):
+        return False
+    errors = response_body.get("errors")
+    return (
+        isinstance(errors, list)
+        and bool(errors)
+        and all(_is_undefined_index_error(error) for error in errors)
+    )
 
 
 class MyAirGraphQLClient:
@@ -49,38 +93,96 @@ class MyAirGraphQLClient:
         """
         self._country_code = value
 
-    async def query(self, operation_name: str, query: str, initial: bool = False) -> dict[str, Any]:
+    async def query(
+        self,
+        operation_name: str,
+        query: str,
+        initial: bool = False,
+        *,
+        variables: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
         """Post a myAir GraphQL operation and validate ResMed errors.
 
         Args:
             operation_name (str): GraphQL operation name.
             query (str): GraphQL query text.
             initial (bool): Whether this query is part of initial config flow.
+            variables (Mapping[str, str] | None): GraphQL date variables when required.
 
         Returns:
             dict[str, Any]: Decoded GraphQL response payload.
+
+        Raises:
+            ParsingError: The endpoint returned invalid JSON or a malformed GraphQL response.
+            UndefinedSleepRecordIndexError: When schema validation rejects an index field.
         """
         headers = self._headers()
         json_query: dict[str, Any] = {
             "operationName": operation_name,
-            "variables": {},
+            "variables": dict(variables or {}),
             "query": query,
         }
         _LOGGER.debug("[gql_query] graphql_url: %s", self._region_config.graphql_url)
         _LOGGER.debug("[gql_query] headers: %s", redact_dict(headers))
         _LOGGER.debug("[gql_query] json_query: %s", redact_dict(json_query))
 
+        async def raise_for_status(response: ClientResponse) -> None:
+            """Read index validation errors before applying the session status policy.
+
+            Args:
+                response (ClientResponse): HTTP response returned for the query.
+
+            Returns:
+                None: The response is accepted only for a rejected index selection.
+            """
+            if response.status == 400:
+                try:
+                    response_body = await response.json()
+                except ClientError, ValueError:
+                    pass
+                else:
+                    if _is_undefined_index_response(response_body):
+                        return
+
+            session_policy = self._session.raise_for_status
+            if callable(session_policy):
+                await session_policy(response)
+            elif session_policy:
+                response.raise_for_status()
+
+        request_options: dict[str, Any] = {}
+        if operation_name == "GetPatientSleepRecords" and all(
+            field in query.split() for field in SLEEP_RECORD_INDEX_FIELDS
+        ):
+            request_options["raise_for_status"] = raise_for_status
+
         async with self._session.post(
             self._region_config.graphql_url,
             headers=headers,
             json=json_query,
+            **request_options,
         ) as records_res:
             _LOGGER.debug("[gql_query] records_res: %s", records_res)
-            records_dict: dict[str, Any] = await records_res.json()
+            try:
+                records_dict = await records_res.json()
+            except ValueError as err:
+                raise ParsingError("Invalid myAir GraphQL JSON response") from err
+            if not isinstance(records_dict, dict):
+                raise ParsingError("Invalid myAir GraphQL response")
             _LOGGER.debug("[gql_query] records_dict: %s", redact_dict(records_dict))
-            await MyAirAuthSession.resmed_response_error_check(
-                "gql_query", records_res, records_dict, initial
-            )
+            errors = records_dict.get("errors", [])
+            if not isinstance(errors, list):
+                raise ParsingError("Invalid myAir GraphQL errors")
+            if (
+                operation_name == "GetPatientSleepRecords"
+                and records_res.status in (200, 400)
+                and _is_undefined_index_response(records_dict)
+            ):
+                raise UndefinedSleepRecordIndexError("myAir rejected the Sleep Record indexes")
+            if errors:
+                await MyAirAuthSession.resmed_response_error_check(
+                    "gql_query", records_res, records_dict, initial
+                )
 
         return dict(records_dict)
 

@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 from aiohttp import ClientResponse, ClientSession
 from multidict import CIMultiDict
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.resmed_myair.client.myair_client import MyAirConfig
 from custom_components.resmed_myair.client.rest_client import RESTClient
@@ -23,6 +22,7 @@ from custom_components.resmed_myair.models import (
     MyAirDevice,
     MyAirSleepRecord,
 )
+from tests.common import MockConfigEntry
 
 type JSONValue = str | int | float | bool | dict[str, JSONValue] | list[JSONValue] | None
 type HeadersValue = Mapping[str, str] | CIMultiDict[str] | None
@@ -135,29 +135,6 @@ def _coordinator_data_from_mapping(data: dict[str, object] | None = None) -> MyA
     raw_device = data.get("device") if isinstance(data, Mapping) else None
     device: dict[str, object] | None = dict(raw_device) if isinstance(raw_device, Mapping) else None
     return coordinator_data(device=device, sleep_records=records)
-
-
-class ServiceEntryLike(Protocol):
-    """Protocol for the minimal service-entry shape the shim stores."""
-
-    handlers: list[Callable[..., object]]
-
-
-class ServiceRegistryShimLike(Protocol):
-    """Protocol for the in-memory service registry used by setup tests."""
-
-    _services: dict[str, dict[str, ServiceEntryLike]]
-
-    def has_service(self, domain: str, service: str) -> bool:
-        """Check whether setup registered a named service.
-
-        Args:
-            domain (str): Home Assistant service domain.
-            service (str): Service name within the domain.
-
-        Returns:
-            bool: Whether the in-memory registry contains that service.
-        """
 
 
 def _ensure_config_entries_helpers(hass: Any) -> None:
@@ -333,80 +310,6 @@ def configure_hass(hass: Any) -> None:
     """
     # Centralize and reuse the guarded setup logic.
     _ensure_config_entries_helpers(hass)
-
-    # Replace services with a MagicMock so tests can patch/assign async_register
-    # and other service registration helpers without hitting read-only attrs on
-    # the real ServiceRegistry.
-    hass.services = MagicMock()
-
-
-@pytest.fixture
-def service_registry_shim(hass: Any, monkeypatch: pytest.MonkeyPatch) -> ServiceRegistryShimLike:
-    """Provide a lightweight `hass.services` shim for service-registration tests.
-
-    Args:
-        hass (Any): Home Assistant test instance whose service registry is replaced.
-        monkeypatch (pytest.MonkeyPatch): Fixture used to install the in-memory registry.
-
-    Returns:
-        ServiceRegistryShimLike: In-memory registry that records registered handlers.
-    """
-
-    class _ServiceEntry:
-        """Store callbacks registered for a single Home Assistant service."""
-
-        def __init__(self) -> None:
-            """Initialize the service entry with no registered handlers."""
-            self.handlers: list[Callable[..., object]] = []
-
-    class _ServiceRegistryShim:
-        """Minimal in-memory service registry used by sensor setup tests."""
-
-        def __init__(self) -> None:
-            """Initialize an empty domain-to-service registry."""
-            self._services: dict[str, dict[str, _ServiceEntry]] = {}
-
-        def has_service(self, domain: str, service: str) -> bool:
-            """Return whether a service has been registered for a domain.
-
-            Args:
-                domain (str): Home Assistant service domain to inspect.
-                service (str): Service name to find within the domain.
-
-            Returns:
-                bool: Whether the requested service is registered.
-            """
-            return domain in self._services and service in self._services[domain]
-
-        def async_register(
-            self,
-            domain: str,
-            service: str,
-            func: Callable[..., object],
-            schema: object | None = None,
-            *a: object,
-            **kw: object,
-        ) -> None:
-            """Register a handler for the requested domain and service.
-
-            Args:
-                domain (str): Home Assistant service domain being registered.
-                service (str): Service name within the domain.
-                func (Callable[..., object]): Handler callback to store for later assertions.
-                schema (object | None): Optional service schema accepted for API compatibility.
-                a (object): Additional positional arguments accepted for API compatibility.
-                kw (object): Additional keyword arguments accepted for API compatibility.
-            """
-            domain_map = self._services.setdefault(domain, {})
-            entry = domain_map.get(service)
-            if entry is None:
-                entry = _ServiceEntry()
-                domain_map[service] = entry
-            entry.handlers.append(func)
-
-    shim = _ServiceRegistryShim()
-    monkeypatch.setattr(hass, "services", shim, raising=False)
-    return shim
 
 
 @pytest.fixture

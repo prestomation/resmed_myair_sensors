@@ -25,6 +25,10 @@ RECORDER_STATE_FIELDS: Mapping[str, str] = {
     "leakPercentile": "leakPercentile",
     "sleepScore": "sleepScore",
 }
+TIME_IN_APNEA_KEY = "totalSecondsInApnea"
+NIGHTLY_TIMELINE_KEY = "nightlyTimeline"
+# Opt-in sensors that need a Nightly Therapy Timeline request at each refresh.
+TIMELINE_SENSOR_KEYS = (TIME_IN_APNEA_KEY, NIGHTLY_TIMELINE_KEY)
 
 AUTHN_SUCCESS = "SUCCESS"
 AUTH_NEEDS_MFA = "MFA_REQUIRED"
@@ -42,6 +46,7 @@ REGION_EU = "EU"
 KEYS_TO_REDACT: list[str] = [
     "access_token",
     "Authorization",
+    "dailyTherapyData",
     "email",
     "family_name",
     "firstName",
@@ -59,12 +64,33 @@ KEYS_TO_REDACT: list[str] = [
     "Username",
 ]
 
+SLEEP_RECORD_INDEX_FIELDS = ("apneaIndex", "hypopneaIndex")
+
+SCORE_COMPONENT_NAMES: Mapping[str, str] = {
+    "usageScore": "CPAP myAir Usage Hours Score",
+    "leakScore": "CPAP myAir Mask Seal Score",
+    "ahiScore": "CPAP myAir Events per Hour Score",
+    "maskScore": "CPAP myAir Mask On/Off Score",
+}
+
 # Our sensor class will prepend the serial number to the key
 # These sensors pass data directly from my air
 SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP AHI Events Per Hour": SensorEntityDescription(
         key="ahi",
         state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "CPAP Apnea Index": SensorEntityDescription(
+        key="apneaIndex",
+        native_unit_of_measurement="events/h",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    "CPAP Hypopnea Index": SensorEntityDescription(
+        key="hypopneaIndex",
+        native_unit_of_measurement="events/h",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
     ),
     "CPAP Usage Minutes": SensorEntityDescription(
         key="totalUsage",
@@ -92,6 +118,14 @@ SLEEP_RECORD_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {
     "CPAP Total myAir Score": SensorEntityDescription(
         key="sleepScore", state_class=SensorStateClass.MEASUREMENT
     ),
+    **{
+        name: SensorEntityDescription(
+            key=key,
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_registry_enabled_default=False,
+        )
+        for key, name in SCORE_COMPONENT_NAMES.items()
+    },
 }
 
 DEVICE_SENSOR_DESCRIPTIONS: Mapping[str, SensorEntityDescription] = {

@@ -4,7 +4,6 @@ from abc import abstractmethod
 from collections.abc import Mapping
 from datetime import date
 import logging
-import re
 from typing import Any, Final
 
 from homeassistant.components.sensor import (
@@ -14,6 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -22,11 +22,13 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import DurationConverter
 
 from .const import (
-    CONF_USER_NAME,
     DEVICE_SENSOR_DESCRIPTIONS,
     DOMAIN,
     MAX_DAILY_USAGE_ATTRIBUTE_DAYS,
+    NIGHTLY_TIMELINE_KEY,
+    SLEEP_RECORD_INDEX_FIELDS,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
+    TIME_IN_APNEA_KEY,
     VERSION,
 )
 from .coordinator import MyAirDataUpdateCoordinator
@@ -43,7 +45,6 @@ from .recorder import (
 from .redaction import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-SERVICE_NAME_SANITIZER: Final[re.Pattern[str]] = re.compile(r"[^a-z0-9_]+")
 _SensorPayload = MyAirDevice | MyAirSleepRecord
 
 
@@ -87,11 +88,10 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Create all myAir sensor entities and register the manual refresh service.
+    """Create all myAir sensor entities for a config entry.
 
     Args:
-        hass (HomeAssistant): Home Assistant instance receiving the entities and
-            service.
+        hass (HomeAssistant): Home Assistant instance receiving the entities.
         config_entry (ConfigEntry): Loaded myAir config entry with coordinator
             runtime data.
         async_add_entities (AddEntitiesCallback): Home Assistant callback used to
@@ -124,24 +124,12 @@ async def async_setup_entry(
             MyAirUsageHoursAverageSensor(coordinator=coordinator, days=7),
             MyAirUsageHoursAverageSensor(coordinator=coordinator, days=30),
             MyAirMostRecentSleepDate(coordinator=coordinator),
+            MyAirTimeInApnea(coordinator),
+            MyAirNightlyTimeline(coordinator),
         ]
     )
 
     async_add_entities(sensors, False)
-
-    sanitized_username: str = SERVICE_NAME_SANITIZER.sub(
-        "_", config_entry.data[CONF_USER_NAME].casefold()
-    ).strip("_")
-
-    async def refresh(_: Any) -> None:
-        """Refresh coordinator data when the per-account force-poll service runs.
-
-        The service payload is deliberately ignored because polling accepts no
-        caller-provided parameters.
-        """
-        await coordinator.async_refresh()
-
-    hass.services.async_register(DOMAIN, f"force_poll_{sanitized_username}", refresh)
 
 
 class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntity):
@@ -152,6 +140,7 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         friendly_name: str,
         sensor_desc: SensorEntityDescription,
         coordinator: MyAirDataUpdateCoordinator,
+        configured_serial: str | None = None,
     ) -> None:
         """Initialize the HA entity metadata shared by all myAir sensors.
 
@@ -165,25 +154,37 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
                 myAir field key.
             coordinator (MyAirDataUpdateCoordinator): Data coordinator containing
                 typed device and sleep snapshots.
+            configured_serial (str | None): Serial to use for entity identity when configured.
         """
         super().__init__(coordinator)
         self.sensor_key: Final[str] = sensor_desc.key
         self.coordinator: MyAirDataUpdateCoordinator = coordinator
         device_data: MyAirDevice | None = _coordinator_data(coordinator).device
-        serial_number: str = device_data.serial_number if device_data else ""
+        serial_number: str = configured_serial or (device_data.serial_number if device_data else "")
         self.entity_description: SensorEntityDescription = sensor_desc
 
         self._attr_name: str = friendly_name
         self._attr_unique_id: str = f"{DOMAIN}_{serial_number}_{self.sensor_key}"
         self._available: bool = False
-        self._attr_device_info: DeviceInfo = DeviceInfo(
-            identifiers={(DOMAIN, serial_number)},
-            manufacturer=device_data.manufacturer if device_data else None,
-            model=device_data.model if device_data else None,
-            name=device_data.name if device_data else None,
-            suggested_area="Bedroom",
-            sw_version=VERSION,
-        )
+        self._attr_device_info: DeviceInfo
+        if not configured_serial or (
+            device_data and device_data.serial_number == configured_serial
+        ):
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, serial_number)},
+                suggested_area="Bedroom",
+                sw_version=VERSION,
+                manufacturer=device_data.manufacturer if device_data else None,
+                model=device_data.model if device_data else None,
+                name=device_data.name if device_data else None,
+            )
+        else:
+            # Omit unverified metadata so the device registry retains its existing values.
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, serial_number)},
+                suggested_area="Bedroom",
+                sw_version=VERSION,
+            )
 
     @property
     def available(self) -> bool:
@@ -213,11 +214,12 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
-        """Return extra state attributes."""
+        """Preserve sensor attributes and expose the historical statistic ID when available."""
+        attributes = super().extra_state_attributes
         statistic_id = self._historical_statistic_id
         if statistic_id is None:
-            return None
-        return {"historical_statistic_id": statistic_id}
+            return attributes
+        return {**(attributes or {}), "historical_statistic_id": statistic_id}
 
     def _schedule_historical_statistics_import(self) -> None:
         """Schedule recorder import for the current sleep records and statistic."""
@@ -238,6 +240,78 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
                 self.hass, sleep_records, statistic_id, statistic_desc
             )
         )
+
+
+class MyAirTimeInApnea(MyAirBaseSensor):
+    """Report the time myAir measured in apnea for the Current Data Date."""
+
+    def __init__(self, coordinator: MyAirDataUpdateCoordinator) -> None:
+        """Initialize the optional duration sensor.
+
+        Args:
+            coordinator (MyAirDataUpdateCoordinator): Coordinator supplying the sensor snapshot.
+        """
+        super().__init__(
+            "CPAP Time in Apnea",
+            SensorEntityDescription(
+                key=TIME_IN_APNEA_KEY,
+                device_class=SensorDeviceClass.DURATION,
+                native_unit_of_measurement=UnitOfTime.SECONDS,
+                entity_registry_enabled_default=False,
+            ),
+            coordinator,
+            configured_serial=coordinator.timeline_serial,
+        )
+        if (unique_id := coordinator.timeline_unique_id(TIME_IN_APNEA_KEY)) is not None:
+            self._attr_unique_id = unique_id
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Publish the current duration, with missing data represented as unknown."""
+        self._available = self.coordinator.last_update_success
+        timeline = _coordinator_data(self.coordinator).nightly_timeline
+        self._attr_native_value = timeline.total_seconds_in_apnea if timeline else None
+        self.async_write_ha_state()
+
+
+class MyAirNightlyTimeline(MyAirBaseSensor):
+    """Report the Current Data Date with that night's timeline as attributes."""
+
+    # The event list can be long and is refetched from myAir on demand.
+    _unrecorded_attributes = frozenset({"events"})
+
+    def __init__(self, coordinator: MyAirDataUpdateCoordinator) -> None:
+        """Initialize the optional timeline sensor.
+
+        Args:
+            coordinator (MyAirDataUpdateCoordinator): Coordinator supplying the sensor snapshot.
+        """
+        super().__init__(
+            "CPAP Nightly Timeline",
+            SensorEntityDescription(
+                key=NIGHTLY_TIMELINE_KEY,
+                device_class=SensorDeviceClass.DATE,
+                icon="mdi:chart-timeline-variant",
+                entity_registry_enabled_default=False,
+            ),
+            coordinator,
+            configured_serial=coordinator.timeline_serial,
+        )
+        if (unique_id := coordinator.timeline_unique_id(NIGHTLY_TIMELINE_KEY)) is not None:
+            self._attr_unique_id = unique_id
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Publish the Current Data Date and that night's timeline, when received."""
+        data = _coordinator_data(self.coordinator)
+        latest = data.latest_sleep_record
+        current_date = latest.start_date if latest else None
+        timeline = data.nightly_timeline
+        attributes = timeline.as_dict() if timeline is not None else None
+        self._available = self.coordinator.last_update_success and current_date is not None
+        self._attr_native_value = current_date
+        self._attr_extra_state_attributes = attributes or {}
+        self.async_write_ha_state()
 
 
 class MyAirRawSensor(MyAirBaseSensor):
@@ -270,7 +344,10 @@ class MyAirRawSensor(MyAirBaseSensor):
             value: Any | None = None
             self._available = False
         elif self.sensor_key not in payload.raw:
-            _LOGGER.error("Unable to parse %s. %s", self._parse_error_source, self.sensor_key)
+            log_missing = (
+                _LOGGER.debug if self.sensor_key in SLEEP_RECORD_INDEX_FIELDS else _LOGGER.error
+            )
+            log_missing("Unable to parse %s. %s", self._parse_error_source, self.sensor_key)
             value = None
             self._available = False
         else:
