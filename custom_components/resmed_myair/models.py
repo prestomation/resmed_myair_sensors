@@ -366,15 +366,6 @@ class MyAirCoordinatorData:
     nightly_timeline: MyAirNightlyTherapyTimeline | None = None
 
     @property
-    def time_in_apnea(self) -> int | None:
-        """Return the Time in Apnea from the Current Data Date's timeline.
-
-        Returns:
-            int | None: Seconds in apnea, or ``None`` when no timeline value was received.
-        """
-        return self.nightly_timeline.total_seconds_in_apnea if self.nightly_timeline else None
-
-    @property
     def latest_sleep_record(self) -> MyAirSleepRecord | None:
         """Select the newest sleep record by start date.
 

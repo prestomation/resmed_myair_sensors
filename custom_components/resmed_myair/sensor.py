@@ -204,7 +204,8 @@ class MyAirTimeInApnea(MyAirBaseSensor):
     def _handle_coordinator_update(self) -> None:
         """Publish the current duration, with missing data represented as unknown."""
         self._available = self.coordinator.last_update_success
-        self._attr_native_value = _coordinator_data(self.coordinator).time_in_apnea
+        timeline = _coordinator_data(self.coordinator).nightly_timeline
+        self._attr_native_value = timeline.total_seconds_in_apnea if timeline else None
         self.async_write_ha_state()
 
 
