@@ -12,14 +12,14 @@
 | custom\_components/resmed\_myair/client/regions.py       |       30 |        0 |        4 |        0 |    100% |           |
 | custom\_components/resmed\_myair/client/rest\_client.py  |      128 |        0 |       44 |        0 |    100% |           |
 | custom\_components/resmed\_myair/config\_flow.py         |      259 |        0 |       68 |        0 |    100% |           |
-| custom\_components/resmed\_myair/const.py                |       23 |        0 |        0 |        0 |    100% |           |
-| custom\_components/resmed\_myair/coordinator.py          |      156 |        0 |       38 |        0 |    100% |           |
-| custom\_components/resmed\_myair/models.py               |      146 |        0 |       40 |        0 |    100% |           |
+| custom\_components/resmed\_myair/const.py                |       25 |        0 |        0 |        0 |    100% |           |
+| custom\_components/resmed\_myair/coordinator.py          |      163 |        0 |       44 |        0 |    100% |           |
+| custom\_components/resmed\_myair/models.py               |      150 |        0 |       42 |        0 |    100% |           |
 | custom\_components/resmed\_myair/recorder.py             |       21 |        0 |        4 |        0 |    100% |           |
 | custom\_components/resmed\_myair/redaction.py            |       17 |        0 |       10 |        0 |    100% |           |
-| custom\_components/resmed\_myair/sensor.py               |      127 |        0 |       20 |        1 |     99% |198-\>exit |
-| custom\_components/resmed\_myair/services.py             |       31 |        0 |        8 |        0 |    100% |           |
-| **TOTAL**                                                | **1473** |    **0** |  **368** |    **3** | **99%** |           |
+| custom\_components/resmed\_myair/sensor.py               |      145 |        0 |       22 |        2 |     99% |200-\>exit, 235-\>exit |
+| custom\_components/resmed\_myair/services.py             |       32 |        0 |        8 |        0 |    100% |           |
+| **TOTAL**                                                | **1505** |    **0** |  **378** |    **4** | **99%** |           |
 
 
 ## Setup coverage badge
