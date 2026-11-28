@@ -13,13 +13,17 @@ The account used to sign in to ResMed myAir and access sleep records and registe
 The physical therapy machine registered in myAir, identified by its serial number.
 _Avoid_: Account, when referring to the machine.
 
+**Configured CPAP Device**:
+The CPAP Device whose serial number a Home Assistant myAir entry is tied to. The integration shows myAir data under the entry's sensors only while that data can be attributed to this device.
+_Avoid_: Current device, which can mean whichever device myAir reports now.
+
 ### Sleep records and dates
 
 **Sleep Record**:
 The myAir summary of CPAP therapy for an assigned date. A record can exist with zero usage.
 _Avoid_: Sleep session, which suggests a single period of use.
 
-**Nightly Therapy Timeline**:
+**Nightly Timeline**:
 The myAir summary and timestamped respiratory and therapy status events for an assigned date. Events in one timeline can occur on both sides of midnight.
 
 **Current Data Date**:
@@ -47,7 +51,7 @@ The rate of apnea events per hour of CPAP therapy reported by myAir for a Sleep 
 The rate of hypopnea events per hour of CPAP therapy reported by myAir for a Sleep Record.
 
 **Time in Apnea**:
-The total time in seconds myAir reports as spent in apnea for a Nightly Therapy Timeline.
+The total time in seconds myAir reports as spent in apnea for a Nightly Timeline.
 
 **Mask On/Off Count**:
 The number of mask on/off pairs reported by myAir for a sleep record.

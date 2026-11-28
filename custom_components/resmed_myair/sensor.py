@@ -31,7 +31,7 @@ from .const import (
     TIME_IN_APNEA_KEY,
     VERSION,
 )
-from .coordinator import MyAirDataUpdateCoordinator
+from .coordinator import MyAirDataUpdateCoordinator, sensor_unique_id
 from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
 from .recorder import (
     HistoricalStatisticDescription,
@@ -140,13 +140,12 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         friendly_name: str,
         sensor_desc: SensorEntityDescription,
         coordinator: MyAirDataUpdateCoordinator,
-        configured_serial: str | None = None,
     ) -> None:
         """Initialize the HA entity metadata shared by all myAir sensors.
 
-        The myAir serial number anchors the unique ID and device registry entry,
-        while ``sensor_desc.key`` identifies the raw GraphQL field or synthesized
-        value exposed by the concrete sensor.
+        The Configured CPAP Device serial anchors the unique ID and device registry
+        entry, while ``sensor_desc.key`` identifies the raw GraphQL field or
+        synthesized value exposed by the concrete sensor.
 
         Args:
             friendly_name (str): Entity name shown in Home Assistant.
@@ -154,34 +153,36 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
                 myAir field key.
             coordinator (MyAirDataUpdateCoordinator): Data coordinator containing
                 typed device and sleep snapshots.
-            configured_serial (str | None): Serial to use for entity identity when configured.
         """
         super().__init__(coordinator)
         self.sensor_key: Final[str] = sensor_desc.key
         self.coordinator: MyAirDataUpdateCoordinator = coordinator
-        device_data: MyAirDevice | None = _coordinator_data(coordinator).device
-        serial_number: str = configured_serial or (device_data.serial_number if device_data else "")
         self.entity_description: SensorEntityDescription = sensor_desc
-
         self._attr_name: str = friendly_name
-        self._attr_unique_id: str = f"{DOMAIN}_{serial_number}_{self.sensor_key}"
         self._available: bool = False
-        self._attr_device_info: DeviceInfo
-        if not configured_serial or (
-            device_data and device_data.serial_number == configured_serial
-        ):
+
+        data = _coordinator_data(coordinator)
+        serial = data.serial
+        self._attr_unique_id: str = sensor_unique_id(
+            coordinator.config_entry.entry_id, serial, self.sensor_key
+        )
+        if serial is None:
+            # The coordinator moves this sensor to its serial-based unique ID later.
+            return
+        device = data.device
+        if device is not None:
             self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, serial_number)},
+                identifiers={(DOMAIN, serial)},
                 suggested_area="Bedroom",
                 sw_version=VERSION,
-                manufacturer=device_data.manufacturer if device_data else None,
-                model=device_data.model if device_data else None,
-                name=device_data.name if device_data else None,
+                manufacturer=device.manufacturer,
+                model=device.model,
+                name=device.name,
             )
         else:
-            # Omit unverified metadata so the device registry retains its existing values.
+            # Without a device payload, omit metadata so the device registry keeps its values.
             self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, serial_number)},
+                identifiers={(DOMAIN, serial)},
                 suggested_area="Bedroom",
                 sw_version=VERSION,
             )
@@ -205,12 +206,11 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
     def _historical_statistic_id(self) -> str | None:
         """Return the recorder statistic ID for this entity's imported history."""
         statistic_desc = self._historical_statistic
-        if statistic_desc is None:
+        serial = _coordinator_data(self.coordinator).serial
+        if statistic_desc is None or not serial:
             return None
 
-        device = _coordinator_data(self.coordinator).device
-        serial_number = device.serial_number if device else "unknown"
-        return historical_statistic_id(serial_number, self.sensor_key, statistic_desc.import_mode)
+        return historical_statistic_id(serial, self.sensor_key, statistic_desc.import_mode)
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
@@ -221,8 +221,12 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
             return attributes
         return {**(attributes or {}), "historical_statistic_id": statistic_id}
 
-    def _schedule_historical_statistics_import(self) -> None:
-        """Schedule recorder import for the current sleep records and statistic."""
+    def _schedule_historical_statistics_import(self, data: MyAirCoordinatorData) -> None:
+        """Schedule recorder import for the current sleep records and statistic.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
         if self.hass is None:
             return
 
@@ -231,15 +235,48 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         if statistic_desc is None or statistic_id is None:
             return
 
-        sleep_records = _coordinator_data(self.coordinator).sleep_records
-        if not sleep_records:
+        if not data.sleep_records:
             return
 
         self.hass.async_create_task(
             async_import_historical_statistics(
-                self.hass, sleep_records, statistic_id, statistic_desc
+                self.hass, data.sleep_records, statistic_id, statistic_desc
             )
         )
+
+    @callback
+    def async_registry_entry_updated(self) -> None:
+        """Keep this sensor's unique ID in step with its registry entry.
+
+        The coordinator can move a sensor built before the serial was known onto its
+        serial-based unique ID while the sensor keeps running. Home Assistant may then
+        remove and re-add this object, registering whatever unique ID it still holds.
+        Copying the registry's unique ID keeps the re-added entity on the adopted ID.
+        """
+        if self.registry_entry is not None:
+            self._attr_unique_id = self.registry_entry.unique_id
+        super().async_registry_entry_updated()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Publish state only from data attributed to the Configured CPAP Device."""
+        data = _coordinator_data(self.coordinator)
+        if data.withheld:
+            self._available = False
+            self._attr_native_value = None
+        else:
+            self._update_from_data(data)
+        self.async_write_ha_state()
+        if not data.withheld:
+            self._schedule_historical_statistics_import(data)
+
+    @abstractmethod
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Set this sensor's value and availability from an attributed snapshot.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
 
 
 class MyAirTimeInApnea(MyAirBaseSensor):
@@ -260,18 +297,17 @@ class MyAirTimeInApnea(MyAirBaseSensor):
                 entity_registry_enabled_default=False,
             ),
             coordinator,
-            configured_serial=coordinator.timeline_serial,
         )
-        if (unique_id := coordinator.timeline_unique_id(TIME_IN_APNEA_KEY)) is not None:
-            self._attr_unique_id = unique_id
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Publish the current duration, with missing data represented as unknown."""
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Set the current duration, with missing data represented as unknown.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
         self._available = self.coordinator.last_update_success
-        timeline = _coordinator_data(self.coordinator).nightly_timeline
+        timeline = data.nightly_timeline
         self._attr_native_value = timeline.total_seconds_in_apnea if timeline else None
-        self.async_write_ha_state()
 
 
 class MyAirNightlyTimeline(MyAirBaseSensor):
@@ -295,15 +331,14 @@ class MyAirNightlyTimeline(MyAirBaseSensor):
                 entity_registry_enabled_default=False,
             ),
             coordinator,
-            configured_serial=coordinator.timeline_serial,
         )
-        if (unique_id := coordinator.timeline_unique_id(NIGHTLY_TIMELINE_KEY)) is not None:
-            self._attr_unique_id = unique_id
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Publish the Current Data Date and that night's timeline, when received."""
-        data = _coordinator_data(self.coordinator)
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Set the Current Data Date and that night's timeline, when received.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
         latest = data.latest_sleep_record
         current_date = latest.start_date if latest else None
         timeline = data.nightly_timeline
@@ -311,7 +346,6 @@ class MyAirNightlyTimeline(MyAirBaseSensor):
         self._available = self.coordinator.last_update_success and current_date is not None
         self._attr_native_value = current_date
         self._attr_extra_state_attributes = attributes or {}
-        self.async_write_ha_state()
 
 
 class MyAirRawSensor(MyAirBaseSensor):
@@ -321,8 +355,11 @@ class MyAirRawSensor(MyAirBaseSensor):
     _parse_error_source: str = "Sensor"
 
     @abstractmethod
-    def _sensor_payload(self) -> _SensorPayload | None:
+    def _sensor_payload(self, data: MyAirCoordinatorData) -> _SensorPayload | None:
         """Return the model object that contains this sensor's raw API field.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
 
         Returns:
             _SensorPayload | None: Device or sleep-record model for raw
@@ -330,15 +367,17 @@ class MyAirRawSensor(MyAirBaseSensor):
                 receive the required payload.
         """
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Read this sensor's key from its payload model and publish HA state.
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Read this sensor's key from its payload model.
 
         Subclasses select the source payload with ``_sensor_payload`` and configure
-        source-specific log text; the base class owns raw-key presence checks,
-        date/timestamp conversion, availability, and state writes.
+        source-specific log text; this class owns raw-key presence checks,
+        date/timestamp conversion, and availability.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
         """
-        payload: _SensorPayload | None = self._sensor_payload()
+        payload: _SensorPayload | None = self._sensor_payload(data)
         if payload is None:
             _LOGGER.error(self._missing_source_log)
             value: Any | None = None
@@ -357,8 +396,6 @@ class MyAirRawSensor(MyAirBaseSensor):
             self._available = True
 
         self._attr_native_value = value
-        self.async_write_ha_state()
-        self._schedule_historical_statistics_import()
 
 
 class MyAirSleepRecordSensor(MyAirRawSensor):
@@ -389,8 +426,11 @@ class MyAirSleepRecordSensor(MyAirRawSensor):
         """Return the historical statistic description for this entity."""
         return self._historical_statistic_desc
 
-    def _sensor_payload(self) -> _SensorPayload | None:
+    def _sensor_payload(self, data: MyAirCoordinatorData) -> _SensorPayload | None:
         """Select the latest dated sleep record from the coordinator snapshot.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
 
         Returns:
             _SensorPayload | None: Most recent sleep record available for raw sleep
@@ -398,7 +438,7 @@ class MyAirSleepRecordSensor(MyAirRawSensor):
         """
         # The API always returns the previous month of data, so the client stores this
         # We assume this is ordered temporally and grab the last one: the latest one
-        return _coordinator_data(self.coordinator).latest_sleep_record
+        return data.latest_sleep_record
 
 
 class MyAirDeviceSensor(MyAirRawSensor):
@@ -407,15 +447,18 @@ class MyAirDeviceSensor(MyAirRawSensor):
     _missing_source_log = "Device data missing from coordinator data"
     _parse_error_source = "Device"
 
-    def _sensor_payload(self) -> _SensorPayload | None:
+    def _sensor_payload(self, data: MyAirCoordinatorData) -> _SensorPayload | None:
         """Select the device metadata payload from the coordinator snapshot.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
 
         Returns:
             _SensorPayload | None: Device payload used for raw device-backed
                 sensors, or ``None`` before the API has returned the account's
                 active flow generator.
         """
-        return _coordinator_data(self.coordinator).device
+        return data.device
 
 
 class MyAirFriendlyUsageTime(MyAirBaseSensor):
@@ -428,7 +471,7 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
         """Initialize the synthesized usage-time entity.
 
         This sensor uses the normalized ``friendly_usage_time`` model field instead
-        of a raw myAir GraphQL key, so it keeps its own update handler.
+        of a raw myAir GraphQL key, so it implements its own ``_update_from_data``.
 
         Args:
             coordinator (MyAirDataUpdateCoordinator): Data coordinator that supplies
@@ -438,12 +481,13 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
 
         super().__init__("CPAP Usage Time", desc, coordinator)
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Publish the latest sleep record's preformatted usage duration."""
-        latest_record: MyAirSleepRecord | None = _coordinator_data(
-            self.coordinator
-        ).latest_sleep_record
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Set the latest sleep record's preformatted usage duration.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
+        latest_record: MyAirSleepRecord | None = data.latest_sleep_record
         if latest_record is None:
             _LOGGER.error("Sleep record data missing from coordinator data")
             value: str | None = None
@@ -455,7 +499,6 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
                 _LOGGER.error("Unable to parse Usage Time. totalUsage")
 
         self._attr_native_value = value
-        self.async_write_ha_state()
 
 
 class MyAirUsageHoursSensor(MyAirBaseSensor):
@@ -507,10 +550,13 @@ class MyAirUsageHoursSensor(MyAirBaseSensor):
         attributes["daily_usage_hours_available_days"] = len(chart_records)
         return attributes
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Publish the latest sleep record usage as decimal hours."""
-        latest_record = _coordinator_data(self.coordinator).latest_sleep_record
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Set the latest sleep record usage as decimal hours.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
+        latest_record = data.latest_sleep_record
         if latest_record is None:
             _LOGGER.error("Sleep record data missing from coordinator data")
             value: float | None = None
@@ -526,8 +572,6 @@ class MyAirUsageHoursSensor(MyAirBaseSensor):
                 _LOGGER.error("Unable to parse Usage Hours. totalUsage")
 
         self._attr_native_value = value
-        self.async_write_ha_state()
-        self._schedule_historical_statistics_import()
 
 
 class MyAirUsageHoursAverageSensor(MyAirBaseSensor):
@@ -555,12 +599,13 @@ class MyAirUsageHoursAverageSensor(MyAirBaseSensor):
         super().__init__(f"CPAP Usage Hours {days} Day Average", desc, coordinator)
         self._days = days
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Publish the average usage hours over the configured trailing window."""
-        normalized_records = normalize_sleep_history(
-            [record.raw for record in _coordinator_data(self.coordinator).sleep_records]
-        )
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Set the average usage hours over the configured trailing window.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
+        normalized_records = normalize_sleep_history([record.raw for record in data.sleep_records])
         usage_hours = [
             usage_minutes_to_hours(record["totalUsage"])
             for record in normalized_records
@@ -569,13 +614,11 @@ class MyAirUsageHoursAverageSensor(MyAirBaseSensor):
         if not usage_hours:
             self._attr_native_value = None
             self._available = False
-            self.async_write_ha_state()
             return
 
         trailing_usage = usage_hours[-self._days :]
         self._attr_native_value = round(sum(trailing_usage) / len(trailing_usage), 2)
         self._available = True
-        self.async_write_ha_state()
 
 
 class MyAirMostRecentSleepDate(MyAirBaseSensor):
@@ -600,13 +643,14 @@ class MyAirMostRecentSleepDate(MyAirBaseSensor):
 
         super().__init__("Most Recent Sleep Date", desc, coordinator)
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Publish the model-derived latest date with non-zero CPAP usage."""
-        value: date | None = _coordinator_data(self.coordinator).most_recent_sleep_date
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Set the model-derived latest date with non-zero CPAP usage.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
+        value: date | None = data.most_recent_sleep_date
         self._attr_native_value = value
         self._available = value is not None
         if value is None:
             _LOGGER.error("Sleep record data missing from coordinator data")
-
-        self.async_write_ha_state()
