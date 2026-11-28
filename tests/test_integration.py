@@ -22,7 +22,7 @@ from custom_components.resmed_myair.sensor import (
     MyAirMostRecentSleepDate,
     MyAirSleepRecordSensor,
 )
-from tests.common import MockConfigEntry, device_info_view
+from tests.common import MockConfigEntry, entity_device_info
 from tests.conftest import CoordinatorFactory, CoordinatorLike, coordinator_data
 
 
@@ -548,7 +548,7 @@ async def test_sensor_unique_id_and_device_info(
     sensor.async_write_ha_state = MagicMock()
     await sensor.async_added_to_hass()
     assert sensor.unique_id is not None
-    assert device_info_view(sensor.device_info).manufacturer == "ResMed"
+    assert entity_device_info(sensor.device_info).manufacturer == "ResMed"
 
 
 @pytest.mark.asyncio
