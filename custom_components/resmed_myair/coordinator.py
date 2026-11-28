@@ -10,7 +10,7 @@ from aiohttp.http_exceptions import HttpProcessingError
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ServiceValidationError
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -27,6 +27,7 @@ from .models import MyAirCoordinatorData, MyAirDevice, MyAirNightlyTherapyTimeli
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _TIMELINE_TIMEOUT_SECONDS = 20
+_PROVISIONAL_MARKER = "entry-"
 TIMELINE_REQUEST_ERRORS = (
     AuthenticationError,
     ClientError,
@@ -36,6 +37,35 @@ TIMELINE_REQUEST_ERRORS = (
     ServiceUnavailableError,
     TimeoutError,
 )
+
+
+def sensor_unique_id(config_entry_id: str, serial: str | None, key: str) -> str:
+    """Build a sensor's registry key from the Configured CPAP Device serial.
+
+    Args:
+        config_entry_id (str): Entry that owns the sensor.
+        serial (str | None): Serial of the Configured CPAP Device, or ``None``
+            while unknown.
+        key (str): Sensor key.
+
+    Returns:
+        str: The serial-based unique ID, or a provisional one that the coordinator
+            replaces once the serial is known.
+    """
+    marker = serial or f"{_PROVISIONAL_MARKER}{config_entry_id}"
+    return f"{DOMAIN}_{marker}_{key}"
+
+
+def device_mismatch_issue_id(config_entry_id: str) -> str:
+    """Return the repair issue ID used when myAir reports a different CPAP device.
+
+    Args:
+        config_entry_id (str): Entry configured for the original device.
+
+    Returns:
+        str: Issue ID scoped to the entry.
+    """
+    return f"device_mismatch_{config_entry_id}"
 
 
 class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
@@ -62,9 +92,14 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         _LOGGER.info("Initializing DataUpdateCoordinator for ResMed myAir")
         self.myair_client = myair_client
         self._client_lock = Lock()
-        self._timeline_serial: str | None = config_entry.unique_id
-        self._timeline_identity_matches: bool = False
-        self._timeline_unique_ids: dict[str, str] = {}
+        self._serial: str | None = config_entry.unique_id
+        self._adopted_serial: str | None = None
+        self._device_mismatch: bool = (
+            ir.async_get(hass).async_get_issue(
+                DOMAIN, device_mismatch_issue_id(config_entry.entry_id)
+            )
+            is not None
+        )
         super().__init__(
             hass=hass,
             config_entry=config_entry,
@@ -137,8 +172,8 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                 err,
             )
 
-        # Keep the observed identity even if the subsequent sleep-record request fails.
-        timeline_unique_ids = self._update_timeline_identity(device)
+        if not self._update_device_identity(device):
+            return MyAirCoordinatorData(serial=self._serial, withheld=True)
 
         try:
             sleep_records = tuple(await self.myair_client.get_sleep_records())
@@ -166,9 +201,9 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                 err,
             )
 
-        data = MyAirCoordinatorData(device=device, sleep_records=sleep_records)
+        data = MyAirCoordinatorData(device=device, sleep_records=sleep_records, serial=self._serial)
         latest = data.latest_sleep_record
-        if latest and latest.start_date and self._timeline_sensor_enabled(timeline_unique_ids):
+        if latest and latest.start_date and self._timeline_sensor_enabled():
             try:
                 async with timeout(_TIMELINE_TIMEOUT_SECONDS):
                     timeline = await self.myair_client.get_nightly_therapy_timeline(
@@ -181,101 +216,125 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                     return replace(data, nightly_timeline=timeline)
         return data
 
-    def _update_timeline_identity(self, device: MyAirDevice | None) -> tuple[str, ...]:
-        """Bind the timeline sensors to a verified serial without losing legacy registry entries.
+    def _update_device_identity(self, device: MyAirDevice | None) -> bool:
+        """Decide whether this refresh's myAir data belongs to the Configured CPAP Device.
+
+        A device payload that names another serial withholds data until a later
+        payload names the configured serial again. A refresh without a device
+        payload keeps the previous decision from this load.
 
         Args:
-            device (MyAirDevice | None): Device returned before fetching sleep records.
+            device (MyAirDevice | None): Device returned by this refresh, if any.
 
         Returns:
-            tuple[str, ...]: The serial-based or provisional unique IDs of the timeline sensors.
+            bool: True when the refresh's data can be attributed to the Configured
+                CPAP Device.
         """
-        config_entry = self.config_entry
-        prefix = f"{DOMAIN}_"
-        suffixes = {key: f"_{key}" for key in TIMELINE_SENSOR_KEYS}
-        observed = device.serial_number if device is not None else None
-        registry = er.async_get(self.hass)
+        observed = device.serial_number if device is not None and device.serial_number else None
+        if self._serial is None:
+            self._serial = self._registered_serial(observed) or observed
+            if self._serial is None:
+                _LOGGER.debug("Withholding myAir data until the CPAP device serial is known")
+                return False
+        serial = self._serial
+        if serial != self._adopted_serial:
+            self._adopt_placeholder_entities(serial)
+            self._adopted_serial = serial
 
-        if not self._timeline_unique_ids and self._timeline_serial is None:
-            placeholders = {
-                f"{prefix}{marker}{suffix}"
-                for suffix in suffixes.values()
-                for marker in (f"entry-{config_entry.entry_id}", "")
-            }
-            for entry in er.async_entries_for_config_entry(registry, config_entry.entry_id):
+        if observed is not None:
+            mismatch = observed != serial
+            if mismatch and not self._device_mismatch:
+                _LOGGER.warning(
+                    "myAir reports CPAP device %s, but this entry is configured for %s. "
+                    "Withholding its data until myAir reports the configured device",
+                    observed,
+                    serial,
+                )
+            self._device_mismatch = mismatch
+            issue_id = device_mismatch_issue_id(self.config_entry.entry_id)
+            if mismatch:
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    issue_id,
+                    is_fixable=False,
+                    is_persistent=True,
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="device_mismatch",
+                    translation_placeholders={
+                        "title": self.config_entry.title,
+                        "configured": serial,
+                        "reported": observed,
+                    },
+                )
+            else:
+                ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+        return not self._device_mismatch
+
+    def _registered_serial(self, observed: str | None) -> str | None:
+        """Recover a legacy entry's serial from its registered sensors.
+
+        Args:
+            observed (str | None): Serial reported by myAir in this refresh, if any.
+
+        Returns:
+            str | None: The observed serial when it is registered for this entry;
+                otherwise the lowest-sorting registered serial; ``None`` when no
+                serial is registered.
+        """
+        prefix = f"{DOMAIN}_"
+        registry = er.async_get(self.hass)
+        serials: set[str] = set()
+        for entry in er.async_entries_for_config_entry(registry, self.config_entry.entry_id):
+            if entry.domain != "sensor" or entry.platform != DOMAIN:
+                continue
+            if not entry.unique_id.startswith(prefix):
+                continue
+            # Sensor keys contain no underscores, so the serial precedes the last one.
+            serial, _, key = entry.unique_id[len(prefix) :].rpartition("_")
+            if serial and key and not serial.startswith(_PROVISIONAL_MARKER):
+                serials.add(serial)
+        if observed in serials:
+            return observed
+        return min(serials, default=None)
+
+    def _adopt_placeholder_entities(self, serial: str) -> None:
+        """Move sensors registered before the serial was known onto serial-based unique IDs.
+
+        Entity IDs and opt-ins are preserved. A placeholder is left alone when a
+        sensor with the target unique ID is already registered.
+
+        Args:
+            serial (str): Serial of the Configured CPAP Device.
+        """
+        registry = er.async_get(self.hass)
+        entry_id = self.config_entry.entry_id
+        entries = er.async_entries_for_config_entry(registry, entry_id)
+        # A provisional ID takes precedence over one registered with a blank serial.
+        for placeholder in (sensor_unique_id(entry_id, None, ""), f"{DOMAIN}__"):
+            for entry in entries:
                 if entry.domain != "sensor" or entry.platform != DOMAIN:
                     continue
-                if entry.unique_id in placeholders or not entry.unique_id.startswith(prefix):
+                if not entry.unique_id.startswith(placeholder):
                     continue
-                suffix = next((s for s in suffixes.values() if entry.unique_id.endswith(s)), None)
-                if suffix is not None:
-                    self._timeline_serial = entry.unique_id[len(prefix) : -len(suffix)]
-                    break
+                key = entry.unique_id[len(placeholder) :]
+                unique_id = sensor_unique_id(entry_id, serial, key)
+                if registry.async_get_entity_id("sensor", DOMAIN, unique_id) is None:
+                    registry.async_update_entity(entry.entity_id, new_unique_id=unique_id)
 
-        if observed:
-            if not self._timeline_serial:
-                self._timeline_serial = observed
-            self._timeline_identity_matches = observed == self._timeline_serial
-        serial = self._timeline_serial
-        for key, suffix in suffixes.items():
-            provisional = f"{prefix}entry-{config_entry.entry_id}{suffix}"
-            unique_id = f"{prefix}{serial}{suffix}" if serial else provisional
-            if self._timeline_unique_ids.get(key) == unique_id:
-                continue
-            self._timeline_unique_ids[key] = unique_id
-            # Promote a provisional registry entry without changing its entity ID or opt-in.
-            if registry.async_get_entity_id("sensor", DOMAIN, unique_id) is None:
-                for old_unique_id in (provisional, f"{prefix}{suffix}"):
-                    entity_id = registry.async_get_entity_id("sensor", DOMAIN, old_unique_id)
-                    registered = registry.async_get(entity_id) if entity_id else None
-                    if (
-                        registered is not None
-                        and registered.config_entry_id == config_entry.entry_id
-                    ):
-                        registry.async_update_entity(registered.entity_id, new_unique_id=unique_id)
-                        break
-        return tuple(self._timeline_unique_ids.values())
-
-    @property
-    def timeline_serial(self) -> str | None:
-        """Return the serial pinned to the timeline sensors.
-
-        Returns:
-            str | None: The configured or previously verified serial, when known.
-        """
-        return self._timeline_serial
-
-    def timeline_unique_id(self, key: str) -> str | None:
-        """Return the registry key resolved for a timeline sensor.
-
-        Args:
-            key (str): One of ``TIMELINE_SENSOR_KEYS``.
-
-        Returns:
-            str | None: The sensor's unique ID once the first refresh resolved it.
-        """
-        return self._timeline_unique_ids.get(key)
-
-    def _timeline_sensor_enabled(self, unique_ids: tuple[str, ...]) -> bool:
+    def _timeline_sensor_enabled(self) -> bool:
         """Check the registered sensors before making an optional timeline request.
-
-        Args:
-            unique_ids (tuple[str, ...]): Timeline sensors' registry keys from the current refresh.
 
         Returns:
             bool: True when any of this entry's timeline sensors is enabled.
         """
-        if not self._timeline_identity_matches:
-            return False
         registry = er.async_get(self.hass)
-        for unique_id in unique_ids:
+        entry_id = self.config_entry.entry_id
+        for key in TIMELINE_SENSOR_KEYS:
+            unique_id = sensor_unique_id(entry_id, self._serial, key)
             entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
             entry = registry.async_get(entity_id) if entity_id else None
-            if (
-                entry is not None
-                and entry.config_entry_id == self.config_entry.entry_id
-                and not entry.disabled
-            ):
+            if entry is not None and entry.config_entry_id == entry_id and not entry.disabled:
                 return True
         return False
 
@@ -293,9 +352,15 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
         Raises:
             ClientError: An HTTP client failure while the same entry is still loaded.
             RuntimeError: A runtime error while the same entry is still loaded.
+            ServiceValidationError: The latest refresh withheld myAir data because
+                it could not be attributed to the Configured CPAP Device.
         """
         async with self._client_lock, timeout(_TIMELINE_TIMEOUT_SECONDS):
             self._require_loaded_timeline_entry()
+            if self.data.withheld:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN, translation_key="timeline_device_unverified"
+                )
             try:
                 await self.myair_client.connect()
                 self._require_loaded_timeline_entry()

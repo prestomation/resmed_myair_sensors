@@ -67,6 +67,10 @@ If two usernames produce the same action name, the action refreshes the entry th
 
 Each event contains a myAir `type` and a timezone-aware `timestamp`. It can also contain `end_timestamp` and `duration_seconds` when myAir supplies them. Times retain their source offsets across midnight. A night that myAir returns with no events has an empty list. If myAir has no timeline for the date, the action reports it as unavailable. Historical availability depends on myAir.
 
+## Replacing your CPAP device
+
+Each ResMed myAir entry is tied to the serial number of the CPAP device it was set up with. If myAir starts reporting a different device for the account, the entry's sensors become unavailable rather than showing the other device's data, `get_nightly_timeline` refuses the entry, and Home Assistant shows a repair issue. To track the new device, add the ResMed integration again with the same myAir account, then delete the old entry. If myAir reports the original device again, its sensors resume.
+
 ## Known Issues
 
 This integration was reversed engineered from the myAir website. There are no guarantees that this will continue to work, as this is up to the whims of ResMed. Please DO NOT rely on this for any health-related matters.
@@ -83,7 +87,7 @@ Developers can run a local smoke test against the live myAir API without Home As
 
 The script prompts for credentials when they are not provided. For repeatable local runs, create a `live_smoke_test.env` file using `live_smoke_test.env.example`.
 
-By default, the script writes device and Sleep Record metrics to `live_smoke_test_output.json`. Use the Home Assistant integration to inspect Time in Apnea and the Nightly Therapy Timeline. Add `--raw` to include raw myAir payload values for local inspection. The [myAir API reference](docs/myair-api.md) documents observed endpoints and links to the curated GraphQL schema.
+By default, the script writes device and Sleep Record metrics to `live_smoke_test_output.json`. Use the Home Assistant integration to inspect Time in Apnea and the Nightly Timeline. Add `--raw` to include raw myAir payload values for local inspection. The [myAir API reference](docs/myair-api.md) documents observed endpoints and links to the curated GraphQL schema.
 
 ## Contributions are welcome!
 

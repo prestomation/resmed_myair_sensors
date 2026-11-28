@@ -43,7 +43,7 @@ async def test_async_update_data_success(hass: MagicMock, myair_client: MagicMoc
     myair_client.get_sleep_records.return_value = [
         MyAirSleepRecord.from_api({"totalUsage": 60, "startDate": "2024-07-01"})
     ]
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(unique_id="1234"), myair_client)
     data = await coordinator._async_update_data()
     assert isinstance(data, MyAirCoordinatorData)
     assert data.device is not None
@@ -65,7 +65,7 @@ async def test_async_update_data_auth_error(hass: MagicMock, myair_client: Magic
         myair_client (MagicMock): Client double configured to reject authentication.
     """
     myair_client.connect.side_effect = AuthenticationError("bad creds")
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(unique_id="1234"), myair_client)
     # Only assert that the correct exception type is raised. The exact
     # formatting of the exception message is an implementation detail and
     # should not make the test fragile.
@@ -94,7 +94,7 @@ async def test_async_update_data_reauthenticates_after_missing_device(
     ]
     myair_client.get_sleep_records.return_value = expected_records
 
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(unique_id="1234"), myair_client)
     data = await coordinator._async_update_data()
 
     assert data.device is expected_device
@@ -124,7 +124,7 @@ async def test_async_update_data_reauthenticates_after_stale_sleep_response(
         expected_records,
     ]
 
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(unique_id="1234"), myair_client)
     data = await coordinator._async_update_data()
 
     assert data.device is expected_device
@@ -150,7 +150,7 @@ async def test_async_update_data_limits_stale_recovery_to_one_login(
     ]
     myair_client.get_sleep_records.side_effect = StaleSessionError("sleep payload missing")
 
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(unique_id="1234"), myair_client)
     data = await coordinator._async_update_data()
 
     assert data.device is None
@@ -177,7 +177,7 @@ async def test_async_update_data_degrades_when_stale_sleep_retry_fails(
         ParsingError("sleep still unavailable"),
     ]
 
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(unique_id="1234"), myair_client)
     data = await coordinator._async_update_data()
 
     assert data.device is expected_device
@@ -215,7 +215,7 @@ async def test_async_update_data_parsing_error_variants(
     else:
         myair_client.get_sleep_records.side_effect = ParsingError("sleep parse fail")
 
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(unique_id="1234"), myair_client)
     with caplog.at_level(logging.DEBUG):
         data = await coordinator._async_update_data()
 
@@ -265,7 +265,7 @@ async def test_async_update_data_service_unavailable_raises_update_failed(
         myair_client.get_user_device_data.side_effect = outage
     elif failing_call == "sleep_records":
         myair_client.get_user_device_data.return_value = MyAirDevice.from_api(
-            {"serialNumber": "SN123"}
+            {"serialNumber": "1234"}
         )
         myair_client.get_sleep_records.side_effect = outage
     else:
@@ -274,7 +274,7 @@ async def test_async_update_data_service_unavailable_raises_update_failed(
             outage,
         ]
 
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(unique_id="1234"), myair_client)
     with pytest.raises(
         UpdateFailed, match="scheduled maintenance until 2026-11-05 19:48 UTC"
     ) as exc_info:
@@ -307,7 +307,7 @@ async def test_async_update_data_service_unavailable_retries_after_window(
         "gql_query step: myAir is offline for scheduled maintenance", outage_end
     )
 
-    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(), myair_client)
+    coordinator = MyAirDataUpdateCoordinator(hass, MagicMock(unique_id="1234"), myair_client)
     with pytest.raises(UpdateFailed) as exc_info:
         await coordinator._async_update_data()
 

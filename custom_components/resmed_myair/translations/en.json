@@ -17,20 +17,23 @@
         }
     },
     "exceptions": {
+        "timeline_device_unverified": {
+            "message": "The Nightly Timeline is unavailable because the latest myAir data could not be matched to this entry's CPAP device."
+        },
         "timeline_entry_unloaded": {
-            "message": "The myAir account was unloaded while retrieving the Nightly Therapy Timeline."
+            "message": "The myAir account was unloaded while retrieving the Nightly Timeline."
         },
         "timeline_invalid_date": {
-            "message": "Provide a valid date for the Nightly Therapy Timeline."
+            "message": "Provide a valid date for the Nightly Timeline."
         },
         "timeline_missing_account": {
-            "message": "Select a myAir account before requesting the Nightly Therapy Timeline."
+            "message": "Select a myAir account before requesting the Nightly Timeline."
         },
         "timeline_request_failed": {
-            "message": "Unable to retrieve the Nightly Therapy Timeline from myAir."
+            "message": "Unable to retrieve the Nightly Timeline from myAir."
         },
         "timeline_unavailable": {
-            "message": "The Nightly Therapy Timeline is unavailable for {date}."
+            "message": "The Nightly Timeline is unavailable for {date}."
         }
     },
     "config": {
@@ -94,6 +97,12 @@
             "reauth_successful": "ResMed myAir Reauthentication Successful",
             "reconfigure_successful": "ResMed myAir Reconfiguration Successful",
             "wrong_account": "The account belongs to a different device. Use credentials for the originally configured device."
+        }
+    },
+    "issues": {
+        "device_mismatch": {
+            "title": "myAir reports a different CPAP device for {title}",
+            "description": "This entry is configured for CPAP device {configured}, but myAir now reports device {reported}. The entry's sensors stay unavailable while myAir reports the other device, so data from that device does not appear under this entry's sensors.\n\nIf you replaced your CPAP device, add the integration again to set up the new device, then delete this entry. This issue clears if myAir reports {configured} again."
         }
     }
 }

@@ -12,6 +12,7 @@ from typing import Any
 from aiohttp import DummyCookieJar
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.config_validation import config_entry_only_config_schema
 from homeassistant.helpers.typing import ConfigType
@@ -28,7 +29,7 @@ from .const import (
     REGION_NA,
     VERSION,
 )
-from .coordinator import MyAirDataUpdateCoordinator
+from .coordinator import MyAirDataUpdateCoordinator, device_mismatch_issue_id
 from .recorder import async_migrate_mask_leak_statistics_metadata
 from .redaction import redact_dict
 from .services import async_setup_services
@@ -154,3 +155,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clear the entry's device-mismatch repair issue when the entry is deleted.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance removing the entry.
+        entry (ConfigEntry): myAir config entry being deleted.
+    """
+    ir.async_delete_issue(hass, DOMAIN, device_mismatch_issue_id(entry.entry_id))

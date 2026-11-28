@@ -50,7 +50,7 @@ def myair_requests() -> Iterator[AsyncMock]:
         """
         serial = (
             "SN456"
-            if client._config.username in {"other@example.com", "upper+user@example.com"}
+            if client._config.username in {"other@example.com", "upper_user@example.com"}
             else "SN123"
         )
         return MyAirDevice.from_api(
@@ -219,7 +219,7 @@ async def test_unloading_previous_entry_keeps_replacement_force_poll_action(
     action = "force_poll_upper_user_example_com"
     assert await hass.config_entries.async_setup(first.entry_id)
     await hass.async_block_till_done()
-    second = _add_entry(hass, "upper+user@example.com")
+    second = _add_entry(hass, "upper_user@example.com")
     assert await hass.config_entries.async_setup(second.entry_id)
     await hass.async_block_till_done()
     _, second_request = myair_requests.await_args_list
