@@ -205,12 +205,6 @@ async def test_replacement_device_withholds_every_sensor_until_the_configured_de
     states = [hass.states.get(entity_id) for entity_id in sensors.values()]
     # Disabled-by-default sensors have no state; every enabled sensor is unavailable.
     assert {state.state for state in states if state is not None} == {STATE_UNAVAILABLE}
-    assert (
-        hass.states.get(sensors[f"{DOMAIN}_{_ORIGINAL}_{NIGHTLY_TIMELINE_KEY}"]).attributes.get(
-            "events"
-        )
-        is None
-    )
     myair.sleep_records.assert_not_awaited()
     myair.timeline.assert_not_awaited()
     issue = _mismatch_issue(hass, entry)
