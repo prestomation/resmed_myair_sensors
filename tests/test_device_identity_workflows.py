@@ -195,6 +195,9 @@ async def test_replacement_device_withholds_every_sensor_until_the_configured_de
     await _setup(hass, entry)
     assert _state(hass, entry, NIGHTLY_TIMELINE_KEY) == _DATE
     assert _state(hass, entry, "ahi") == "0.6"
+    assert _state(hass, entry, "usageHours") == "7.0"
+    assert _state(hass, entry, "usageHoursAverage7") == "7.0"
+    assert _state(hass, entry, "usageHoursAverage30") == "7.0"
     myair.sleep_records.reset_mock()
     myair.timeline.reset_mock()
 
@@ -205,6 +208,7 @@ async def test_replacement_device_withholds_every_sensor_until_the_configured_de
     states = [hass.states.get(entity_id) for entity_id in sensors.values()]
     # Disabled-by-default sensors have no state; every enabled sensor is unavailable.
     assert {state.state for state in states if state is not None} == {STATE_UNAVAILABLE}
+    assert entry.runtime_data.chart_sleep_records == []
     myair.sleep_records.assert_not_awaited()
     myair.timeline.assert_not_awaited()
     issue = _mismatch_issue(hass, entry)
@@ -256,6 +260,8 @@ async def test_replacement_device_withholds_every_sensor_until_the_configured_de
     assert _state(hass, entry, "ahi") == "0.6"
     assert _state(hass, entry, "lastSleepDataReportTime") == "2026-01-09T06:00:00+00:00"
     assert _state(hass, entry, NIGHTLY_TIMELINE_KEY) == _DATE
+    assert _state(hass, entry, "usageHours") == "7.0"
+    assert entry.runtime_data.chart_sleep_records[0]["startDate"] == _DATE
     assert _mismatch_issue(hass, entry) is None
 
 
@@ -274,7 +280,11 @@ async def test_missing_device_payload_keeps_sleep_sensors_on_the_configured_seri
 
     assert _state(hass, entry, "ahi") == "0.6"
     assert _state(hass, entry, "lastSleepDataReportTime") == STATE_UNAVAILABLE
-    assert all(f"_{_ORIGINAL}_" in unique_id for unique_id in _sensors(hass, entry))
+    sensors = _sensors(hass, entry)
+    assert all(f"_{_ORIGINAL}_" in unique_id for unique_id in sensors)
+    usage = hass.states.get(sensors[f"{DOMAIN}_{_ORIGINAL}_usageHours"])
+    assert usage is not None
+    assert usage.attributes["historical_statistic_id"] == "resmed_myair:sn123_usagehours_sum"
     assert _mismatch_issue(hass, entry) is None
 
 

@@ -16,6 +16,15 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 DEFAULT_UPDATE_RATE_MIN = 30
 # Wait this long past the end of a reported myAir outage before polling again.
 OUTAGE_RETRY_MARGIN_SEC = 60
+HISTORY_STORE_VERSION = 1
+MAX_HISTORY_DAYS = 400
+MAX_DAILY_USAGE_ATTRIBUTE_DAYS = 90
+RECORDER_STATE_FIELDS: Mapping[str, str] = {
+    "ahi": "ahi",
+    "maskPairCount": "maskPairCount",
+    "leakPercentile": "leakPercentile",
+    "sleepScore": "sleepScore",
+}
 TIME_IN_APNEA_KEY = "totalSecondsInApnea"
 NIGHTLY_TIMELINE_KEY = "nightlyTimeline"
 # Opt-in sensors that need a Nightly Therapy Timeline request at each refresh.

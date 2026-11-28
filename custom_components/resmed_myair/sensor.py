@@ -1,11 +1,17 @@
 """Home Assistant sensor entities for ResMed myAir account data."""
 
 from abc import abstractmethod
+from collections.abc import Mapping
 from datetime import date
 import logging
 from typing import Any, Final
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
@@ -13,10 +19,12 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
+from homeassistant.util.unit_conversion import DurationConverter
 
 from .const import (
     DEVICE_SENSOR_DESCRIPTIONS,
     DOMAIN,
+    MAX_DAILY_USAGE_ATTRIBUTE_DAYS,
     NIGHTLY_TIMELINE_KEY,
     SLEEP_RECORD_INDEX_FIELDS,
     SLEEP_RECORD_SENSOR_DESCRIPTIONS,
@@ -25,6 +33,15 @@ from .const import (
 )
 from .coordinator import MyAirDataUpdateCoordinator, sensor_unique_id
 from .models import MyAirCoordinatorData, MyAirDevice, MyAirSleepRecord
+from .recorder import (
+    HistoricalStatisticDescription,
+    async_import_historical_statistics,
+    build_daily_usage_hours,
+    build_sleep_record_statistic,
+    historical_statistic_id,
+    normalize_sleep_history,
+    usage_minutes_to_hours,
+)
 from .redaction import redact_dict
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -103,6 +120,9 @@ async def async_setup_entry(
     sensors.extend(
         [
             MyAirFriendlyUsageTime(coordinator=coordinator),
+            MyAirUsageHoursSensor(coordinator=coordinator),
+            MyAirUsageHoursAverageSensor(coordinator=coordinator, days=7),
+            MyAirUsageHoursAverageSensor(coordinator=coordinator, days=30),
             MyAirMostRecentSleepDate(coordinator=coordinator),
             MyAirTimeInApnea(coordinator),
             MyAirNightlyTimeline(coordinator),
@@ -177,6 +197,53 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         await super().async_added_to_hass()
         self._handle_coordinator_update()
 
+    @property
+    def _historical_statistic(self) -> HistoricalStatisticDescription | None:
+        """Return the historical statistic description for this entity."""
+        return None
+
+    @property
+    def _historical_statistic_id(self) -> str | None:
+        """Return the recorder statistic ID for this entity's imported history."""
+        statistic_desc = self._historical_statistic
+        serial = _coordinator_data(self.coordinator).serial
+        if statistic_desc is None or not serial:
+            return None
+
+        return historical_statistic_id(serial, self.sensor_key, statistic_desc.import_mode)
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Preserve sensor attributes and expose the historical statistic ID when available."""
+        attributes = super().extra_state_attributes
+        statistic_id = self._historical_statistic_id
+        if statistic_id is None:
+            return attributes
+        return {**(attributes or {}), "historical_statistic_id": statistic_id}
+
+    def _schedule_historical_statistics_import(self, data: MyAirCoordinatorData) -> None:
+        """Schedule recorder import for the current sleep records and statistic.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
+        if self.hass is None:
+            return
+
+        statistic_desc = self._historical_statistic
+        statistic_id = self._historical_statistic_id
+        if statistic_desc is None or statistic_id is None:
+            return
+
+        if not data.sleep_records:
+            return
+
+        self.hass.async_create_task(
+            async_import_historical_statistics(
+                self.hass, data.sleep_records, statistic_id, statistic_desc
+            )
+        )
+
     @callback
     def async_registry_entry_updated(self) -> None:
         """Keep this sensor's unique ID in step with its registry entry.
@@ -200,6 +267,8 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         else:
             self._update_from_data(data)
         self.async_write_ha_state()
+        if not data.withheld:
+            self._schedule_historical_statistics_import(data)
 
     @abstractmethod
     def _update_from_data(self, data: MyAirCoordinatorData) -> None:
@@ -335,6 +404,28 @@ class MyAirSleepRecordSensor(MyAirRawSensor):
     _missing_source_log = "Sleep record data missing from coordinator data"
     _parse_error_source = "Sleep Record"
 
+    def __init__(
+        self,
+        friendly_name: str,
+        sensor_desc: SensorEntityDescription,
+        coordinator: MyAirDataUpdateCoordinator,
+    ) -> None:
+        """Initialize a raw sleep-record sensor.
+
+        Args:
+            friendly_name (str): User-visible name for the sensor.
+            sensor_desc (SensorEntityDescription): Raw myAir field definition.
+            coordinator (MyAirDataUpdateCoordinator): Data coordinator that supplies
+                sleep records.
+        """
+        super().__init__(friendly_name, sensor_desc, coordinator)
+        self._historical_statistic_desc = build_sleep_record_statistic(friendly_name, sensor_desc)
+
+    @property
+    def _historical_statistic(self) -> HistoricalStatisticDescription | None:
+        """Return the historical statistic description for this entity."""
+        return self._historical_statistic_desc
+
     def _sensor_payload(self, data: MyAirCoordinatorData) -> _SensorPayload | None:
         """Select the latest dated sleep record from the coordinator snapshot.
 
@@ -408,6 +499,126 @@ class MyAirFriendlyUsageTime(MyAirBaseSensor):
                 _LOGGER.error("Unable to parse Usage Time. totalUsage")
 
         self._attr_native_value = value
+
+
+class MyAirUsageHoursSensor(MyAirBaseSensor):
+    """Expose latest usage as hours and import nightly usage statistics."""
+
+    def __init__(
+        self,
+        coordinator: MyAirDataUpdateCoordinator,
+    ) -> None:
+        """Initialize the synthesized usage-hours entity.
+
+        Args:
+            coordinator (MyAirDataUpdateCoordinator): Data coordinator that supplies
+                sleep records.
+        """
+        desc = SensorEntityDescription(
+            key="usageHours",
+            device_class=SensorDeviceClass.DURATION,
+            native_unit_of_measurement="h",
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+
+        super().__init__("CPAP Usage Hours", desc, coordinator)
+        self._historical_statistic_desc = HistoricalStatisticDescription(
+            name="CPAP Usage Hours",
+            unit_of_measurement="h",
+            value_fn=lambda record: (
+                None
+                if record.get("totalUsage") is None
+                else usage_minutes_to_hours(record["totalUsage"])
+            ),
+            unit_class=DurationConverter.UNIT_CLASS,
+            import_mode="sum",
+            round_digits=2,
+        )
+
+    @property
+    def _historical_statistic(self) -> HistoricalStatisticDescription | None:
+        """Return the historical statistic description for this entity."""
+        return self._historical_statistic_desc
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Return extra state attributes for dashboard cards."""
+        attributes = dict(super().extra_state_attributes or {})
+        chart_records = self.coordinator.chart_sleep_records
+        attributes["daily_usage_hours"] = build_daily_usage_hours(chart_records)
+        attributes["daily_usage_hours_retained_days"] = MAX_DAILY_USAGE_ATTRIBUTE_DAYS
+        attributes["daily_usage_hours_available_days"] = len(chart_records)
+        return attributes
+
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Set the latest sleep record usage as decimal hours.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
+        latest_record = data.latest_sleep_record
+        if latest_record is None:
+            _LOGGER.error("Sleep record data missing from coordinator data")
+            value: float | None = None
+            self._available = False
+        else:
+            value = (
+                None
+                if latest_record.total_usage_minutes is None
+                else usage_minutes_to_hours(latest_record.total_usage_minutes)
+            )
+            self._available = value is not None
+            if value is None:
+                _LOGGER.error("Unable to parse Usage Hours. totalUsage")
+
+        self._attr_native_value = value
+
+
+class MyAirUsageHoursAverageSensor(MyAirBaseSensor):
+    """Expose a rolling average of recent usage hours."""
+
+    def __init__(
+        self,
+        coordinator: MyAirDataUpdateCoordinator,
+        days: int,
+    ) -> None:
+        """Initialize a rolling usage-hours average entity.
+
+        Args:
+            coordinator (MyAirDataUpdateCoordinator): Data coordinator that supplies
+                sleep records.
+            days (int): Number of nightly records included in the average.
+        """
+        desc = SensorEntityDescription(
+            key=f"usageHoursAverage{days}",
+            device_class=SensorDeviceClass.DURATION,
+            native_unit_of_measurement="h",
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+
+        super().__init__(f"CPAP Usage Hours {days} Day Average", desc, coordinator)
+        self._days = days
+
+    def _update_from_data(self, data: MyAirCoordinatorData) -> None:
+        """Set the average usage hours over the configured trailing window.
+
+        Args:
+            data (MyAirCoordinatorData): Snapshot for the Configured CPAP Device.
+        """
+        normalized_records = normalize_sleep_history([record.raw for record in data.sleep_records])
+        usage_hours = [
+            usage_minutes_to_hours(record["totalUsage"])
+            for record in normalized_records
+            if record.get("totalUsage") is not None
+        ]
+        if not usage_hours:
+            self._attr_native_value = None
+            self._available = False
+            return
+
+        trailing_usage = usage_hours[-self._days :]
+        self._attr_native_value = round(sum(trailing_usage) / len(trailing_usage), 2)
+        self._available = True
 
 
 class MyAirMostRecentSleepDate(MyAirBaseSensor):
