@@ -219,8 +219,8 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
             return None
         return {"historical_statistic_id": statistic_id}
 
-    async def _async_import_historical_statistics(self) -> None:
-        """Import nightly historical data into recorder statistics."""
+    def _schedule_historical_statistics_import(self) -> None:
+        """Schedule recorder import for the current sleep records and statistic."""
         if self.hass is None:
             return
 
@@ -233,18 +233,11 @@ class MyAirBaseSensor(CoordinatorEntity[MyAirDataUpdateCoordinator], SensorEntit
         if not sleep_records:
             return
 
-        await async_import_historical_statistics(
-            self.hass,
-            sleep_records,
-            statistic_id,
-            statistic_desc,
+        self.hass.async_create_task(
+            async_import_historical_statistics(
+                self.hass, sleep_records, statistic_id, statistic_desc
+            )
         )
-
-    def _schedule_historical_statistics_import(self) -> None:
-        """Schedule a recorder statistics import if this entity supports it."""
-        if self.hass is None or self._historical_statistic is None:
-            return
-        self.hass.async_create_task(self._async_import_historical_statistics())
 
 
 class MyAirRawSensor(MyAirBaseSensor):

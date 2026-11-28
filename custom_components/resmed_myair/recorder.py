@@ -63,7 +63,7 @@ def normalize_sleep_history(history: Sequence[Mapping[str, Any]]) -> list[dict[s
         start_date = dt_util.parse_date(raw_start_date)
         if start_date is None or start_date > today:
             continue
-        normalized.append(dict(record))
+        normalized.append({**record, "startDate": start_date.isoformat()})
     normalized.sort(key=lambda record: record["startDate"])
     return normalized
 
@@ -190,7 +190,7 @@ async def async_import_historical_statistics(
         statistic_desc (HistoricalStatisticDescription): Statistic value extraction
             and metadata description.
     """
-    if not sleep_records:
+    if not sleep_records or DATA_INSTANCE not in hass.data:
         return
 
     last_stat = await get_instance(hass).async_add_executor_job(

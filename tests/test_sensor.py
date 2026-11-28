@@ -96,7 +96,7 @@ def test_usage_hours_average_uses_latest_dated_records(
     coordinator_factory: CoordinatorFactory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Usage-hour averages use the latest dates when the API response is unsorted.
+    """Usage-hour averages use the latest valid dates in an unsorted API response.
 
     Args:
         coordinator_factory (CoordinatorFactory): Factory creating a data-backed
@@ -106,9 +106,11 @@ def test_usage_hours_average_uses_latest_dated_records(
     coordinator = coordinator_factory(
         data={
             "sleep_records": [
-                {"startDate": "2026-03-03", "totalUsage": 60},
+                {"startDate": "2026-03-10", "totalUsage": 60},
+                {"startDate": "2099-01-01", "totalUsage": 600},
                 {"startDate": "2026-03-01", "totalUsage": 600},
-                {"startDate": "2026-03-02", "totalUsage": 120},
+                {"startDate": "invalid", "totalUsage": 600},
+                {"startDate": "2026-3-2", "totalUsage": 120},
             ]
         }
     )
