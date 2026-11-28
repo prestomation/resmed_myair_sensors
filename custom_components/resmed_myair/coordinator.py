@@ -258,6 +258,7 @@ class MyAirDataUpdateCoordinator(DataUpdateCoordinator[MyAirCoordinatorData]):
                     DOMAIN,
                     issue_id,
                     is_fixable=False,
+                    is_persistent=True,
                     severity=ir.IssueSeverity.WARNING,
                     translation_key="device_mismatch",
                     translation_placeholders={
