@@ -31,7 +31,6 @@ lint = [
     "prek",
     "probatio",
     "pydoclint>=0.12.0",
-    "ruff",
     "uv",
 ]
 # Test dependencies without the Home Assistant test plugin. The minimum Home
